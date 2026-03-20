@@ -1,0 +1,16 @@
+{
+  "name": "yesi-agente-ia",
+  "version": "1.0.0",
+  "description": "Yesi - Asistente IA en Cloudflare Pages",
+  "scripts": {
+    "dev": "wrangler pages dev public --compatibility-date=2024-09-23",
+    "deploy": "wrangler pages deploy public"
+  },
+  "dependencies": {
+    "groq-sdk": "^1.1.1",
+    "@tavily/core": "^0.7.2"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

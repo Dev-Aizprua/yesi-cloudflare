@@ -1,0 +1,9 @@
+name = "yesi-agente-ia" 
+compatibility_date = "2024-09-23" 
+compatibility_flags = ["nodejs_compat"] 
+pages_build_output_dir = "public" 
+ 
+[vars] 
+GOOGLE_PROJECT_ID = "gen-lang-client-0630473100" 
+GOOGLE_CLIENT_EMAIL = "agente-ia@gen-lang-client-0630473100.iam.gserviceaccount.com" 
+GOOGLE_SHEET_ID = "1JbcsekjdeU1o91ByS9OaT0xdiBsH1A-c-C6tNmO4Rk8"
