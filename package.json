@@ -1,7 +1,7 @@
 {
-  "name": "yesi-agente-ia",
-  "version": "1.0.0",
-  "description": "Yesi - Asistente IA en Cloudflare Pages",
+  "name": "kairos-agente-ia",
+  "version": "2.0.0",
+  "description": "Kairós - Agente IA de Ventas en Cloudflare Pages + D1",
   "scripts": {
     "dev": "wrangler pages dev public --compatibility-date=2024-09-23",
     "deploy": "wrangler pages deploy public"
