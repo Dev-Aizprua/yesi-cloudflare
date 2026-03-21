@@ -20,7 +20,7 @@ export async function onRequestGet(context) {
 
     // Últimas 20 conversaciones
     const result = await db.prepare(
-      "SELECT role, contenido as content, sesion as session, fecha as timestamp FROM Conversaciones ORDER BY id DESC LIMIT 20"
+      "SELECT role, contenido as content, sesion as session, fecha as timestamp FROM Conversaciones ORDER BY id DESC LIMIT 40"
     ).all();
 
     const historial = (result.results || []).reverse();
