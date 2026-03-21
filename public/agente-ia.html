@@ -1270,6 +1270,9 @@ async function sendMessage() {
     } // fin cada 5 mensajes
 
     const result = await callGemini(text, memoriaContext);
+
+    // Detectar si Kairós quiere enviar un correo
+    await detectarYEnviarCorreo(result.respuesta);
     hideTyping();
 
     addMessage('ai', result.respuesta, logIndex);
@@ -1429,6 +1432,29 @@ function promptRecordar(logIndex) {
   guardarEnMemoria(categoria, dato);
 }
 
+// ─── ENVÍO AUTOMÁTICO DE CORREOS ────────────────────────────
+async function detectarYEnviarCorreo(respuesta) {
+  try {
+    const jsonMatch = respuesta.match(/\{[\s\S]*?"para"\s*:\s*"[^"]+@[^"]+[\s\S]*?\}/);
+    if (!jsonMatch) return;
+    let datos;
+    try { datos = JSON.parse(jsonMatch[0]); } catch(e) { return; }
+    if (!datos.para || !datos.cuerpo) return;
+    showToast('📧 Enviando correo a ' + datos.para + '...');
+    const res = await fetch('/api/correo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(datos)
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('✅ Correo enviado a ' + datos.para);
+    } else {
+      showToast('⚠ Error: ' + (data.error || 'No se pudo enviar'));
+    }
+  } catch(e) { /* No era JSON de correo */ }
+}
+
 // Init
 loadConfig();
 loadHistory();
@@ -1508,21 +1534,19 @@ function speakText(btn, logIndex) {
   const cleanText = text.replace(/\*\*/g, '').replace(/\*/g, '').replace(/#{1,6} /g, '');
   const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.lang = 'es-ES';
-  utterance.rate = 0.90;
+  utterance.rate = 0.95;
   utterance.pitch = 1;
 
   utterance.onstart = () => { btn.classList.add('speaking'); btn.textContent = '⏹ Detener'; };
   utterance.onend = () => { btn.classList.remove('speaking'); btn.textContent = '🔊 Escuchar'; };
 
   function doSpeak() {
-    const voices = window.speechSynthesis.getVoices();
-    const esVoice = voices.find(v => v.lang.startsWith('es') && v.name.toLowerCase().includes('male'))
-      || voices.find(v => v.lang.startsWith('es') && !v.name.toLowerCase().includes('female'))
-      || voices.find(v => v.lang.startsWith('es'));
+    const esVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('es'));
     if (esVoice) utterance.voice = esVoice;
     window.speechSynthesis.cancel();
     setTimeout(() => window.speechSynthesis.speak(utterance), 150);
   }
+
   window.speechSynthesis.getVoices().length > 0 ? doSpeak() : (window.speechSynthesis.onvoiceschanged = doSpeak);
 }
 </script>
