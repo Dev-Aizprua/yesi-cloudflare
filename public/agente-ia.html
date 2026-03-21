@@ -1508,19 +1508,21 @@ function speakText(btn, logIndex) {
   const cleanText = text.replace(/\*\*/g, '').replace(/\*/g, '').replace(/#{1,6} /g, '');
   const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.lang = 'es-ES';
-  utterance.rate = 0.95;
+  utterance.rate = 0.90;
   utterance.pitch = 1;
 
   utterance.onstart = () => { btn.classList.add('speaking'); btn.textContent = '⏹ Detener'; };
   utterance.onend = () => { btn.classList.remove('speaking'); btn.textContent = '🔊 Escuchar'; };
 
   function doSpeak() {
-    const esVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('es'));
+    const voices = window.speechSynthesis.getVoices();
+    const esVoice = voices.find(v => v.lang.startsWith('es') && v.name.toLowerCase().includes('male'))
+      || voices.find(v => v.lang.startsWith('es') && !v.name.toLowerCase().includes('female'))
+      || voices.find(v => v.lang.startsWith('es'));
     if (esVoice) utterance.voice = esVoice;
     window.speechSynthesis.cancel();
     setTimeout(() => window.speechSynthesis.speak(utterance), 150);
   }
-
   window.speechSynthesis.getVoices().length > 0 ? doSpeak() : (window.speechSynthesis.onvoiceschanged = doSpeak);
 }
 </script>
