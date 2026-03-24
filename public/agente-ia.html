@@ -1273,6 +1273,9 @@ async function sendMessage() {
 
     // Detectar si Kairós quiere enviar un correo
     await detectarYEnviarCorreo(result.respuesta);
+
+    // Detectar y guardar prospecto si Kairós lo indica
+    await detectarYGuardarProspecto(result.respuesta);
     hideTyping();
 
     addMessage('ai', result.respuesta, logIndex);
@@ -1453,6 +1456,47 @@ async function detectarYEnviarCorreo(respuesta) {
       showToast('⚠ Error: ' + (data.error || 'No se pudo enviar'));
     }
   } catch(e) { /* No era JSON de correo */ }
+}
+
+// ─── GUARDADO AUTOMÁTICO DE PROSPECTOS ──────────────────────
+async function detectarYGuardarProspecto(respuesta) {
+  try {
+    // Limpiar backslashes escapados y comillas tipograficas
+    const normalizada = respuesta
+      .replace(/\\"/g, '"')
+      .replace(/[“”„‟]/g, '"')
+      .replace(/[‘’‚‛]/g, "'");
+
+    // Buscar todos los JSON en la respuesta
+    const jsonMatches = normalizada.match(/\{[^{}]*"nombre"[^{}]*\}/g);
+    if (!jsonMatches) return;
+
+    for (const match of jsonMatches) {
+      let datos;
+      try { datos = JSON.parse(match); } catch(e) { continue; }
+      if (!datos.nombre) continue;
+
+      // Asegurar campos requeridos
+      datos.fuente = datos.fuente || 'kairos';
+      datos.empresa = datos.empresa || datos.nombre;
+      datos.rubro = datos.rubro || '';
+      datos.sitio_web = datos.sitio_web || '';
+      datos.correo = datos.correo || '';
+
+      showToast('💾 Guardando: ' + datos.nombre + '...');
+      const res = await fetch('/api/prospectos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('✅ Guardado: ' + datos.nombre);
+      } else {
+        showToast('⚠ Error: ' + (data.error || 'No se pudo guardar'));
+      }
+    }
+  } catch(e) { /* No era JSON de prospecto */ }
 }
 
 // Init

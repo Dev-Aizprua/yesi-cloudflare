@@ -23,33 +23,19 @@ export async function onRequestPost(context) {
       return Response.json({ success: false, error: data.message || 'Error en Foursquare' }, { status: 500 });
     }
 
-    const lugares = (data.results || []).map(p => ({
+    const lugares = (data.results || []).map((p, index) => ({
+      numero: index + 1,
       nombre: p.name || '',
       direccion: p.location?.formatted_address || '',
       telefono: p.tel || '',
       sitio_web: p.website || '',
       categoria: p.categories?.[0]?.name || '',
+      tiene_web: !!p.website,
     }));
 
-    // Guardar en D1 los que no tienen web — oportunidades de venta
-    let guardados = 0;
-    const fecha = new Intl.DateTimeFormat('es-PA', {
-      timeZone: 'America/Panama',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
+    console.log(`Foursquare: ${lugares.length} lugares encontrados para "${query}"`);
 
-    for (const lugar of lugares) {
-      if (!lugar.sitio_web) {
-        await env.kairos_db.prepare(
-          "INSERT INTO Prospectos (nombre, empresa, rubro, sitio_web, correo, fuente, fecha) VALUES (?, ?, ?, ?, ?, ?, ?)"
-        ).bind(lugar.nombre, lugar.nombre, lugar.categoria || query, '', '', 'foursquare', fecha).run();
-        guardados++;
-      }
-    }
-
-    console.log(`Foursquare: ${lugares.length} encontrados, ${guardados} guardados como prospectos`);
-
-    return Response.json({ success: true, lugares, guardados });
+    return Response.json({ success: true, lugares });
 
   } catch (error) {
     console.error('Error en lugares:', error.message);
