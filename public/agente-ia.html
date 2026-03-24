@@ -1435,6 +1435,17 @@ function promptRecordar(logIndex) {
   guardarEnMemoria(categoria, dato);
 }
 
+// ─── NOTIFICACIONES TELEGRAM ────────────────────────────────
+async function notificarTelegram(mensaje) {
+  try {
+    await fetch('/api/telegram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensaje })
+    });
+  } catch(e) { /* silencioso */ }
+}
+
 // ─── ENVÍO AUTOMÁTICO DE CORREOS ────────────────────────────
 async function detectarYEnviarCorreo(respuesta) {
   try {
@@ -1452,6 +1463,12 @@ async function detectarYEnviarCorreo(respuesta) {
     const data = await res.json();
     if (data.success) {
       showToast('✅ Correo enviado a ' + datos.para);
+      // Notificar por Telegram
+      fetch('/api/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mensaje: '📧 <b>Correo enviado</b>\n\nPara: ' + datos.para + '\nAsunto: ' + (datos.asunto || 'Sin asunto') })
+      });
     } else {
       showToast('⚠ Error: ' + (data.error || 'No se pudo enviar'));
     }
@@ -1492,6 +1509,12 @@ async function detectarYGuardarProspecto(respuesta) {
       const data = await res.json();
       if (data.success) {
         showToast('✅ Guardado: ' + datos.nombre);
+        // Notificar por Telegram
+        fetch('/api/telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mensaje: '📋 <b>Nuevo prospecto guardado</b>\n\nNombre: ' + datos.nombre + '\nRubro: ' + datos.rubro + '\nFuente: ' + datos.fuente })
+        });
       } else {
         showToast('⚠ Error: ' + (data.error || 'No se pudo guardar'));
       }

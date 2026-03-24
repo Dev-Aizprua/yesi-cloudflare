@@ -1,12 +1,14 @@
-name = "yesi-agente-ia" 
-compatibility_date = "2024-09-23" 
-compatibility_flags = ["nodejs_compat"] 
-pages_build_output_dir = "public" 
- 
-[vars] 
-GOOGLE_SHEET_ID = "1JbcsekjdeU1o91ByS9OaT0xdiBsH1A-c-C6tNmO4Rk8" 
- 
-[[d1_databases]] 
-binding = "kairos_db" 
-database_name = "kairos-db" 
+name = "yesi-agente-ia"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "public"
+
+[vars]
+GOOGLE_SHEET_ID = "1JbcsekjdeU1o91ByS9OaT0xdiBsH1A-c-C6tNmO4Rk8"
+TELEGRAM_TOKEN = "8653145112:AAEz6hH9c_1SyeFyreEy1B7CudqeNAUIJ2I"
+TELEGRAM_CHAT_ID = "8483416774"
+
+[[d1_databases]]
+binding = "kairos_db"
+database_name = "kairos-db"
 database_id = "46849818-deed-4987-9a56-84bb2f753b4d"
