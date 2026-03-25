@@ -1584,14 +1584,12 @@ function toggleMic() {
 let currentUtterance = null;
 
 function speakText(btn, logIndex) {
-  // Detener si ya está reproduciendo
-  if (currentAudio && !currentAudio.paused) {
-    currentAudio.pause();
-    currentAudio = null;
-    document.querySelectorAll('.tts-btn').forEach(b => { b.classList.remove('speaking'); b.textContent = '🔊 Escuchar'; });
+  if (!('speechSynthesis' in window)) {
+    showToast('⚠ Tu navegador no soporta síntesis de voz.');
     return;
   }
-  if (window.speechSynthesis && window.speechSynthesis.speaking) {
+
+  if (window.speechSynthesis.speaking) {
     window.speechSynthesis.cancel();
     document.querySelectorAll('.tts-btn').forEach(b => { b.classList.remove('speaking'); b.textContent = '🔊 Escuchar'; });
     return;
@@ -1600,49 +1598,23 @@ function speakText(btn, logIndex) {
   const text = logs[logIndex] ? logs[logIndex].response : '';
   if (!text || text === '...') return;
 
-  btn.classList.add('speaking');
-  btn.textContent = '⏳ Generando...';
+  const cleanText = text.replace(/\*\*/g, '').replace(/\*/g, '').replace(/#{1,6} /g, '');
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  utterance.lang = 'es-ES';
+  utterance.rate = 0.95;
+  utterance.pitch = 1;
 
-  fetch('/api/voz', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ texto: text })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) {
-      // ElevenLabs OK
-      const audioBlob = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      currentAudio = new Audio(audioUrl);
-      btn.textContent = '⏹ Detener';
-      currentAudio.onended = () => {
-        btn.classList.remove('speaking');
-        btn.textContent = '🔊 Escuchar';
-        URL.revokeObjectURL(audioUrl);
-        currentAudio = null;
-      };
-      currentAudio.play();
-    } else {
-      throw new Error(data.error || 'ElevenLabs no disponible');
-    }
-  })
-  .catch(e => {
-    // Fallback: Web Speech API
-    showToast('⚠ ElevenLabs no disponible · Usando voz del navegador');
-    btn.textContent = '⏹ Detener';
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-PA';
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
-    currentUtterance = utterance;
-    utterance.onend = () => {
-      btn.classList.remove('speaking');
-      btn.textContent = '🔊 Escuchar';
-      currentUtterance = null;
-    };
-    window.speechSynthesis.speak(utterance);
-  });
+  utterance.onstart = () => { btn.classList.add('speaking'); btn.textContent = '⏹ Detener'; };
+  utterance.onend = () => { btn.classList.remove('speaking'); btn.textContent = '🔊 Escuchar'; };
+
+  function doSpeak() {
+    const esVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('es'));
+    if (esVoice) utterance.voice = esVoice;
+    window.speechSynthesis.cancel();
+    setTimeout(() => window.speechSynthesis.speak(utterance), 150);
+  }
+
+  window.speechSynthesis.getVoices().length > 0 ? doSpeak() : (window.speechSynthesis.onvoiceschanged = doSpeak);
 }
 </script>
 </body>
