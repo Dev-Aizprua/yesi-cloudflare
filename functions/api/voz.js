@@ -15,7 +15,7 @@ export async function onRequestPost(context) {
       .replace(/#{1,6} /g, '')
       .replace(/\n+/g, ' ')
       .trim()
-      .substring(0, 500); // Máximo 500 caracteres para ahorrar créditos
+      .substring(0, 500);
 
     const url = `https://api.elevenlabs.io/v1/text-to-speech/${env.ELEVENLABS_VOICE_ID}`;
 
@@ -44,11 +44,17 @@ export async function onRequestPost(context) {
       return Response.json({ success: false, error: error.detail?.message || 'Error en ElevenLabs' }, { status: 500 });
     }
 
-    // Devolver audio como base64
+    // Devolver el audio directamente como stream en vez de base64
     const audioBuffer = await res.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
 
-    return Response.json({ success: true, audio: base64 });
+    return new Response(audioBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': audioBuffer.byteLength.toString(),
+        'Cache-Control': 'no-cache'
+      }
+    });
 
   } catch (error) {
     console.error('Error en voz:', error.message);

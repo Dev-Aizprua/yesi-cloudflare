@@ -1585,6 +1585,7 @@ let currentUtterance = null;
 let currentAudio = null;
 
 function speakText(btn, logIndex) {
+  // Detener si ya está reproduciendo
   if (currentAudio && !currentAudio.paused) {
     currentAudio.pause();
     currentAudio = null;
@@ -1608,23 +1609,27 @@ function speakText(btn, logIndex) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ texto: text })
   })
-  .then(res => {
-    if (!res.ok) throw new Error('Error ' + res.status);
-    return res.blob();
-  })
-  .then(blob => {
-    const audioUrl = URL.createObjectURL(blob);
-    currentAudio = new Audio(audioUrl);
-    btn.textContent = '⏹ Detener';
-    currentAudio.onended = () => {
-      btn.classList.remove('speaking');
-      btn.textContent = '🔊 Escuchar';
-      URL.revokeObjectURL(audioUrl);
-      currentAudio = null;
-    };
-    currentAudio.play();
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      // ElevenLabs OK
+      const audioBlob = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      currentAudio = new Audio(audioUrl);
+      btn.textContent = '⏹ Detener';
+      currentAudio.onended = () => {
+        btn.classList.remove('speaking');
+        btn.textContent = '🔊 Escuchar';
+        URL.revokeObjectURL(audioUrl);
+        currentAudio = null;
+      };
+      currentAudio.play();
+    } else {
+      throw new Error(data.error || 'ElevenLabs no disponible');
+    }
   })
   .catch(e => {
+    // Fallback: Web Speech API
     showToast('⚠ ElevenLabs no disponible · Usando voz del navegador');
     btn.textContent = '⏹ Detener';
     const utterance = new SpeechSynthesisUtterance(text);
@@ -1642,4 +1647,4 @@ function speakText(btn, logIndex) {
 }
 </script>
 </body>
-</html> 
+</html>
