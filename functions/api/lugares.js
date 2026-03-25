@@ -4,38 +4,91 @@ export async function onRequestPost(context) {
   try {
     const { query, ubicacion } = await request.json();
 
-    const coords = ubicacion || '8.9936,-79.5197';
+    // Construir búsqueda para Panamá
+    const searchQuery = `${query} en Panamá`;
 
-    const url = `https://places-api.foursquare.com/places/search?query=${encodeURIComponent(query)}&ll=${coords}&radius=10000&limit=10&fields=name,location,tel,website,categories`;
-
-    const res = await fetch(url, {
+    // ─── STEP 1: Lanzar el Actor de Apify ───────────────────────
+    const runRes = await fetch('https://api.apify.com/v2/acts/brujula~rastreador-google-places/runs', {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${env.FOURSQUARE_API_KEY}`,
-        'Accept': 'application/json',
-        'X-Places-Api-Version': '2025-06-17'
-      }
+        'Authorization': `Bearer ${env.APIFY_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        searchStringsArray: [searchQuery],
+        maxCrawledPlacesPerSearch: 10,
+        language: 'es',
+        countryCode: 'pa',
+        includeWebResults: false,
+      })
     });
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      console.error('Error Foursquare:', JSON.stringify(data));
-      return Response.json({ success: false, error: data.message || 'Error en Foursquare' }, { status: 500 });
+    if (!runRes.ok) {
+      const err = await runRes.json().catch(() => ({}));
+      console.error('Error lanzando Apify:', JSON.stringify(err));
+      return Response.json({ success: false, error: 'Error iniciando búsqueda en Apify' }, { status: 500 });
     }
 
-    const lugares = (data.results || []).map((p, index) => ({
+    const runData = await runRes.json();
+    const runId = runData.data?.id;
+
+    if (!runId) {
+      return Response.json({ success: false, error: 'No se obtuvo ID de ejecución' }, { status: 500 });
+    }
+
+    console.log(`Apify run iniciado: ${runId}`);
+
+    // ─── STEP 2: Esperar que termine (polling con timeout 25s) ───
+    let status = 'RUNNING';
+    let intentos = 0;
+    const maxIntentos = 10;
+
+    while (status === 'RUNNING' && intentos < maxIntentos) {
+      await new Promise(r => setTimeout(r, 2500));
+      intentos++;
+
+      const statusRes = await fetch(`https://api.apify.com/v2/acts/brujula~rastreador-google-places/runs/${runId}`, {
+        headers: { 'Authorization': `Bearer ${env.APIFY_TOKEN}` }
+      });
+
+      const statusData = await statusRes.json();
+      status = statusData.data?.status || 'RUNNING';
+      console.log(`Apify intento ${intentos}: ${status}`);
+    }
+
+    if (status !== 'SUCCEEDED') {
+      return Response.json({ success: false, error: `Apify terminó con estado: ${status}` }, { status: 500 });
+    }
+
+    // ─── STEP 3: Obtener resultados del dataset ──────────────────
+    const datasetId = runData.data?.defaultDatasetId;
+    const resultsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?limit=10`, {
+      headers: { 'Authorization': `Bearer ${env.APIFY_TOKEN}` }
+    });
+
+    const items = await resultsRes.json();
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return Response.json({ success: false, error: 'No se encontraron resultados' }, { status: 404 });
+    }
+
+    // ─── STEP 4: Normalizar al mismo formato de Foursquare ───────
+    const lugares = items.map((p, index) => ({
       numero: index + 1,
-      nombre: p.name || '',
-      direccion: p.location?.formatted_address || '',
-      telefono: p.tel || '',
+      nombre: p.title || p.name || '',
+      direccion: p.address || p.street || '',
+      telefono: p.phone || p.phoneUnformatted || '',
       sitio_web: p.website || '',
-      categoria: p.categories?.[0]?.name || '',
-      tiene_web: !!p.website,
+      categoria: p.categoryName || p.categories?.[0] || '',
+      rating: p.totalScore || p.rating || null,
+      resenas: p.reviewsCount || null,
+      tiene_web: !!(p.website),
+      fuente: 'google_maps'
     }));
 
-    console.log(`Foursquare: ${lugares.length} lugares encontrados para "${query}"`);
+    console.log(`Apify: ${lugares.length} lugares encontrados para "${searchQuery}"`);
 
-    return Response.json({ success: true, lugares });
+    return Response.json({ success: true, lugares, fuente: 'apify_google_maps' });
 
   } catch (error) {
     console.error('Error en lugares:', error.message);
