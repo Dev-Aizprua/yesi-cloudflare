@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kairós — Panel de Prospectos</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0f0a;
+    --surface: #0d1a0d;
+    --surface2: #102010;
+    --border: #1a3a1a;
+    --accent: #2ecc71;
+    --accent2: #34495e;
+    --accent3: #e67e22;
+    --text: #e8e8f0;
+    --text-dim: #bdc3c7;
+    --text-muted: #145a32;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --info: #3b82f6;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  /* HEADER */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,15,10,0.96);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 12px var(--accent); }
+    50% { opacity: 0.5; box-shadow: 0 0 4px var(--accent); }
+  }
+
+  .header-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .header-title span { color: var(--accent); }
+
+  .header-subtitle {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    border-left: 1px solid var(--border);
+    padding-left: 14px;
+    margin-left: 2px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .nav-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 5px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .nav-btn.primary {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+  .nav-btn.primary:hover { opacity: 0.85; }
+
+  /* STATS BAR */
+  .stats-bar {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stat-card {
+    padding: 18px 24px;
+    border-right: 1px solid var(--border);
+    transition: background 0.2s;
+  }
+
+  .stat-card:last-child { border-right: none; }
+  .stat-card:hover { background: rgba(46,204,113,0.03); }
+
+  .stat-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .stat-value.green { color: var(--accent); }
+  .stat-value.orange { color: var(--accent3); }
+  .stat-value.blue { color: var(--info); }
+
+  .stat-sub {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* MAIN LAYOUT */
+  .main {
+    position: relative;
+    z-index: 1;
+    padding: 24px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* FILTERS */
+  .filters-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .filter-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.2s;
+    min-width: 200px;
+  }
+
+  .filter-input:focus { border-color: var(--accent); }
+  .filter-input::placeholder { color: var(--text-muted); }
+
+  .filter-select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .filter-select:focus { border-color: var(--accent); }
+
+  .filter-count {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-left: auto;
+  }
+
+  /* TABLE */
+  .table-wrapper {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .table-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .table-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  thead th {
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    background: var(--surface2);
+  }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(26,58,26,0.5);
+    transition: background 0.15s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(46,204,113,0.03); }
+
+  td {
+    padding: 12px 16px;
+    color: var(--text);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .td-nombre {
+    font-weight: 500;
+    color: var(--text);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .td-rubro {
+    color: var(--text-dim);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .td-correo {
+    color: var(--info);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .td-web a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 10px;
+  }
+
+  .td-web a:hover { text-decoration: underline; }
+
+  .td-fecha {
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+
+  /* Estado badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+
+  .badge-nuevo {
+    background: rgba(59,130,246,0.1);
+    color: var(--info);
+    border: 1px solid rgba(59,130,246,0.25);
+  }
+
+  .badge-contactado {
+    background: rgba(245,158,11,0.1);
+    color: var(--warning);
+    border: 1px solid rgba(245,158,11,0.25);
+  }
+
+  .badge-enviado {
+    background: rgba(46,204,113,0.1);
+    color: var(--accent);
+    border: 1px solid rgba(46,204,113,0.25);
+  }
+
+  .badge-cerrado {
+    background: rgba(239,68,68,0.1);
+    color: var(--danger);
+    border: 1px solid rgba(239,68,68,0.25);
+  }
+
+  /* Action buttons */
+  .actions {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+  }
+
+  .action-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .action-btn:hover.enviar { border-color: var(--accent); color: var(--accent); background: rgba(46,204,113,0.05); }
+  .action-btn:hover.editar { border-color: var(--info); color: var(--info); background: rgba(59,130,246,0.05); }
+  .action-btn:hover.estado { border-color: var(--warning); color: var(--warning); background: rgba(245,158,11,0.05); }
+  .action-btn:hover.eliminar { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.05); }
+
+  /* Empty state */
+  .empty-state {
+    padding: 48px;
+    text-align: center;
+  }
+
+  .empty-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+
+  .empty-text {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* Loading */
+  .loading-row td {
+    padding: 32px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 480px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: modalIn 0.2s ease;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(-16px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .modal-header {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .modal-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+
+  .modal-close:hover { color: var(--text); }
+
+  .modal-body { padding: 20px; }
+
+  .field {
+    margin-bottom: 14px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin-bottom: 5px;
+  }
+
+  .field input, .field textarea, .field select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .field input:focus, .field textarea:focus, .field select:focus {
+    border-color: var(--accent);
+  }
+
+  .field textarea { resize: vertical; min-height: 100px; }
+
+  .modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 8px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+
+  .btn-cancel {
+    background: none;
+    border-color: var(--border);
+    color: var(--text-dim);
+  }
+
+  .btn-cancel:hover { border-color: var(--text-dim); color: var(--text); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+  }
+
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-danger {
+    background: rgba(239,68,68,0.1);
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+  /* TOAST */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 10px 20px;
+    border-radius: 4px;
+    z-index: 200;
+    animation: toastIn 0.2s ease;
+    white-space: nowrap;
+  }
+
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .stat-card:nth-child(2) { border-right: none; }
+    .filters-row { flex-direction: column; align-items: stretch; }
+    .filter-input { min-width: unset; }
+    .filter-count { margin-left: 0; }
+    header { padding: 12px 16px; }
+    .main { padding: 16px; }
+    .header-subtitle { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="header-left">
+    <div class="logo-dot"></div>
+    <span class="header-title">Kairo<span>S</span></span>
+    <span class="header-subtitle">Panel de Prospectos</span>
+  </div>
+  <div class="header-right">
+    <button class="nav-btn" onclick="abrirModalNuevo()">+ Nuevo</button>
+    <button class="nav-btn" onclick="cargarProspectos()">↻ Actualizar</button>
+    <a href="/agente-ia.html" class="nav-btn primary">← Agente</a>
+  </div>
+</header>
+
+<!-- STATS -->
+<div class="stats-bar" id="statsBar">
+  <div class="stat-card">
+    <div class="stat-label">Total Prospectos</div>
+    <div class="stat-value green" id="statTotal">—</div>
+    <div class="stat-sub">en base de datos</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Con Correo</div>
+    <div class="stat-value blue" id="statConCorreo">—</div>
+    <div class="stat-sub">listos para contactar</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Contactados</div>
+    <div class="stat-value orange" id="statContactados">—</div>
+    <div class="stat-sub">propuestas enviadas</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Sin Web</div>
+    <div class="stat-value" id="statSinWeb">—</div>
+    <div class="stat-sub">oportunidades directas</div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- FILTERS -->
+  <div class="filters-row">
+    <input
+      class="filter-input"
+      id="searchInput"
+      type="text"
+      placeholder="🔍 Buscar por nombre, rubro, correo..."
+      oninput="filtrar()"
+    />
+    <select class="filter-select" id="filterRubro" onchange="filtrar()">
+      <option value="">Todos los rubros</option>
+    </select>
+    <select class="filter-select" id="filterEstado" onchange="filtrar()">
+      <option value="">Todos los estados</option>
+      <option value="nuevo">Nuevo</option>
+      <option value="contactado">Contactado</option>
+      <option value="enviado">Correo enviado</option>
+      <option value="cerrado">Cerrado</option>
+    </select>
+    <span class="filter-count" id="filterCount"></span>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-wrapper">
+    <div class="table-header">
+      <span class="table-title">📋 Prospectos</span>
+      <span style="font-size:9px;color:var(--text-muted);">Kairós · TechZone Panamá</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Nombre / Empresa</th>
+            <th>Rubro</th>
+            <th>Correo</th>
+            <th>Sitio Web</th>
+            <th>Estado</th>
+            <th>Fuente</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="prospectosTbody">
+          <tr class="loading-row">
+            <td colspan="9">⏳ Cargando prospectos...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL CORREO -->
+<div class="modal-overlay" id="modalCorreo">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">📧 Enviar Propuesta</span>
+      <button class="modal-close" onclick="cerrarModal('modalCorreo')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Para (correo)</label>
+        <input type="email" id="correo-para" placeholder="cliente@empresa.com" />
+      </div>
+      <div class="field">
+        <label>Nombre del contacto</label>
+        <input type="text" id="correo-nombre" placeholder="Ej. Juan Pérez" />
+      </div>
+      <div class="field">
+        <label>Empresa</label>
+        <input type="text" id="correo-empresa" placeholder="Ej. Restaurante El Buen Sabor" />
+      </div>
+      <div class="field">
+        <label>Asunto</label>
+        <input type="text" id="correo-asunto" placeholder="Ej. Propuesta de Tienda Web para su negocio" />
+      </div>
+      <div class="field">
+        <label>Cuerpo del mensaje</label>
+        <textarea id="correo-cuerpo" placeholder="Estimado Juan,&#10;&#10;Me comunico para presentarle una propuesta personalizada..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" onclick="cerrarModal('modalCorreo')">Cancelar</button>
+      <button class="btn btn-primary" id="btnEnviarCorreo" onclick="enviarCorreo()">📧 Enviar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR CORREO -->
+<div class="modal-overlay" id="modalEditarCorreo">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">✏️ Editar Correo</span>
+      <button class="modal-close" onclick="cerrarModal('modalEditarCorreo')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Correo electrónico</label>
+        <input type="email" id="edit-correo" placeholder="correo@ejemplo.com" />
+      </div>
+      <input type="hidden" id="edit-id" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" onclick="cerrarModal('modalEditarCorreo')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarCorreo()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NUEVO PROSPECTO -->
+<div class="modal-overlay" id="modalNuevo">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">➕ Nuevo Prospecto</span>
+      <button class="modal-close" onclick="cerrarModal('modalNuevo')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Nombre *</label>
+        <input type="text" id="nuevo-nombre" placeholder="Nombre del negocio o contacto" />
+      </div>
+      <div class="field">
+        <label>Empresa</label>
+        <input type="text" id="nuevo-empresa" placeholder="Nombre de la empresa" />
+      </div>
+      <div class="field">
+        <label>Rubro</label>
+        <input type="text" id="nuevo-rubro" placeholder="Ej. Restaurante, Farmacia, Boutique..." />
+      </div>
+      <div class="field">
+        <label>Correo</label>
+        <input type="email" id="nuevo-correo" placeholder="correo@empresa.com" />
+      </div>
+      <div class="field">
+        <label>Sitio Web</label>
+        <input type="text" id="nuevo-web" placeholder="https://..." />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" onclick="cerrarModal('modalNuevo')">Cancelar</button>
+      <button class="btn btn-primary" onclick="crearProspecto()">✅ Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR ELIMINAR -->
+<div class="modal-overlay" id="modalEliminar">
+  <div class="modal" style="width:360px">
+    <div class="modal-header">
+      <span class="modal-title" style="color:var(--danger)">⚠ Eliminar Prospecto</span>
+      <button class="modal-close" onclick="cerrarModal('modalEliminar')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-dim);line-height:1.6;">
+        ¿Estás seguro que quieres eliminar a <strong id="eliminar-nombre" style="color:var(--text)"></strong>?
+        Esta acción no se puede deshacer.
+      </p>
+      <input type="hidden" id="eliminar-id" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" onclick="cerrarModal('modalEliminar')">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmarEliminar()">🗑 Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ──────────────────────────────────────────────────────
+let todosProspectos = [];
+let prospectosFiltrados = [];
+// estados locales (en memoria hasta que exista PUT/DELETE en el backend)
+let estadosLocales = {};
+let correosLocales = {};
+
+// ─── INIT ────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  cargarProspectos();
+});
+
+// ─── CARGAR PROSPECTOS ───────────────────────────────────────────
+async function cargarProspectos() {
+  const tbody = document.getElementById('prospectosTbody');
+  tbody.innerHTML = `<tr class="loading-row"><td colspan="9">⏳ Cargando prospectos...</td></tr>`;
+
+  try {
+    const res = await fetch('/api/prospectos');
+    const data = await res.json();
+
+    if (!data.success) throw new Error('Error al cargar');
+
+    todosProspectos = data.prospectos || [];
+
+    // Aplicar correos y estados locales guardados
+    todosProspectos = todosProspectos.map(p => ({
+      ...p,
+      correo: correosLocales[p.id] !== undefined ? correosLocales[p.id] : (p.correo || ''),
+      estado: estadosLocales[p.id] !== undefined ? estadosLocales[p.id] : 'nuevo'
+    }));
+
+    actualizarStats();
+    poblarFiltroRubro();
+    filtrar();
+
+  } catch(e) {
+    tbody.innerHTML = `<tr class="loading-row"><td colspan="9" style="color:var(--danger)">❌ Error cargando prospectos: ${e.message}</td></tr>`;
+  }
+}
+
+// ─── STATS ───────────────────────────────────────────────────────
+function actualizarStats() {
+  document.getElementById('statTotal').textContent = todosProspectos.length;
+  document.getElementById('statConCorreo').textContent = todosProspectos.filter(p => p.correo).length;
+  document.getElementById('statContactados').textContent = todosProspectos.filter(p => estadosLocales[p.id] === 'enviado' || estadosLocales[p.id] === 'contactado').length;
+  document.getElementById('statSinWeb').textContent = todosProspectos.filter(p => !p.sitio_web).length;
+}
+
+// ─── FILTROS ─────────────────────────────────────────────────────
+function poblarFiltroRubro() {
+  const rubros = [...new Set(todosProspectos.map(p => p.rubro).filter(Boolean))].sort();
+  const sel = document.getElementById('filterRubro');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Todos los rubros</option>';
+  rubros.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r;
+    opt.textContent = r;
+    if (r === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function filtrar() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const rubro = document.getElementById('filterRubro').value;
+  const estado = document.getElementById('filterEstado').value;
+
+  prospectosFiltrados = todosProspectos.filter(p => {
+    const matchQ = !q ||
+      (p.nombre || '').toLowerCase().includes(q) ||
+      (p.rubro || '').toLowerCase().includes(q) ||
+      (p.correo || '').toLowerCase().includes(q) ||
+      (p.empresa || '').toLowerCase().includes(q);
+
+    const matchRubro = !rubro || p.rubro === rubro;
+    const pEstado = estadosLocales[p.id] || 'nuevo';
+    const matchEstado = !estado || pEstado === estado;
+
+    return matchQ && matchRubro && matchEstado;
+  });
+
+  document.getElementById('filterCount').textContent =
+    prospectosFiltrados.length + ' de ' + todosProspectos.length + ' prospectos';
+
+  renderTabla();
+}
+
+// ─── RENDER TABLA ────────────────────────────────────────────────
+function renderTabla() {
+  const tbody = document.getElementById('prospectosTbody');
+
+  if (prospectosFiltrados.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="9">
+          <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <div class="empty-text">No hay prospectos que coincidan con los filtros</div>
+          </div>
+        </td>
+      </tr>`;
+    return;
+  }
+
+  tbody.innerHTML = prospectosFiltrados.map((p, i) => {
+    const estado = estadosLocales[p.id] || 'nuevo';
+    const correo = correosLocales[p.id] !== undefined ? correosLocales[p.id] : (p.correo || '');
+    const badgeHtml = getBadge(estado);
+    const webHtml = p.sitio_web
+      ? `<a href="${escHtml(p.sitio_web)}" target="_blank" rel="noopener">🔗 ver</a>`
+      : `<span style="color:var(--text-muted);font-size:10px;">sin web</span>`;
+
+    return `
+      <tr>
+        <td style="color:var(--text-muted);font-size:10px;">${p.id}</td>
+        <td class="td-nombre" title="${escHtml(p.nombre)}">${escHtml(p.nombre || '—')}</td>
+        <td class="td-rubro" title="${escHtml(p.rubro)}">${escHtml(p.rubro || '—')}</td>
+        <td class="td-correo">
+          ${correo
+            ? `<span title="${escHtml(correo)}">${escHtml(correo.length > 22 ? correo.substring(0,22)+'…' : correo)}</span>`
+            : `<span style="color:var(--text-muted);font-size:10px;">sin correo</span>`
+          }
+        </td>
+        <td class="td-web">${webHtml}</td>
+        <td>${badgeHtml}</td>
+        <td style="color:var(--text-muted);font-size:10px;">${escHtml(p.fuente || '—')}</td>
+        <td class="td-fecha">${escHtml(p.fecha || '—')}</td>
+        <td>
+          <div class="actions">
+            <button class="action-btn enviar" onclick="abrirModalCorreo(${p.id})" title="Enviar propuesta">📧</button>
+            <button class="action-btn editar" onclick="abrirModalEditarCorreo(${p.id}, '${escHtml(correo)}')" title="Editar correo">✏️</button>
+            <button class="action-btn estado" onclick="cambiarEstado(${p.id})" title="Cambiar estado">🔄</button>
+            <button class="action-btn eliminar" onclick="abrirModalEliminar(${p.id}, '${escHtml(p.nombre)}')" title="Eliminar">🗑</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function getBadge(estado) {
+  const badges = {
+    nuevo: '<span class="badge badge-nuevo">● Nuevo</span>',
+    contactado: '<span class="badge badge-contactado">● Contactado</span>',
+    enviado: '<span class="badge badge-enviado">● Correo enviado</span>',
+    cerrado: '<span class="badge badge-cerrado">● Cerrado</span>'
+  };
+  return badges[estado] || badges.nuevo;
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ─── MODAL CORREO ────────────────────────────────────────────────
+function abrirModalCorreo(id) {
+  const p = todosProspectos.find(x => x.id === id);
+  if (!p) return;
+
+  const correo = correosLocales[id] !== undefined ? correosLocales[id] : (p.correo || '');
+
+  document.getElementById('correo-para').value = correo;
+  document.getElementById('correo-nombre').value = p.nombre || '';
+  document.getElementById('correo-empresa').value = p.empresa || p.nombre || '';
+  document.getElementById('correo-asunto').value = `Propuesta de Tienda Web para ${p.empresa || p.nombre}`;
+  document.getElementById('correo-cuerpo').value =
+`Estimado(a) ${p.nombre},
+
+Me comunico de parte de TechZone Panamá para presentarle una propuesta personalizada para su negocio${p.rubro ? ' en el sector ' + p.rubro : ''}.
+
+Contamos con soluciones de tiendas web profesionales que le permitirán aumentar sus ventas y llegar a más clientes en Panamá.
+
+¿Le gustaría agendar una llamada para contarle más detalles?
+
+Quedo a su disposición.
+
+Atentamente,
+Eduardo Aizprua
+TechZone Panamá`;
+
+  abrirModal('modalCorreo');
+}
+
+async function enviarCorreo() {
+  const para = document.getElementById('correo-para').value.trim();
+  const nombre = document.getElementById('correo-nombre').value.trim();
+  const empresa = document.getElementById('correo-empresa').value.trim();
+  const asunto = document.getElementById('correo-asunto').value.trim();
+  const cuerpo = document.getElementById('correo-cuerpo').value.trim();
+
+  if (!para || !cuerpo) {
+    showToast('⚠ Completa los campos requeridos');
+    return;
+  }
+
+  const btn = document.getElementById('btnEnviarCorreo');
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando...';
+
+  try {
+    const res = await fetch('/api/correo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ para, nombre, empresa, asunto, cuerpo })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      // Marcar como enviado
+      const p = todosProspectos.find(x => x.correo === para || correosLocales[x.id] === para);
+      if (p) estadosLocales[p.id] = 'enviado';
+
+      // Notificar Telegram
+      fetch('/api/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mensaje: `📧 <b>Propuesta enviada desde Panel</b>\n\nPara: ${para}\nEmpresa: ${empresa}\nAsunto: ${asunto}` })
+      });
+
+      showToast('✅ Correo enviado a ' + para);
+      cerrarModal('modalCorreo');
+      actualizarStats();
+      filtrar();
+    } else {
+      showToast('❌ Error: ' + (data.error || 'No se pudo enviar'));
+    }
+  } catch(e) {
+    showToast('❌ Error de conexión');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '📧 Enviar';
+}
+
+// ─── MODAL EDITAR CORREO ─────────────────────────────────────────
+function abrirModalEditarCorreo(id, correoActual) {
+  document.getElementById('edit-id').value = id;
+  document.getElementById('edit-correo').value = correoActual;
+  abrirModal('modalEditarCorreo');
+}
+
+function guardarCorreo() {
+  const id = parseInt(document.getElementById('edit-id').value);
+  const correo = document.getElementById('edit-correo').value.trim();
+  correosLocales[id] = correo;
+
+  // Actualizar en todosProspectos también
+  const p = todosProspectos.find(x => x.id === id);
+  if (p) p.correo = correo;
+
+  showToast('✅ Correo actualizado');
+  cerrarModal('modalEditarCorreo');
+  actualizarStats();
+  filtrar();
+}
+
+// ─── CAMBIAR ESTADO ──────────────────────────────────────────────
+function cambiarEstado(id) {
+  const estados = ['nuevo', 'contactado', 'enviado', 'cerrado'];
+  const actual = estadosLocales[id] || 'nuevo';
+  const idx = estados.indexOf(actual);
+  const siguiente = estados[(idx + 1) % estados.length];
+  estadosLocales[id] = siguiente;
+
+  const p = todosProspectos.find(x => x.id === id);
+  const nombre = p ? p.nombre : 'prospecto';
+  showToast(`🔄 ${nombre} → ${siguiente}`);
+
+  actualizarStats();
+  filtrar();
+}
+
+// ─── ELIMINAR ────────────────────────────────────────────────────
+function abrirModalEliminar(id, nombre) {
+  document.getElementById('eliminar-id').value = id;
+  document.getElementById('eliminar-nombre').textContent = nombre;
+  abrirModal('modalEliminar');
+}
+
+function confirmarEliminar() {
+  const id = parseInt(document.getElementById('eliminar-id').value);
+  // Eliminar localmente (hasta que exista DELETE en el backend)
+  todosProspectos = todosProspectos.filter(p => p.id !== id);
+  delete estadosLocales[id];
+  delete correosLocales[id];
+
+  showToast('🗑 Prospecto eliminado');
+  cerrarModal('modalEliminar');
+  poblarFiltroRubro();
+  actualizarStats();
+  filtrar();
+}
+
+// ─── NUEVO PROSPECTO ─────────────────────────────────────────────
+function abrirModalNuevo() {
+  document.getElementById('nuevo-nombre').value = '';
+  document.getElementById('nuevo-empresa').value = '';
+  document.getElementById('nuevo-rubro').value = '';
+  document.getElementById('nuevo-correo').value = '';
+  document.getElementById('nuevo-web').value = '';
+  abrirModal('modalNuevo');
+}
+
+async function crearProspecto() {
+  const nombre = document.getElementById('nuevo-nombre').value.trim();
+  if (!nombre) { showToast('⚠ El nombre es requerido'); return; }
+
+  const datos = {
+    nombre,
+    empresa: document.getElementById('nuevo-empresa').value.trim() || nombre,
+    rubro: document.getElementById('nuevo-rubro').value.trim(),
+    correo: document.getElementById('nuevo-correo').value.trim(),
+    sitio_web: document.getElementById('nuevo-web').value.trim(),
+    fuente: 'panel'
+  };
+
+  try {
+    const res = await fetch('/api/prospectos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(datos)
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      // Notificar Telegram
+      fetch('/api/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mensaje: `📋 <b>Nuevo prospecto (Panel)</b>\n\nNombre: ${nombre}\nRubro: ${datos.rubro || '—'}\nFuente: panel` })
+      });
+
+      showToast('✅ Prospecto guardado');
+      cerrarModal('modalNuevo');
+      await cargarProspectos();
+    } else {
+      showToast('❌ Error: ' + (data.error || 'No se pudo guardar'));
+    }
+  } catch(e) {
+    showToast('❌ Error de conexión');
+  }
+}
+
+// ─── MODALES HELPERS ─────────────────────────────────────────────
+function abrirModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function cerrarModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Cerrar modales con Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
+// Cerrar modal al hacer click en overlay
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ─── TOAST ───────────────────────────────────────────────────────
+function showToast(msg) {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+</script>
+</body>
+</html>
