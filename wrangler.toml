@@ -4,9 +4,17 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "public"
 
 [vars]
+# Bases de Datos y Hojas de Cálculo
 GOOGLE_SHEET_ID = "1JbcsekjdeU1o91ByS9OaT0xdiBsH1A-c-C6tNmO4Rk8"
+
+# Configuración de Telegram
 TELEGRAM_TOKEN = "8653145112:AAEz6hH9c_1SyeFyreEy1B7CudqeNAUIJ2I"
 TELEGRAM_CHAT_ID = "8483416774"
+
+# --- CONFIGURACIÓN DE VOZ (ELEVENLABS) ---
+# Pega tu API Key real (la que empieza con sk_...) entre las comillas abajo
+ELEVENLABS_API_KEY = "sk_557737a89a87c4b39e66210a2fa10b344b8b13686e2fa6c2"
+ELEVENLABS_VOICE_ID = "fzDFBB4mgvMIL36gPXcz"
 
 [[d1_databases]]
 binding = "kairos_db"
