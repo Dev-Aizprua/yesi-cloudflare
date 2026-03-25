@@ -6,6 +6,20 @@ function requiereMotorPro(mensaje) {
   return /\b(busca|encuentra|analiza|investiga|prospectos|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|correo|propuesta|redacta|elabora|compara|evalua)\b/i.test(mensaje);
 }
 
+// Detectar si el mensaje es una búsqueda de negocios locales
+function requiereBusquedaLocal(mensaje) {
+  return /\b(busca|encuentra|dame|lista|muestra|hay|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon)\b/i.test(mensaje);
+}
+
+// Extraer el query de búsqueda del mensaje del usuario
+function extraerQuery(mensaje) {
+  // Remover palabras comunes de comando y quedarse con el tipo de negocio + zona
+  return mensaje
+    .replace(/^(busca|encuentra|dame|lista|muestra|hay)\s+/i, '')
+    .replace(/\s+(en panamá|en panama|para mi|por favor|porfavor)$/i, '')
+    .trim();
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -22,12 +36,53 @@ export async function onRequestPost(context) {
     const groq = new Groq({ apiKey });
     const tavilyClient = tavily({ apiKey: env.TAVILY_API_KEY });
 
-    // Detectar si necesita búsqueda en internet
-    const needsSearch = /\b(hoy|actual|reciente|noticia|precio|clima|busca|encuentra|investiga|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias)\b/i.test(mensaje);
-
     let searchContext = '';
+    let lugaresContext = '';
 
-    if (needsSearch) {
+    // ─── BÚSQUEDA LOCAL CON APIFY (datos reales) ────────────────
+    if (requiereBusquedaLocal(mensaje)) {
+      try {
+        const query = extraerQuery(mensaje);
+        console.log(`Buscando lugares reales: "${query}"`);
+
+        const lugaresRes = await fetch(`${new URL(request.url).origin}/api/lugares`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+
+        const lugaresData = await lugaresRes.json();
+
+        if (lugaresData.success && lugaresData.lugares && lugaresData.lugares.length > 0) {
+          lugaresContext = '\n\nDAtos REALES de Google Maps (fuente: Apify). USA SOLO ESTOS DATOS, NO INVENTES NADA:\n';
+          lugaresContext += 'REGLA CRÍTICA: Si telefono o sitio_web es null, di "Sin teléfono" o "Sin sitio web". NUNCA inventes datos.\n\n';
+
+          lugaresData.lugares.forEach(l => {
+            lugaresContext += `${l.numero}. ${l.nombre}\n`;
+            lugaresContext += `   Dirección: ${l.direccion}\n`;
+            lugaresContext += `   Teléfono: ${l.telefono !== null ? l.telefono : 'Sin teléfono'}\n`;
+            lugaresContext += `   Web: ${l.sitio_web !== null ? l.sitio_web : 'Sin sitio web'}\n`;
+            lugaresContext += `   Categoría: ${l.categoria}\n`;
+            if (l.rating) lugaresContext += `   Rating: ${l.rating}/5 (${l.resenas || 0} reseñas)\n`;
+            lugaresContext += '\n';
+          });
+
+          lugaresContext += `Total encontrados en Panamá: ${lugaresData.total_filtrado || lugaresData.lugares.length}\n`;
+          console.log(`Lugares reales obtenidos: ${lugaresData.lugares.length}`);
+        } else {
+          lugaresContext = '\n\nBÚSQUEDA LOCAL: No se encontraron resultados verificados en Panamá para esta búsqueda. Informa al usuario que no hay resultados y sugiere intentar con otro término.\n';
+          console.log('Sin resultados de lugares:', lugaresData.error);
+        }
+      } catch (lugaresError) {
+        console.log('Error buscando lugares:', lugaresError.message);
+        lugaresContext = '\n\nBÚSQUEDA LOCAL: Error al conectar con Google Maps. Informa al usuario del problema técnico.\n';
+      }
+    }
+
+    // ─── BÚSQUEDA WEB CON TAVILY (verificación) ──────────────────
+    const needsSearch = /\b(hoy|actual|reciente|noticia|precio|clima|investiga|verifica)\b/i.test(mensaje);
+
+    if (needsSearch && !lugaresContext) {
       try {
         const searchResult = await tavilyClient.search(mensaje, {
           maxResults: 5,
@@ -49,11 +104,11 @@ export async function onRequestPost(context) {
       }
     }
 
-    // Formatear mensajes
+    // ─── FORMATEAR MENSAJES PARA GROQ ────────────────────────────
     const messages = [
       {
         role: 'system',
-        content: (systemPrompt || 'Eres Kairós, agente de ventas experto en tiendas web para negocios en Panamá.') + searchContext
+        content: (systemPrompt || 'Eres Kairós, agente de ventas experto en tiendas web para negocios en Panamá.') + lugaresContext + searchContext
       }
     ];
 
