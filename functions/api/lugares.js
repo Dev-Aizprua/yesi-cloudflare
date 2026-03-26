@@ -8,7 +8,7 @@ export async function onRequestPost(context) {
     const searchQuery = `${query}, Panama`;
 
     // ─── STEP 1: Lanzar el Actor de Apify ───────────────────────
-    const runRes = await fetch('https://api.apify.com/v2/acts/brujula~rastreador-google-places/runs', {
+    const runRes = await fetch('https://api.apify.com/v2/acts/2Mdma1N6Fd0y3QEjR/runs', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${env.APIFY_TOKEN}`,
