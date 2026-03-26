@@ -16,7 +16,7 @@ export async function onRequestPost(context) {
       },
       body: JSON.stringify({
         searchStringsArray: [searchQuery],
-        maxCrawledPlacesPerSearch: 15, // Pedir más para compensar los que se filtran
+        maxCrawledPlacesPerSearch: 5, // Pedir más para compensar los que se filtran
         language: 'es',
         countryCode: 'pa',            // REGLA 1: Forzar país Panamá
         locationQuery: 'Panama',      // REGLA 1: Contexto geográfico adicional
@@ -43,10 +43,10 @@ export async function onRequestPost(context) {
     // ─── STEP 2: Esperar que termine (polling con timeout 25s) ───
     let status = 'RUNNING';
     let intentos = 0;
-    const maxIntentos = 10;
+    const maxIntentos = 12;
 
     while (status === 'RUNNING' && intentos < maxIntentos) {
-      await new Promise(r => setTimeout(r, 2500));
+      await new Promise(r => setTimeout(r, 4000));
       intentos++;
 
       const statusRes = await fetch(`https://api.apify.com/v2/acts/brujula~rastreador-google-places/runs/${runId}`, {
