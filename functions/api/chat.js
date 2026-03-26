@@ -45,7 +45,8 @@ export async function onRequestPost(context) {
 
           // Contexto compacto — solo los campos esenciales por lugar
           lugaresContext = '\n\nDAtos REALES de Google Maps. USA SOLO ESTOS DATOS, NO INVENTES NADA:\n';
-          lugaresContext += 'Si telefono o sitio_web es null → escribe "Sin teléfono" o "Sin sitio web". NUNCA inventes.\n\n';
+          lugaresContext += 'Si telefono o sitio_web es null → escribe "Sin teléfono" o "Sin sitio web". NUNCA inventes.
+MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n\n';
 
           lugaresData.lugares.forEach(l => {
             lugaresContext += `${l.numero}. ${l.nombre} | ${l.direccion} | Tel: ${l.telefono ?? 'Sin teléfono'} | Web: ${l.sitio_web ?? 'Sin sitio web'} | Rating: ${l.rating ?? 'N/D'}\n`;
