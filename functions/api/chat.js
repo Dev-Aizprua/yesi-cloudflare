@@ -1,23 +1,12 @@
 import Groq from 'groq-sdk';
 import { tavily } from '@tavily/core';
 
-// Detectar si el mensaje requiere análisis complejo o búsqueda profunda
 function requiereMotorPro(mensaje) {
   return /\b(busca|encuentra|analiza|investiga|prospectos|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|correo|propuesta|redacta|elabora|compara|evalua)\b/i.test(mensaje);
 }
 
-// Detectar si el mensaje es una búsqueda de negocios locales
 function requiereBusquedaLocal(mensaje) {
   return /\b(busca|encuentra|dame|lista|muestra|hay|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon)\b/i.test(mensaje);
-}
-
-// Extraer el query de búsqueda del mensaje del usuario
-function extraerQuery(mensaje) {
-  // Remover palabras comunes de comando y quedarse con el tipo de negocio + zona
-  return mensaje
-    .replace(/^(busca|encuentra|dame|lista|muestra|hay)\s+/i, '')
-    .replace(/\s+(en panamá|en panama|para mi|por favor|porfavor)$/i, '')
-    .trim();
 }
 
 export async function onRequestPost(context) {
@@ -26,7 +15,6 @@ export async function onRequestPost(context) {
   try {
     const { mensaje, historial, systemPrompt } = await request.json();
 
-    // Seleccionar motor según la tarea
     const usarPro = requiereMotorPro(mensaje);
     const apiKey = usarPro && env.GROQ_API_KEY_PRO ? env.GROQ_API_KEY_PRO : env.GROQ_API_KEY;
     const modelo = usarPro && env.GROQ_API_KEY_PRO ? 'llama-3.3-70b-versatile' : 'llama-3.1-8b-instant';
@@ -39,47 +27,44 @@ export async function onRequestPost(context) {
     let searchContext = '';
     let lugaresContext = '';
 
-    // ─── BÚSQUEDA LOCAL CON APIFY (datos reales) ────────────────
+    // ─── BÚSQUEDA LOCAL CON APIFY ────────────────────────────────
     if (requiereBusquedaLocal(mensaje)) {
       try {
-        const query = extraerQuery(mensaje);
-        console.log(`Buscando lugares reales: "${query}"`);
+        console.log(`Buscando lugares reales: "${mensaje}"`);
 
         const lugaresRes = await fetch(`${new URL(request.url).origin}/api/lugares`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query })
+          body: JSON.stringify({ query: mensaje })
         });
 
         const lugaresData = await lugaresRes.json();
 
         if (lugaresData.success && lugaresData.lugares && lugaresData.lugares.length > 0) {
-          lugaresContext = '\n\nDAtos REALES de Google Maps (fuente: Apify). USA SOLO ESTOS DATOS, NO INVENTES NADA:\n';
-          lugaresContext += 'REGLA CRÍTICA: Si telefono o sitio_web es null, di "Sin teléfono" o "Sin sitio web". NUNCA inventes datos.\n\n';
+          console.log(`Lugares reales obtenidos: ${lugaresData.lugares.length}`);
+
+          // Contexto compacto — solo los campos esenciales por lugar
+          lugaresContext = '\n\nDAtos REALES de Google Maps. USA SOLO ESTOS DATOS, NO INVENTES NADA:\n';
+          lugaresContext += 'Si telefono o sitio_web es null → escribe "Sin teléfono" o "Sin sitio web". NUNCA inventes.\n\n';
 
           lugaresData.lugares.forEach(l => {
-            lugaresContext += `${l.numero}. ${l.nombre}\n`;
-            lugaresContext += `   Dirección: ${l.direccion}\n`;
-            lugaresContext += `   Teléfono: ${l.telefono !== null ? l.telefono : 'Sin teléfono'}\n`;
-            lugaresContext += `   Web: ${l.sitio_web !== null ? l.sitio_web : 'Sin sitio web'}\n`;
-            lugaresContext += `   Categoría: ${l.categoria}\n`;
-            if (l.rating) lugaresContext += `   Rating: ${l.rating}/5 (${l.resenas || 0} reseñas)\n`;
-            lugaresContext += '\n';
+            lugaresContext += `${l.numero}. ${l.nombre} | ${l.direccion} | Tel: ${l.telefono ?? 'Sin teléfono'} | Web: ${l.sitio_web ?? 'Sin sitio web'} | Rating: ${l.rating ?? 'N/D'}\n`;
           });
 
-          lugaresContext += `Total encontrados en Panamá: ${lugaresData.total_filtrado || lugaresData.lugares.length}\n`;
-          console.log(`Lugares reales obtenidos: ${lugaresData.lugares.length}`);
+          lugaresContext += `\nTotal: ${lugaresData.total_filtrado} negocios verificados en Panamá.\n`;
+          console.log(`Contexto generado: ${lugaresContext.length} chars`);
+
         } else {
-          lugaresContext = '\n\nBÚSQUEDA LOCAL: No se encontraron resultados verificados en Panamá para esta búsqueda. Informa al usuario que no hay resultados y sugiere intentar con otro término.\n';
-          console.log('Sin resultados de lugares:', lugaresData.error);
+          lugaresContext = '\n\nBÚSQUEDA LOCAL: No se encontraron resultados en Panamá. Informa al usuario y sugiere otro término.\n';
+          console.log('Sin resultados:', lugaresData.error);
         }
-      } catch (lugaresError) {
-        console.log('Error buscando lugares:', lugaresError.message);
-        lugaresContext = '\n\nBÚSQUEDA LOCAL: Error al conectar con Google Maps. Informa al usuario del problema técnico.\n';
+      } catch (e) {
+        console.log('Error buscando lugares:', e.message);
+        lugaresContext = '\n\nBÚSQUEDA LOCAL: Error técnico al conectar con Google Maps.\n';
       }
     }
 
-    // ─── BÚSQUEDA WEB CON TAVILY (verificación) ──────────────────
+    // ─── BÚSQUEDA WEB CON TAVILY ─────────────────────────────────
     const needsSearch = /\b(hoy|actual|reciente|noticia|precio|clima|investiga|verifica)\b/i.test(mensaje);
 
     if (needsSearch && !lugaresContext) {
@@ -93,18 +78,18 @@ export async function onRequestPost(context) {
         if (searchResult.answer) {
           searchContext = `\n\nINFORMACIÓN VERIFICADA DE INTERNET:\n${searchResult.answer}\n`;
         }
-        if (searchResult.results && searchResult.results.length > 0) {
-          searchContext += `\nFUENTES ENCONTRADAS:\n`;
+        if (searchResult.results?.length > 0) {
+          searchContext += `\nFUENTES:\n`;
           searchResult.results.slice(0, usarPro ? 4 : 2).forEach(r => {
             searchContext += `- ${r.title}: ${r.content}\n`;
           });
         }
-      } catch (searchError) {
-        console.log('Búsqueda Tavily falló:', searchError.message);
+      } catch (e) {
+        console.log('Tavily falló:', e.message);
       }
     }
 
-    // ─── FORMATEAR MENSAJES PARA GROQ ────────────────────────────
+    // ─── MENSAJES PARA GROQ ──────────────────────────────────────
     const messages = [
       {
         role: 'system',
@@ -112,8 +97,7 @@ export async function onRequestPost(context) {
       }
     ];
 
-    // Agregar historial
-    if (historial && historial.length > 0) {
+    if (historial?.length > 0) {
       historial.forEach(h => {
         messages.push({
           role: h.role === 'model' ? 'assistant' : 'user',
@@ -140,7 +124,6 @@ export async function onRequestPost(context) {
     console.error('Error en chat:', error.message);
 
     let mensajeUsuario = 'Lo siento, tuve un problema técnico. ¿Intentamos de nuevo?';
-
     if (error.message.includes('rate_limit') || error.message.includes('429')) {
       mensajeUsuario = 'Hemos alcanzado el límite de requests por hoy. ¡Hagamos una pausa!';
     }
