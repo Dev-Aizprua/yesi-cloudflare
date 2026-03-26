@@ -27,7 +27,7 @@ export async function onRequestPost(context) {
     let searchContext = '';
     let lugaresContext = '';
 
-    // ─── BÚSQUEDA LOCAL CON APIFY ────────────────────────────────
+    // BUSQUEDA LOCAL CON APIFY
     if (requiereBusquedaLocal(mensaje)) {
       try {
         console.log(`Buscando lugares reales: "${mensaje}"`);
@@ -43,29 +43,29 @@ export async function onRequestPost(context) {
         if (lugaresData.success && lugaresData.lugares && lugaresData.lugares.length > 0) {
           console.log(`Lugares reales obtenidos: ${lugaresData.lugares.length}`);
 
-          // Contexto compacto — solo los campos esenciales por lugar
-          lugaresContext = '\n\nDAtos REALES de Google Maps. USA SOLO ESTOS DATOS, NO INVENTES NADA:\n';
-          lugaresContext += 'Si telefono o sitio_web es null → escribe "Sin teléfono" o "Sin sitio web". NUNCA inventes.
-MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n\n';
+          lugaresContext = '\n\nDATOS REALES de Google Maps. REGLAS OBLIGATORIAS:\n';
+          lugaresContext += '1. USA SOLO ESTOS DATOS, NUNCA INVENTES NADA.\n';
+          lugaresContext += '2. Si telefono es null escribe Sin telefono. Si sitio_web es null escribe Sin sitio web.\n';
+          lugaresContext += '3. MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n\n';
 
           lugaresData.lugares.forEach(l => {
-            lugaresContext += `${l.numero}. ${l.nombre} | ${l.direccion} | Tel: ${l.telefono ?? 'Sin teléfono'} | Web: ${l.sitio_web ?? 'Sin sitio web'} | Rating: ${l.rating ?? 'N/D'}\n`;
+            lugaresContext += `${l.numero}. ${l.nombre} | ${l.direccion} | Tel: ${l.telefono ?? 'Sin telefono'} | Web: ${l.sitio_web ?? 'Sin sitio web'} | Rating: ${l.rating ?? 'N/D'}\n`;
           });
 
-          lugaresContext += `\nTotal: ${lugaresData.total_filtrado} negocios verificados en Panamá.\n`;
+          lugaresContext += `\nTotal: ${lugaresData.total_filtrado} negocios verificados en Panama.\n`;
           console.log(`Contexto generado: ${lugaresContext.length} chars`);
 
         } else {
-          lugaresContext = '\n\nBÚSQUEDA LOCAL: No se encontraron resultados en Panamá. Informa al usuario y sugiere otro término.\n';
+          lugaresContext = '\n\nBUSQUEDA LOCAL: No se encontraron resultados en Panama. Informa al usuario y sugiere otro termino.\n';
           console.log('Sin resultados:', lugaresData.error);
         }
       } catch (e) {
         console.log('Error buscando lugares:', e.message);
-        lugaresContext = '\n\nBÚSQUEDA LOCAL: Error técnico al conectar con Google Maps.\n';
+        lugaresContext = '\n\nBUSQUEDA LOCAL: Error tecnico al conectar con Google Maps.\n';
       }
     }
 
-    // ─── BÚSQUEDA WEB CON TAVILY ─────────────────────────────────
+    // BUSQUEDA WEB CON TAVILY
     const needsSearch = /\b(hoy|actual|reciente|noticia|precio|clima|investiga|verifica)\b/i.test(mensaje);
 
     if (needsSearch && !lugaresContext) {
@@ -77,7 +77,7 @@ MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n\n';
         });
 
         if (searchResult.answer) {
-          searchContext = `\n\nINFORMACIÓN VERIFICADA DE INTERNET:\n${searchResult.answer}\n`;
+          searchContext = `\n\nINFORMACION VERIFICADA DE INTERNET:\n${searchResult.answer}\n`;
         }
         if (searchResult.results?.length > 0) {
           searchContext += `\nFUENTES:\n`;
@@ -86,15 +86,15 @@ MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n\n';
           });
         }
       } catch (e) {
-        console.log('Tavily falló:', e.message);
+        console.log('Tavily fallo:', e.message);
       }
     }
 
-    // ─── MENSAJES PARA GROQ ──────────────────────────────────────
+    // MENSAJES PARA GROQ
     const messages = [
       {
         role: 'system',
-        content: (systemPrompt || 'Eres Kairós, agente de ventas experto en tiendas web para negocios en Panamá.') + lugaresContext + searchContext
+        content: (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + lugaresContext + searchContext
       }
     ];
 
@@ -124,9 +124,9 @@ MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n\n';
   } catch (error) {
     console.error('Error en chat:', error.message);
 
-    let mensajeUsuario = 'Lo siento, tuve un problema técnico. ¿Intentamos de nuevo?';
+    let mensajeUsuario = 'Lo siento, tuve un problema tecnico. Intentamos de nuevo?';
     if (error.message.includes('rate_limit') || error.message.includes('429')) {
-      mensajeUsuario = 'Hemos alcanzado el límite de requests por hoy. ¡Hagamos una pausa!';
+      mensajeUsuario = 'Hemos alcanzado el limite de requests por hoy. Hagamos una pausa!';
     }
 
     return Response.json({ success: false, error: mensajeUsuario });
