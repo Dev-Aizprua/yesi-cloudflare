@@ -26,8 +26,9 @@ export async function onRequestPost(context) {
 
     let searchContext = '';
     let lugaresContext = '';
+    let busquedaRealizada = false;
 
-    // BUSQUEDA LOCAL CON APIFY
+    // BUSQUEDA LOCAL CON APIFY — solo una vez
     if (requiereBusquedaLocal(mensaje)) {
       try {
         console.log(`Buscando lugares reales: "${mensaje}"`);
@@ -39,20 +40,28 @@ export async function onRequestPost(context) {
         });
 
         const lugaresData = await lugaresRes.json();
+        busquedaRealizada = true;
 
         if (lugaresData.success && lugaresData.lugares && lugaresData.lugares.length > 0) {
-          console.log(`Lugares reales obtenidos: ${lugaresData.lugares.length}`);
+          console.log(`Lugares reales obtenidos: ${lugaresData.lugares.length} | Con correo: ${lugaresData.con_correo || 0}`);
 
           lugaresContext = '\n\nDATOS REALES de Google Maps. REGLAS OBLIGATORIAS:\n';
           lugaresContext += '1. USA SOLO ESTOS DATOS, NUNCA INVENTES NADA.\n';
-          lugaresContext += '2. Si telefono es null escribe Sin telefono. Si sitio_web es null escribe Sin sitio web.\n';
-          lugaresContext += '3. MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n\n';
+          lugaresContext += '2. Si telefono es null escribe Sin telefono. Si sitio_web es null escribe Sin sitio web. Si correo es null escribe Sin correo.\n';
+          lugaresContext += '3. MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n';
+          lugaresContext += '4. NO hagas busquedas adicionales. Usa solo estos datos.\n\n';
 
           lugaresData.lugares.forEach(l => {
-            lugaresContext += `${l.numero}. ${l.nombre} | ${l.direccion} | Tel: ${l.telefono ?? 'Sin telefono'} | Web: ${l.sitio_web ?? 'Sin sitio web'} | Rating: ${l.rating ?? 'N/D'}\n`;
+            lugaresContext += `${l.numero}. ${l.nombre}\n`;
+            lugaresContext += `   Dir: ${l.direccion}\n`;
+            lugaresContext += `   Tel: ${l.telefono ?? 'Sin telefono'}\n`;
+            lugaresContext += `   Web: ${l.sitio_web ?? 'Sin sitio web'}\n`;
+            lugaresContext += `   Correo: ${l.correo ?? 'Sin correo'}\n`;
+            lugaresContext += `   Rating: ${l.rating ?? 'N/D'} | Resenas: ${l.resenas ?? 'N/D'}\n\n`;
           });
 
-          lugaresContext += `\nTotal: ${lugaresData.total_filtrado} negocios verificados en Panama.\n`;
+          lugaresContext += `Total: ${lugaresData.total_filtrado} negocios verificados en Panama.\n`;
+          lugaresContext += `Con correo encontrado: ${lugaresData.con_correo || 0}\n`;
           console.log(`Contexto generado: ${lugaresContext.length} chars`);
 
         } else {
@@ -62,13 +71,14 @@ export async function onRequestPost(context) {
       } catch (e) {
         console.log('Error buscando lugares:', e.message);
         lugaresContext = '\n\nBUSQUEDA LOCAL: Error tecnico al conectar con Google Maps.\n';
+        busquedaRealizada = true;
       }
     }
 
-    // BUSQUEDA WEB CON TAVILY
-    const needsSearch = /\b(hoy|actual|reciente|noticia|precio|clima|investiga|verifica)\b/i.test(mensaje);
+    // BUSQUEDA WEB CON TAVILY — solo si no hubo busqueda local
+    const needsSearch = !busquedaRealizada && /\b(hoy|actual|reciente|noticia|precio|clima|investiga|verifica)\b/i.test(mensaje);
 
-    if (needsSearch && !lugaresContext) {
+    if (needsSearch) {
       try {
         const searchResult = await tavilyClient.search(mensaje, {
           maxResults: 5,
