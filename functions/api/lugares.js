@@ -2,92 +2,51 @@ export async function onRequestPost(context) {
   const { request, env } = context;
 
   try {
-    const { query, ubicacion } = await request.json();
+    const { query } = await request.json();
 
     // REGLA 1: Siempre forzar Panamá en el query
     const searchQuery = `${query}, Panama`;
+    console.log(`Buscando en Google Maps: "${searchQuery}"`);
 
-    // ─── STEP 1: Lanzar el Actor de Apify ───────────────────────
-    const runRes = await fetch('https://api.apify.com/v2/acts/2Mdma1N6Fd0y3QEjR/runs', {
+    // Endpoint síncrono: Apify corre el Actor y devuelve resultados directamente
+    // Sin polling — Apify espera en su lado y nos manda los datos cuando termina
+    const res = await fetch(`https://api.apify.com/v2/acts/2Mdma1N6Fd0y3QEjR/run-sync-get-dataset-items?token=${env.APIFY_TOKEN}&timeout=55&memory=256`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.APIFY_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         searchStringsArray: [searchQuery],
-        maxCrawledPlacesPerSearch: 5, // Pedir más para compensar los que se filtran
+        maxCrawledPlacesPerSearch: 5,
         language: 'es',
-        countryCode: 'pa',            // REGLA 1: Forzar país Panamá
-        locationQuery: 'Panama',      // REGLA 1: Contexto geográfico adicional
+        countryCode: 'pa',
+        locationQuery: 'Panama',
         includeWebResults: false,
       })
     });
 
-    if (!runRes.ok) {
-      const err = await runRes.json().catch(() => ({}));
-      console.error('Error lanzando Apify:', JSON.stringify(err));
-      return Response.json({ success: false, error: 'Error iniciando búsqueda en Apify' }, { status: 500 });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('Error Apify:', JSON.stringify(err));
+      return Response.json({ success: false, error: 'Error en búsqueda de Google Maps' }, { status: 500 });
     }
 
-    const runData = await runRes.json();
-    const runId = runData.data?.id;
-    const datasetId = runData.data?.defaultDatasetId;
-
-    if (!runId) {
-      return Response.json({ success: false, error: 'No se obtuvo ID de ejecución' }, { status: 500 });
-    }
-
-    console.log(`Apify run iniciado: ${runId} | Query: "${searchQuery}"`);
-
-    // ─── STEP 2: Esperar que termine (polling con timeout 25s) ───
-    let status = 'RUNNING';
-    let intentos = 0;
-    const maxIntentos = 12;
-
-    while (status === 'RUNNING' && intentos < maxIntentos) {
-      await new Promise(r => setTimeout(r, 4000));
-      intentos++;
-
-      const statusRes = await fetch(`https://api.apify.com/v2/acts/brujula~rastreador-google-places/runs/${runId}`, {
-        headers: { 'Authorization': `Bearer ${env.APIFY_TOKEN}` }
-      });
-
-      const statusData = await statusRes.json();
-      status = statusData.data?.status || 'RUNNING';
-      console.log(`Apify intento ${intentos}: ${status}`);
-    }
-
-    if (status !== 'SUCCEEDED') {
-      return Response.json({ success: false, error: `Apify terminó con estado: ${status}` }, { status: 500 });
-    }
-
-    // ─── STEP 3: Obtener resultados del dataset ──────────────────
-    const resultsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?limit=15`, {
-      headers: { 'Authorization': `Bearer ${env.APIFY_TOKEN}` }
-    });
-
-    const items = await resultsRes.json();
+    const items = await res.json();
 
     if (!Array.isArray(items) || items.length === 0) {
       return Response.json({ success: false, error: 'No se encontraron resultados en Panamá' }, { status: 404 });
     }
 
-    // ─── STEP 4: Filtrar y normalizar ───────────────────────────
+    // REGLA 2: Filtrar resultados fuera de Panamá
     const lugaresFiltrados = items
-      // REGLA 2: Descartar resultados que no sean de Panamá
       .filter(p => {
         const pais = (p.country || p.countryCode || '').toUpperCase();
         const direccion = (p.address || '').toLowerCase();
-        // Si tiene código de país y no es PA, descartar
         if (pais && pais !== 'PA' && pais !== 'PANAMA' && pais !== 'PANAMÁ') return false;
-        // Si la dirección menciona otro país conocido, descartar
         const paisesExcluir = ['españa', 'spain', 'colombia', 'chile', 'mexico', 'argentina', 'costa rica'];
         if (paisesExcluir.some(x => direccion.includes(x))) return false;
         return true;
       })
       .slice(0, 10)
-      // REGLA 3: Mapear con null donde no hay dato (el LLM NO debe inventar)
+      // REGLA 3: null donde no hay dato — el LLM NO debe inventar
       .map((p, index) => ({
         numero: index + 1,
         nombre: p.title || p.name || 'No disponible',
@@ -105,11 +64,11 @@ export async function onRequestPost(context) {
     if (lugaresFiltrados.length === 0) {
       return Response.json({
         success: false,
-        error: 'No se encontraron resultados verificados en Panamá. Intenta con otro término de búsqueda.'
+        error: 'No se encontraron resultados verificados en Panamá.'
       }, { status: 404 });
     }
 
-    console.log(`Apify: ${items.length} resultados → ${lugaresFiltrados.length} verificados en Panamá para "${searchQuery}"`);
+    console.log(`Google Maps: ${items.length} resultados → ${lugaresFiltrados.length} verificados en Panamá`);
 
     return Response.json({
       success: true,
