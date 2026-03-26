@@ -52,7 +52,7 @@ export async function onRequestPost(context) {
         nombre: p.title || p.name || 'No disponible',
         direccion: p.address || p.street || 'No disponible',
         telefono: p.phone || p.phoneUnformatted || null,
-        sitio_web: p.website || null,
+        sitio_web: (p.website && p.website !== "undefined") ? p.website : null,
         categoria: p.categoryName || p.categories?.[0] || 'No disponible',
         rating: p.totalScore || p.rating || null,
         resenas: p.reviewsCount || null,
