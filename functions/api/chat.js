@@ -6,7 +6,7 @@ function requiereMotorPro(mensaje) {
 }
 
 function requiereBusquedaLocal(mensaje) {
-  return /\b(busca|encuentra|dame|lista|muestra|hay|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon)\b/i.test(mensaje);
+  return /\b(busca|encuentra|dame|lista|muestra|hay|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores)\b/i.test(mensaje);
 }
 
 export async function onRequestPost(context) {
@@ -43,25 +43,27 @@ export async function onRequestPost(context) {
         busquedaRealizada = true;
 
         if (lugaresData.success && lugaresData.lugares && lugaresData.lugares.length > 0) {
-          console.log(`Lugares reales obtenidos: ${lugaresData.lugares.length} | Con correo: ${lugaresData.con_correo || 0}`);
+          const { pez_gordo, interesante, descartar } = lugaresData.scoring || {};
+          console.log(`Lugares: ${lugaresData.total_filtrado} | Pez Gordo: ${pez_gordo} | Interesante: ${interesante} | Descartar: ${descartar}`);
 
-          lugaresContext = '\n\nDATOS REALES de Google Maps. REGLAS OBLIGATORIAS:\n';
+          lugaresContext = '\n\nDATOS REALES de Google Maps con SCORING de prioridad. REGLAS OBLIGATORIAS:\n';
           lugaresContext += '1. USA SOLO ESTOS DATOS, NUNCA INVENTES NADA.\n';
-          lugaresContext += '2. Si telefono es null escribe Sin telefono. Si sitio_web es null escribe Sin sitio web. Si correo es null escribe Sin correo.\n';
-          lugaresContext += '3. MUESTRA TODOS LOS NEGOCIOS DE LA LISTA SIN OMITIR NINGUNO.\n';
-          lugaresContext += '4. NO hagas busquedas adicionales. Usa solo estos datos.\n\n';
+          lugaresContext += '2. Si telefono es null escribe Sin telefono. Si sitio_web es null escribe Sin sitio web.\n';
+          lugaresContext += '3. MUESTRA TODOS LOS NEGOCIOS SIN OMITIR NINGUNO, ordenados por score.\n';
+          lugaresContext += '4. Muestra el emoji de prioridad (🐋 Pez Gordo / 🐟 Interesante / ⭕ Descartar) junto al nombre.\n';
+          lugaresContext += '5. NO hagas busquedas adicionales.\n\n';
+
+          lugaresContext += `RESUMEN: ${pez_gordo || 0} Pez Gordo 🐋 | ${interesante || 0} Interesante 🐟 | ${descartar || 0} Descartar ⭕\n\n`;
 
           lugaresData.lugares.forEach(l => {
-            lugaresContext += `${l.numero}. ${l.nombre}\n`;
+            lugaresContext += `${l.numero}. ${l.prioridad} ${l.clasificacion} (${l.score}pts) — ${l.nombre}\n`;
             lugaresContext += `   Dir: ${l.direccion}\n`;
             lugaresContext += `   Tel: ${l.telefono ?? 'Sin telefono'}\n`;
             lugaresContext += `   Web: ${l.sitio_web ?? 'Sin sitio web'}\n`;
-            lugaresContext += `   Correo: ${l.correo ?? 'Sin correo'}\n`;
             lugaresContext += `   Rating: ${l.rating ?? 'N/D'} | Resenas: ${l.resenas ?? 'N/D'}\n\n`;
           });
 
-          lugaresContext += `Total: ${lugaresData.total_filtrado} negocios verificados en Panama.\n`;
-          lugaresContext += `Con correo encontrado: ${lugaresData.con_correo || 0}\n`;
+          lugaresContext += `Total verificados en Panama: ${lugaresData.total_filtrado}\n`;
           console.log(`Contexto generado: ${lugaresContext.length} chars`);
 
         } else {
@@ -142,4 +144,3 @@ export async function onRequestPost(context) {
     return Response.json({ success: false, error: mensajeUsuario });
   }
 }
-// v2
