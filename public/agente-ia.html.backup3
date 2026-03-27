@@ -1485,8 +1485,6 @@ async function detectarYGuardarProspecto(respuesta) {
       .replace(/[‘’‚‛]/g, "'");
 
     // Buscar todos los JSON en la respuesta
-    // Ignorar si es un JSON de lote o correo
-    if (normalizada.includes('"lote":') || normalizada.includes('"plantilla_cuerpo":')) return;
     const jsonMatches = normalizada.match(/\{[^{}]*"nombre"[^{}]*\}/g);
     if (!jsonMatches) return;
 
