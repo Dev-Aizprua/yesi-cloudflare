@@ -20,6 +20,7 @@
     --danger: #ef4444;
     --warning: #f59e0b;
     --info: #3b82f6;
+    --gold: #f59e0b;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -42,7 +43,6 @@
     opacity: 0.4;
   }
 
-  /* HEADER */
   header {
     position: sticky;
     top: 0;
@@ -56,20 +56,12 @@
     justify-content: space-between;
   }
 
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
 
   .logo-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 12px var(--accent);
-    animation: pulse 2s ease-in-out infinite;
-    flex-shrink: 0;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 12px var(--accent);
+    animation: pulse 2s ease-in-out infinite; flex-shrink: 0;
   }
 
   @keyframes pulse {
@@ -77,531 +69,238 @@
     50% { opacity: 0.5; box-shadow: 0 0 4px var(--accent); }
   }
 
-  .header-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 15px;
-    font-weight: 800;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-
+  .header-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
   .header-title span { color: var(--accent); }
-
-  .header-subtitle {
-    font-size: 9px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    border-left: 1px solid var(--border);
-    padding-left: 14px;
-    margin-left: 2px;
-  }
-
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
+  .header-subtitle { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.12em; border-left: 1px solid var(--border); padding-left: 14px; }
+  .header-right { display: flex; align-items: center; gap: 10px; }
 
   .nav-btn {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 9px;
-    padding: 5px 12px;
-    border-radius: 3px;
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    transition: all 0.2s;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 5px 12px;
+    border-radius: 3px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.08em;
+    transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
   }
-
   .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .nav-btn.primary {
-    background: var(--accent);
-    color: var(--bg);
-    border-color: var(--accent);
-    font-weight: 700;
-  }
+  .nav-btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 700; }
   .nav-btn.primary:hover { opacity: 0.85; }
 
-  /* STATS BAR */
-  .stats-bar {
-    position: relative;
-    z-index: 1;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .stat-card {
-    padding: 18px 24px;
-    border-right: 1px solid var(--border);
-    transition: background 0.2s;
-  }
-
+  /* STATS */
+  .stats-bar { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--border); }
+  .stat-card { padding: 16px 20px; border-right: 1px solid var(--border); transition: background 0.2s; }
   .stat-card:last-child { border-right: none; }
   .stat-card:hover { background: rgba(46,204,113,0.03); }
-
-  .stat-label {
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-muted);
-    margin-bottom: 6px;
-  }
-
-  .stat-value {
-    font-family: 'Syne', sans-serif;
-    font-size: 28px;
-    font-weight: 800;
-    color: var(--text);
-    line-height: 1;
-  }
-
+  .stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 6px; }
+  .stat-value { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; color: var(--text); line-height: 1; }
   .stat-value.green { color: var(--accent); }
   .stat-value.orange { color: var(--accent3); }
   .stat-value.blue { color: var(--info); }
+  .stat-value.gold { color: var(--gold); }
+  .stat-sub { font-size: 9px; color: var(--text-dim); margin-top: 4px; }
 
-  .stat-sub {
-    font-size: 9px;
-    color: var(--text-dim);
-    margin-top: 4px;
+  /* CAMPAIGN BAR */
+  .campaign-bar {
+    position: relative; z-index: 1;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   }
 
-  /* MAIN LAYOUT */
-  .main {
-    position: relative;
-    z-index: 1;
-    padding: 24px 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+  .campaign-btn {
+    font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 10px 20px; border-radius: 4px; cursor: pointer;
+    transition: all 0.2s; border: 1px solid transparent;
+    display: flex; align-items: center; gap: 8px;
   }
+
+  .campaign-btn.launch {
+    background: var(--accent); color: var(--bg); border-color: var(--accent);
+  }
+  .campaign-btn.launch:hover { opacity: 0.85; box-shadow: 0 0 20px rgba(46,204,113,0.3); }
+  .campaign-btn.launch:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+  .campaign-btn.select-pez {
+    background: none; color: var(--gold); border-color: var(--gold);
+  }
+  .campaign-btn.select-pez:hover { background: rgba(245,158,11,0.1); }
+
+  .campaign-btn.deselect {
+    background: none; color: var(--text-dim); border-color: var(--border);
+  }
+  .campaign-btn.deselect:hover { border-color: var(--text-dim); color: var(--text); }
+
+  .selected-count {
+    font-size: 10px; color: var(--text-dim);
+    padding: 6px 12px; border: 1px solid var(--border);
+    border-radius: 3px; background: var(--surface2);
+  }
+
+  .selected-count span { color: var(--accent); font-weight: 700; }
+
+  /* PROGRESS BAR */
+  .progress-section {
+    display: none;
+    padding: 14px 28px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    position: relative; z-index: 1;
+  }
+
+  .progress-section.active { display: block; }
+
+  .progress-label {
+    font-size: 10px; color: var(--text-dim);
+    margin-bottom: 8px; display: flex; justify-content: space-between;
+  }
+
+  .progress-bar-wrap {
+    background: var(--border); border-radius: 4px; height: 6px; overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%; background: var(--accent);
+    border-radius: 4px; transition: width 0.5s ease;
+    width: 0%;
+  }
+
+  /* MAIN */
+  .main { position: relative; z-index: 1; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
 
   /* FILTERS */
-  .filters-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
+  .filters-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
   .filter-input {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    padding: 8px 12px;
-    border-radius: 4px;
-    outline: none;
-    transition: border-color 0.2s;
-    min-width: 200px;
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 8px 12px;
+    border-radius: 4px; outline: none; transition: border-color 0.2s; min-width: 200px;
   }
-
   .filter-input:focus { border-color: var(--accent); }
   .filter-input::placeholder { color: var(--text-muted); }
 
   .filter-select {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    padding: 8px 12px;
-    border-radius: 4px;
-    outline: none;
-    cursor: pointer;
-    transition: border-color 0.2s;
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 8px 12px;
+    border-radius: 4px; outline: none; cursor: pointer; transition: border-color 0.2s;
   }
-
   .filter-select:focus { border-color: var(--accent); }
-
-  .filter-count {
-    font-size: 10px;
-    color: var(--text-dim);
-    margin-left: auto;
-  }
+  .filter-count { font-size: 10px; color: var(--text-dim); margin-left: auto; }
 
   /* TABLE */
-  .table-wrapper {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
+  .table-wrapper { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 
   .table-header {
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
   }
 
-  .table-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 11px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--accent);
-  }
+  .table-title { font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); }
+  .table-scroll { overflow-x: auto; }
 
-  .table-scroll {
-    overflow-x: auto;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 11px;
-  }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
 
   thead th {
-    padding: 10px 16px;
-    text-align: left;
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-dim);
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
-    background: var(--surface2);
+    padding: 10px 12px; text-align: left; font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim);
+    border-bottom: 1px solid var(--border); white-space: nowrap; background: var(--surface2);
   }
 
-  tbody tr {
-    border-bottom: 1px solid rgba(26,58,26,0.5);
-    transition: background 0.15s;
-  }
-
+  tbody tr { border-bottom: 1px solid rgba(26,58,26,0.5); transition: background 0.15s; }
   tbody tr:last-child { border-bottom: none; }
   tbody tr:hover { background: rgba(46,204,113,0.03); }
+  tbody tr.selected { background: rgba(46,204,113,0.06); }
 
-  td {
-    padding: 12px 16px;
-    color: var(--text);
-    vertical-align: middle;
-    white-space: nowrap;
+  td { padding: 10px 12px; color: var(--text); vertical-align: middle; white-space: nowrap; }
+
+  /* Checkbox personalizado */
+  .custom-checkbox {
+    width: 16px; height: 16px; border: 1px solid var(--border);
+    border-radius: 3px; cursor: pointer; appearance: none;
+    background: var(--surface2); transition: all 0.15s;
+    position: relative;
+  }
+  .custom-checkbox:checked {
+    background: var(--accent); border-color: var(--accent);
+  }
+  .custom-checkbox:checked::after {
+    content: '✓'; position: absolute; top: -1px; left: 2px;
+    font-size: 11px; color: var(--bg); font-weight: 700;
   }
 
-  .td-nombre {
-    font-weight: 500;
-    color: var(--text);
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  /* Scoring badges */
+  .score-pez { color: var(--accent); font-weight: 700; font-size: 12px; }
+  .score-interesante { color: var(--gold); font-weight: 700; font-size: 12px; }
+  .score-descartar { color: var(--text-muted); font-size: 12px; }
 
-  .td-rubro {
-    color: var(--text-dim);
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .td-correo {
-    color: var(--info);
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .td-web a {
-    color: var(--accent);
-    text-decoration: none;
-    font-size: 10px;
-  }
-
+  .td-nombre { font-weight: 500; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+  .td-rubro { color: var(--text-dim); max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+  .td-correo { color: var(--info); max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+  .td-web a { color: var(--accent); text-decoration: none; font-size: 10px; }
   .td-web a:hover { text-decoration: underline; }
+  .td-fecha { color: var(--text-muted); font-size: 10px; }
 
-  .td-fecha {
-    color: var(--text-muted);
-    font-size: 10px;
-  }
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 2px; }
+  .badge-nuevo { background: rgba(59,130,246,0.1); color: var(--info); border: 1px solid rgba(59,130,246,0.25); }
+  .badge-contactado { background: rgba(245,158,11,0.1); color: var(--warning); border: 1px solid rgba(245,158,11,0.25); }
+  .badge-enviado { background: rgba(46,204,113,0.1); color: var(--accent); border: 1px solid rgba(46,204,113,0.25); }
+  .badge-cerrado { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid rgba(239,68,68,0.25); }
 
-  /* Estado badges */
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 8px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 3px 8px;
-    border-radius: 2px;
-  }
-
-  .badge-nuevo {
-    background: rgba(59,130,246,0.1);
-    color: var(--info);
-    border: 1px solid rgba(59,130,246,0.25);
-  }
-
-  .badge-contactado {
-    background: rgba(245,158,11,0.1);
-    color: var(--warning);
-    border: 1px solid rgba(245,158,11,0.25);
-  }
-
-  .badge-enviado {
-    background: rgba(46,204,113,0.1);
-    color: var(--accent);
-    border: 1px solid rgba(46,204,113,0.25);
-  }
-
-  .badge-cerrado {
-    background: rgba(239,68,68,0.1);
-    color: var(--danger);
-    border: 1px solid rgba(239,68,68,0.25);
-  }
-
-  /* Action buttons */
-  .actions {
-    display: flex;
-    gap: 5px;
-    align-items: center;
-  }
-
+  .actions { display: flex; gap: 5px; align-items: center; }
   .action-btn {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 8px;
-    padding: 3px 8px;
-    border-radius: 2px;
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    transition: all 0.15s;
-    white-space: nowrap;
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace; font-size: 8px; padding: 3px 8px;
+    border-radius: 2px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em;
+    transition: all 0.15s; white-space: nowrap;
   }
-
   .action-btn:hover.enviar { border-color: var(--accent); color: var(--accent); background: rgba(46,204,113,0.05); }
   .action-btn:hover.editar { border-color: var(--info); color: var(--info); background: rgba(59,130,246,0.05); }
-  .action-btn:hover.estado { border-color: var(--warning); color: var(--warning); background: rgba(245,158,11,0.05); }
-  .action-btn:hover.eliminar { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.05); }
+  .action-btn:hover.estado { border-color: var(--warning); color: var(--warning); }
+  .action-btn:hover.eliminar { border-color: var(--danger); color: var(--danger); }
 
-  /* Empty state */
-  .empty-state {
-    padding: 48px;
-    text-align: center;
-  }
-
-  .empty-icon {
-    font-size: 32px;
-    margin-bottom: 12px;
-    opacity: 0.4;
-  }
-
-  .empty-text {
-    font-size: 11px;
-    color: var(--text-dim);
-  }
-
-  /* Loading */
-  .loading-row td {
-    padding: 32px;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 10px;
-  }
+  .empty-state { padding: 48px; text-align: center; }
+  .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-text { font-size: 11px; color: var(--text-dim); }
 
   /* MODAL */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    z-index: 100;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    backdrop-filter: blur(4px);
-  }
-
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
   .modal-overlay.open { display: flex; }
-
-  .modal {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    width: 480px;
-    max-width: 95vw;
-    max-height: 90vh;
-    overflow-y: auto;
-    animation: modalIn 0.2s ease;
-  }
-
-  @keyframes modalIn {
-    from { opacity: 0; transform: translateY(-16px) scale(0.98); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-  }
-
-  .modal-header {
-    padding: 18px 20px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .modal-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 13px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--accent);
-  }
-
-  .modal-close {
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    font-size: 16px;
-    cursor: pointer;
-    line-height: 1;
-    transition: color 0.2s;
-  }
-
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 520px; max-width: 95vw; max-height: 90vh; overflow-y: auto; animation: modalIn 0.2s ease; }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+  .modal-header { padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-title { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
+  .modal-close { background: none; border: none; color: var(--text-dim); font-size: 16px; cursor: pointer; transition: color 0.2s; }
   .modal-close:hover { color: var(--text); }
-
   .modal-body { padding: 20px; }
-
-  .field {
-    margin-bottom: 14px;
-  }
-
-  .field label {
-    display: block;
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-dim);
-    margin-bottom: 5px;
-  }
-
-  .field input, .field textarea, .field select {
-    width: 100%;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    padding: 8px 10px;
-    border-radius: 4px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .field input:focus, .field textarea:focus, .field select:focus {
-    border-color: var(--accent);
-  }
-
-  .field textarea { resize: vertical; min-height: 100px; }
-
-  .modal-footer {
-    padding: 16px 20px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-  }
-
-  .btn {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 8px 18px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: 1px solid transparent;
-  }
-
-  .btn-cancel {
-    background: none;
-    border-color: var(--border);
-    color: var(--text-dim);
-  }
-
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 5px; }
+  .field input, .field textarea, .field select { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 8px 10px; border-radius: 4px; outline: none; transition: border-color 0.2s; }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+  .field textarea { resize: vertical; min-height: 120px; }
+  .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+  .btn { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 18px; border-radius: 4px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
+  .btn-cancel { background: none; border-color: var(--border); color: var(--text-dim); }
   .btn-cancel:hover { border-color: var(--text-dim); color: var(--text); }
-
-  .btn-primary {
-    background: var(--accent);
-    color: var(--bg);
-    border-color: var(--accent);
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-  }
-
+  .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-family: 'Syne', sans-serif; font-weight: 800; }
   .btn-primary:hover { opacity: 0.85; }
   .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .btn-danger {
-    background: rgba(239,68,68,0.1);
-    color: var(--danger);
-    border-color: var(--danger);
-  }
-
-  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+  .btn-danger { background: rgba(239,68,68,0.1); color: var(--danger); border-color: var(--danger); }
 
   /* TOAST */
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    padding: 10px 20px;
-    border-radius: 4px;
-    z-index: 200;
-    animation: toastIn 0.2s ease;
-    white-space: nowrap;
-  }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 10px 20px; border-radius: 4px; z-index: 200; white-space: nowrap; }
 
-  @keyframes toastIn {
-    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
-    to { opacity: 1; transform: translateX(-50%) translateY(0); }
-  }
-
-  /* Scrollbar */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  /* Responsive */
   @media (max-width: 768px) {
     .stats-bar { grid-template-columns: repeat(2, 1fr); }
-    .stat-card:nth-child(2) { border-right: none; }
-    .filters-row { flex-direction: column; align-items: stretch; }
-    .filter-input { min-width: unset; }
-    .filter-count { margin-left: 0; }
-    header { padding: 12px 16px; }
+    .campaign-bar { flex-direction: column; align-items: stretch; }
     .main { padding: 16px; }
-    .header-subtitle { display: none; }
   }
 </style>
 </head>
 <body>
 
-<!-- HEADER -->
 <header>
   <div class="header-left">
     <div class="logo-dot"></div>
@@ -616,11 +315,16 @@
 </header>
 
 <!-- STATS -->
-<div class="stats-bar" id="statsBar">
+<div class="stats-bar">
   <div class="stat-card">
     <div class="stat-label">Total Prospectos</div>
     <div class="stat-value green" id="statTotal">—</div>
     <div class="stat-sub">en base de datos</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">🐋 Pez Gordo</div>
+    <div class="stat-value gold" id="statPezGordo">—</div>
+    <div class="stat-sub">prioridad alta</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Con Correo</div>
@@ -635,22 +339,33 @@
   <div class="stat-card">
     <div class="stat-label">Sin Web</div>
     <div class="stat-value" id="statSinWeb">—</div>
-    <div class="stat-sub">oportunidades directas</div>
+    <div class="stat-sub">oportunidad directa</div>
+  </div>
+</div>
+
+<!-- CAMPAIGN BAR -->
+<div class="campaign-bar">
+  <button class="campaign-btn select-pez" onclick="seleccionarPezGordo()">🐋 Seleccionar Pez Gordo</button>
+  <button class="campaign-btn deselect" onclick="deseleccionarTodos()">✕ Deseleccionar</button>
+  <div class="selected-count">Seleccionados: <span id="selectedCount">0</span></div>
+  <button class="campaign-btn launch" id="btnCampana" onclick="abrirModalCampana()" disabled>🚀 Ejecutar Campaña</button>
+</div>
+
+<!-- PROGRESS -->
+<div class="progress-section" id="progressSection">
+  <div class="progress-label">
+    <span id="progressLabel">Iniciando campaña...</span>
+    <span id="progressPercent">0%</span>
+  </div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progressFill"></div>
   </div>
 </div>
 
 <!-- MAIN -->
 <div class="main">
-
-  <!-- FILTERS -->
   <div class="filters-row">
-    <input
-      class="filter-input"
-      id="searchInput"
-      type="text"
-      placeholder="🔍 Buscar por nombre, rubro, correo..."
-      oninput="filtrar()"
-    />
+    <input class="filter-input" id="searchInput" type="text" placeholder="🔍 Buscar por nombre, rubro, correo..." oninput="filtrar()" />
     <select class="filter-select" id="filterRubro" onchange="filtrar()">
       <option value="">Todos los rubros</option>
     </select>
@@ -661,10 +376,15 @@
       <option value="enviado">Correo enviado</option>
       <option value="cerrado">Cerrado</option>
     </select>
+    <select class="filter-select" id="filterPrioridad" onchange="filtrar()">
+      <option value="">Todas las prioridades</option>
+      <option value="Pez Gordo">🐋 Pez Gordo</option>
+      <option value="Interesante">🐟 Interesante</option>
+      <option value="Descartar">⭕ Descartar</option>
+    </select>
     <span class="filter-count" id="filterCount"></span>
   </div>
 
-  <!-- TABLE -->
   <div class="table-wrapper">
     <div class="table-header">
       <span class="table-title">📋 Prospectos</span>
@@ -674,29 +394,69 @@
       <table>
         <thead>
           <tr>
+            <th><input type="checkbox" class="custom-checkbox" id="checkAll" onchange="toggleTodos(this)"></th>
             <th>#</th>
-            <th>Nombre / Empresa</th>
+            <th>Prioridad</th>
+            <th>Nombre</th>
             <th>Rubro</th>
             <th>Correo</th>
             <th>Sitio Web</th>
             <th>Estado</th>
-            <th>Fuente</th>
             <th>Fecha</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody id="prospectosTbody">
-          <tr class="loading-row">
-            <td colspan="9">⏳ Cargando prospectos...</td>
-          </tr>
+          <tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-muted);font-size:10px;">⏳ Cargando...</td></tr>
         </tbody>
       </table>
     </div>
   </div>
-
 </div>
 
-<!-- MODAL CORREO -->
+<!-- MODAL CAMPAÑA -->
+<div class="modal-overlay" id="modalCampana">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">🚀 Campaña de Ventas</span>
+      <button class="modal-close" onclick="cerrarModal('modalCampana')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:rgba(46,204,113,0.06);border:1px solid rgba(46,204,113,0.2);border-radius:4px;padding:12px;margin-bottom:16px;font-size:10px;color:var(--text-dim);">
+        <span id="campanaResumen"></span>
+      </div>
+      <div class="field">
+        <label>Asunto (usa {nombre} y {rubro})</label>
+        <input type="text" id="campana-asunto" value="Propuesta de Tienda Web para {nombre}" />
+      </div>
+      <div class="field">
+        <label>Cuerpo del mensaje (usa {nombre} y {rubro})</label>
+        <textarea id="campana-cuerpo">Estimado(a) {nombre},
+
+Me comunico de parte de TechZone Panama para presentarle una propuesta personalizada para su negocio en el sector de {rubro}.
+
+Contamos con soluciones de tiendas web profesionales que le permitiran aumentar sus ventas y llegar a mas clientes en Panama.
+
+Le gustaria agendar una llamada para contarle mas detalles?
+
+Quedo a su disposicion.
+
+Atentamente,
+Eduardo Aizprua
+TechZone Panama</textarea>
+      </div>
+      <div style="font-size:9px;color:var(--accent3);margin-top:8px;">
+        ⚡ Anti-Spam Throttling activo: delay de 5-10s entre correos para maxima entregabilidad
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" onclick="cerrarModal('modalCampana')">Cancelar</button>
+      <button class="btn btn-primary" id="btnLanzar" onclick="ejecutarCampana()">🚀 Lanzar Campaña</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CORREO INDIVIDUAL -->
 <div class="modal-overlay" id="modalCorreo">
   <div class="modal">
     <div class="modal-header">
@@ -704,26 +464,11 @@
       <button class="modal-close" onclick="cerrarModal('modalCorreo')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="field">
-        <label>Para (correo)</label>
-        <input type="email" id="correo-para" placeholder="cliente@empresa.com" />
-      </div>
-      <div class="field">
-        <label>Nombre del contacto</label>
-        <input type="text" id="correo-nombre" placeholder="Ej. Juan Pérez" />
-      </div>
-      <div class="field">
-        <label>Empresa</label>
-        <input type="text" id="correo-empresa" placeholder="Ej. Restaurante El Buen Sabor" />
-      </div>
-      <div class="field">
-        <label>Asunto</label>
-        <input type="text" id="correo-asunto" placeholder="Ej. Propuesta de Tienda Web para su negocio" />
-      </div>
-      <div class="field">
-        <label>Cuerpo del mensaje</label>
-        <textarea id="correo-cuerpo" placeholder="Estimado Juan,&#10;&#10;Me comunico para presentarle una propuesta personalizada..."></textarea>
-      </div>
+      <div class="field"><label>Para (correo)</label><input type="email" id="correo-para" placeholder="cliente@empresa.com" /></div>
+      <div class="field"><label>Nombre</label><input type="text" id="correo-nombre" /></div>
+      <div class="field"><label>Empresa</label><input type="text" id="correo-empresa" /></div>
+      <div class="field"><label>Asunto</label><input type="text" id="correo-asunto" /></div>
+      <div class="field"><label>Cuerpo</label><textarea id="correo-cuerpo"></textarea></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-cancel" onclick="cerrarModal('modalCorreo')">Cancelar</button>
@@ -734,16 +479,13 @@
 
 <!-- MODAL EDITAR CORREO -->
 <div class="modal-overlay" id="modalEditarCorreo">
-  <div class="modal">
+  <div class="modal" style="width:400px">
     <div class="modal-header">
       <span class="modal-title">✏️ Editar Correo</span>
       <button class="modal-close" onclick="cerrarModal('modalEditarCorreo')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="field">
-        <label>Correo electrónico</label>
-        <input type="email" id="edit-correo" placeholder="correo@ejemplo.com" />
-      </div>
+      <div class="field"><label>Correo electrónico</label><input type="email" id="edit-correo" /></div>
       <input type="hidden" id="edit-id" />
     </div>
     <div class="modal-footer">
@@ -753,7 +495,7 @@
   </div>
 </div>
 
-<!-- MODAL NUEVO PROSPECTO -->
+<!-- MODAL NUEVO -->
 <div class="modal-overlay" id="modalNuevo">
   <div class="modal">
     <div class="modal-header">
@@ -761,26 +503,11 @@
       <button class="modal-close" onclick="cerrarModal('modalNuevo')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="field">
-        <label>Nombre *</label>
-        <input type="text" id="nuevo-nombre" placeholder="Nombre del negocio o contacto" />
-      </div>
-      <div class="field">
-        <label>Empresa</label>
-        <input type="text" id="nuevo-empresa" placeholder="Nombre de la empresa" />
-      </div>
-      <div class="field">
-        <label>Rubro</label>
-        <input type="text" id="nuevo-rubro" placeholder="Ej. Restaurante, Farmacia, Boutique..." />
-      </div>
-      <div class="field">
-        <label>Correo</label>
-        <input type="email" id="nuevo-correo" placeholder="correo@empresa.com" />
-      </div>
-      <div class="field">
-        <label>Sitio Web</label>
-        <input type="text" id="nuevo-web" placeholder="https://..." />
-      </div>
+      <div class="field"><label>Nombre *</label><input type="text" id="nuevo-nombre" /></div>
+      <div class="field"><label>Empresa</label><input type="text" id="nuevo-empresa" /></div>
+      <div class="field"><label>Rubro</label><input type="text" id="nuevo-rubro" /></div>
+      <div class="field"><label>Correo</label><input type="email" id="nuevo-correo" /></div>
+      <div class="field"><label>Sitio Web</label><input type="text" id="nuevo-web" /></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-cancel" onclick="cerrarModal('modalNuevo')">Cancelar</button>
@@ -789,17 +516,16 @@
   </div>
 </div>
 
-<!-- MODAL CONFIRMAR ELIMINAR -->
+<!-- MODAL ELIMINAR -->
 <div class="modal-overlay" id="modalEliminar">
   <div class="modal" style="width:360px">
     <div class="modal-header">
-      <span class="modal-title" style="color:var(--danger)">⚠ Eliminar Prospecto</span>
+      <span class="modal-title" style="color:var(--danger)">⚠ Eliminar</span>
       <button class="modal-close" onclick="cerrarModal('modalEliminar')">✕</button>
     </div>
     <div class="modal-body">
       <p style="font-size:12px;color:var(--text-dim);line-height:1.6;">
-        ¿Estás seguro que quieres eliminar a <strong id="eliminar-nombre" style="color:var(--text)"></strong>?
-        Esta acción no se puede deshacer.
+        ¿Eliminar a <strong id="eliminar-nombre" style="color:var(--text)"></strong>? Esta acción no se puede deshacer.
       </p>
       <input type="hidden" id="eliminar-id" />
     </div>
@@ -811,67 +537,58 @@
 </div>
 
 <script>
-// ─── STATE ──────────────────────────────────────────────────────
 let todosProspectos = [];
 let prospectosFiltrados = [];
-// estados locales (en memoria hasta que exista PUT/DELETE en el backend)
 let estadosLocales = {};
 let correosLocales = {};
+let seleccionados = new Set();
 
-// ─── INIT ────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  cargarProspectos();
-});
+document.addEventListener('DOMContentLoaded', cargarProspectos);
 
-// ─── CARGAR PROSPECTOS ───────────────────────────────────────────
+// ─── CARGAR ──────────────────────────────────────────────────────
 async function cargarProspectos() {
   const tbody = document.getElementById('prospectosTbody');
-  tbody.innerHTML = `<tr class="loading-row"><td colspan="9">⏳ Cargando prospectos...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-muted);font-size:10px;">⏳ Cargando...</td></tr>`;
 
   try {
     const res = await fetch('/api/prospectos');
     const data = await res.json();
-
     if (!data.success) throw new Error('Error al cargar');
 
-    todosProspectos = data.prospectos || [];
-
-    // Aplicar correos y estados locales guardados
-    todosProspectos = todosProspectos.map(p => ({
+    todosProspectos = (data.prospectos || []).map(p => ({
       ...p,
       correo: correosLocales[p.id] !== undefined ? correosLocales[p.id] : (p.correo || ''),
       estado: estadosLocales[p.id] !== undefined ? estadosLocales[p.id] : 'nuevo'
     }));
 
     actualizarStats();
-    poblarFiltroRubro();
+    poblarFiltros();
     filtrar();
-
   } catch(e) {
-    tbody.innerHTML = `<tr class="loading-row"><td colspan="9" style="color:var(--danger)">❌ Error cargando prospectos: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--danger);font-size:10px;">❌ Error: ${e.message}</td></tr>`;
   }
 }
 
 // ─── STATS ───────────────────────────────────────────────────────
 function actualizarStats() {
   document.getElementById('statTotal').textContent = todosProspectos.length;
+  document.getElementById('statPezGordo').textContent = todosProspectos.filter(p => (p.scoring || '') === 'Pez Gordo' || seleccionados.has(p.id)).length;
   document.getElementById('statConCorreo').textContent = todosProspectos.filter(p => p.correo).length;
   document.getElementById('statContactados').textContent = todosProspectos.filter(p => estadosLocales[p.id] === 'enviado' || estadosLocales[p.id] === 'contactado').length;
   document.getElementById('statSinWeb').textContent = todosProspectos.filter(p => !p.sitio_web).length;
 }
 
 // ─── FILTROS ─────────────────────────────────────────────────────
-function poblarFiltroRubro() {
+function poblarFiltros() {
   const rubros = [...new Set(todosProspectos.map(p => p.rubro).filter(Boolean))].sort();
   const sel = document.getElementById('filterRubro');
-  const current = sel.value;
+  const cur = sel.value;
   sel.innerHTML = '<option value="">Todos los rubros</option>';
   rubros.forEach(r => {
-    const opt = document.createElement('option');
-    opt.value = r;
-    opt.textContent = r;
-    if (r === current) opt.selected = true;
-    sel.appendChild(opt);
+    const o = document.createElement('option');
+    o.value = r; o.textContent = r;
+    if (r === cur) o.selected = true;
+    sel.appendChild(o);
   });
 }
 
@@ -879,100 +596,229 @@ function filtrar() {
   const q = document.getElementById('searchInput').value.toLowerCase();
   const rubro = document.getElementById('filterRubro').value;
   const estado = document.getElementById('filterEstado').value;
+  const prioridad = document.getElementById('filterPrioridad').value;
 
   prospectosFiltrados = todosProspectos.filter(p => {
-    const matchQ = !q ||
-      (p.nombre || '').toLowerCase().includes(q) ||
-      (p.rubro || '').toLowerCase().includes(q) ||
-      (p.correo || '').toLowerCase().includes(q) ||
-      (p.empresa || '').toLowerCase().includes(q);
-
+    const matchQ = !q || (p.nombre||'').toLowerCase().includes(q) || (p.rubro||'').toLowerCase().includes(q) || (p.correo||'').toLowerCase().includes(q);
     const matchRubro = !rubro || p.rubro === rubro;
-    const pEstado = estadosLocales[p.id] || 'nuevo';
-    const matchEstado = !estado || pEstado === estado;
-
-    return matchQ && matchRubro && matchEstado;
+    const matchEstado = !estado || (estadosLocales[p.id] || 'nuevo') === estado;
+    const matchPrioridad = !prioridad || (p.scoring || '') === prioridad;
+    return matchQ && matchRubro && matchEstado && matchPrioridad;
   });
 
-  document.getElementById('filterCount').textContent =
-    prospectosFiltrados.length + ' de ' + todosProspectos.length + ' prospectos';
-
+  document.getElementById('filterCount').textContent = `${prospectosFiltrados.length} de ${todosProspectos.length} prospectos`;
   renderTabla();
 }
 
-// ─── RENDER TABLA ────────────────────────────────────────────────
+// ─── TABLA ───────────────────────────────────────────────────────
 function renderTabla() {
   const tbody = document.getElementById('prospectosTbody');
 
   if (prospectosFiltrados.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="9">
-          <div class="empty-state">
-            <div class="empty-icon">📭</div>
-            <div class="empty-text">No hay prospectos que coincidan con los filtros</div>
-          </div>
-        </td>
-      </tr>`;
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">No hay prospectos</div></div></td></tr>`;
     return;
   }
 
   tbody.innerHTML = prospectosFiltrados.map((p, i) => {
     const estado = estadosLocales[p.id] || 'nuevo';
     const correo = correosLocales[p.id] !== undefined ? correosLocales[p.id] : (p.correo || '');
-    const badgeHtml = getBadge(estado);
+    const scoring = p.scoring || '';
+    const isSelected = seleccionados.has(p.id);
+
+    let scoreHtml = '<span style="color:var(--text-muted)">—</span>';
+    if (scoring === 'Pez Gordo') scoreHtml = '<span class="score-pez">🐋 Pez Gordo</span>';
+    else if (scoring === 'Interesante') scoreHtml = '<span class="score-interesante">🐟 Interesante</span>';
+    else if (scoring === 'Descartar') scoreHtml = '<span class="score-descartar">⭕ Descartar</span>';
+
     const webHtml = p.sitio_web
-      ? `<a href="${escHtml(p.sitio_web)}" target="_blank" rel="noopener">🔗 ver</a>`
+      ? `<a href="${escHtml(p.sitio_web)}" target="_blank">🔗 ver</a>`
       : `<span style="color:var(--text-muted);font-size:10px;">sin web</span>`;
 
+    const badges = { nuevo: 'badge-nuevo', contactado: 'badge-contactado', enviado: 'badge-enviado', cerrado: 'badge-cerrado' };
+
     return `
-      <tr>
+      <tr class="${isSelected ? 'selected' : ''}">
+        <td><input type="checkbox" class="custom-checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSeleccion(${p.id}, this)"></td>
         <td style="color:var(--text-muted);font-size:10px;">${p.id}</td>
-        <td class="td-nombre" title="${escHtml(p.nombre)}">${escHtml(p.nombre || '—')}</td>
-        <td class="td-rubro" title="${escHtml(p.rubro)}">${escHtml(p.rubro || '—')}</td>
-        <td class="td-correo">
-          ${correo
-            ? `<span title="${escHtml(correo)}">${escHtml(correo.length > 22 ? correo.substring(0,22)+'…' : correo)}</span>`
-            : `<span style="color:var(--text-muted);font-size:10px;">sin correo</span>`
-          }
-        </td>
+        <td>${scoreHtml}</td>
+        <td class="td-nombre" title="${escHtml(p.nombre)}">${escHtml(p.nombre||'—')}</td>
+        <td class="td-rubro">${escHtml(p.rubro||'—')}</td>
+        <td class="td-correo">${correo ? escHtml(correo.length>22?correo.substring(0,22)+'…':correo) : '<span style="color:var(--text-muted);font-size:10px;">sin correo</span>'}</td>
         <td class="td-web">${webHtml}</td>
-        <td>${badgeHtml}</td>
-        <td style="color:var(--text-muted);font-size:10px;">${escHtml(p.fuente || '—')}</td>
-        <td class="td-fecha">${escHtml(p.fecha || '—')}</td>
+        <td><span class="badge ${badges[estado]||'badge-nuevo'}">● ${estado}</span></td>
+        <td class="td-fecha">${escHtml(p.fecha||'—')}</td>
         <td>
           <div class="actions">
-            <button class="action-btn enviar" onclick="abrirModalCorreo(${p.id})" title="Enviar propuesta">📧</button>
-            <button class="action-btn editar" onclick="abrirModalEditarCorreo(${p.id}, '${escHtml(correo)}')" title="Editar correo">✏️</button>
-            <button class="action-btn estado" onclick="cambiarEstado(${p.id})" title="Cambiar estado">🔄</button>
-            <button class="action-btn eliminar" onclick="abrirModalEliminar(${p.id}, '${escHtml(p.nombre)}')" title="Eliminar">🗑</button>
+            <button class="action-btn enviar" onclick="abrirModalCorreo(${p.id})">📧</button>
+            <button class="action-btn editar" onclick="abrirModalEditarCorreo(${p.id}, '${escHtml(correo)}')">✏️</button>
+            <button class="action-btn estado" onclick="cambiarEstado(${p.id})">🔄</button>
+            <button class="action-btn eliminar" onclick="abrirModalEliminar(${p.id}, '${escHtml(p.nombre)}')">🗑</button>
           </div>
         </td>
       </tr>`;
   }).join('');
+
+  actualizarBtnCampana();
 }
 
-function getBadge(estado) {
-  const badges = {
-    nuevo: '<span class="badge badge-nuevo">● Nuevo</span>',
-    contactado: '<span class="badge badge-contactado">● Contactado</span>',
-    enviado: '<span class="badge badge-enviado">● Correo enviado</span>',
-    cerrado: '<span class="badge badge-cerrado">● Cerrado</span>'
-  };
-  return badges[estado] || badges.nuevo;
+// ─── SELECCIÓN ───────────────────────────────────────────────────
+function toggleSeleccion(id, checkbox) {
+  if (checkbox.checked) seleccionados.add(id);
+  else seleccionados.delete(id);
+  actualizarBtnCampana();
+  renderTabla();
 }
 
-function escHtml(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+function toggleTodos(checkbox) {
+  if (checkbox.checked) prospectosFiltrados.forEach(p => seleccionados.add(p.id));
+  else prospectosFiltrados.forEach(p => seleccionados.delete(p.id));
+  actualizarBtnCampana();
+  renderTabla();
 }
 
-// ─── MODAL CORREO ────────────────────────────────────────────────
+function seleccionarPezGordo() {
+  todosProspectos.filter(p => p.scoring === 'Pez Gordo').forEach(p => seleccionados.add(p.id));
+  actualizarBtnCampana();
+  renderTabla();
+  showToast('🐋 Pez Gordo seleccionados');
+}
+
+function deseleccionarTodos() {
+  seleccionados.clear();
+  document.getElementById('checkAll').checked = false;
+  actualizarBtnCampana();
+  renderTabla();
+}
+
+function actualizarBtnCampana() {
+  const count = seleccionados.size;
+  document.getElementById('selectedCount').textContent = count;
+  document.getElementById('btnCampana').disabled = count === 0;
+}
+
+// ─── CAMPAÑA MASIVA ──────────────────────────────────────────────
+function abrirModalCampana() {
+  const count = seleccionados.size;
+  const conCorreo = [...seleccionados].filter(id => {
+    const p = todosProspectos.find(x => x.id === id);
+    return p && (correosLocales[id] || p.correo);
+  }).length;
+
+  document.getElementById('campanaResumen').innerHTML =
+    `<strong>${count} prospectos seleccionados</strong> · ${conCorreo} con correo listo · ${count - conCorreo} sin correo (se omitirán)`;
+
+  abrirModal('modalCampana');
+}
+
+async function ejecutarCampana() {
+  const asunto = document.getElementById('campana-asunto').value.trim();
+  const cuerpo = document.getElementById('campana-cuerpo').value.trim();
+
+  if (!asunto || !cuerpo) { showToast('⚠ Completa asunto y cuerpo'); return; }
+
+  // Construir lote solo con prospectos que tienen correo
+  const lote = [...seleccionados]
+    .map(id => todosProspectos.find(p => p.id === id))
+    .filter(p => p && (correosLocales[p.id] || p.correo))
+    .map(p => ({
+      para: correosLocales[p.id] || p.correo,
+      nombre: p.nombre || p.empresa || '',
+      empresa: p.empresa || p.nombre || '',
+      rubro: p.rubro || ''
+    }));
+
+  if (lote.length === 0) {
+    showToast('⚠ Ningún prospecto seleccionado tiene correo');
+    return;
+  }
+
+  cerrarModal('modalCampana');
+  document.getElementById('btnLanzar').disabled = true;
+
+  // Mostrar progress bar
+  const progressSection = document.getElementById('progressSection');
+  progressSection.classList.add('active');
+
+  let enviados = 0;
+  let fallidos = 0;
+
+  // Enviar uno por uno con throttling visual
+  for (let i = 0; i < lote.length; i++) {
+    const dest = lote[i];
+    const progPct = Math.round((i / lote.length) * 100);
+
+    document.getElementById('progressLabel').textContent = `Enviando ${i + 1} de ${lote.length}: ${dest.nombre}...`;
+    document.getElementById('progressPercent').textContent = progPct + '%';
+    document.getElementById('progressFill').style.width = progPct + '%';
+
+    try {
+      // Personalizar cuerpo
+      const cuerpoPersonalizado = cuerpo
+        .replace(/\{nombre\}/g, dest.nombre)
+        .replace(/\{rubro\}/g, dest.rubro || 'su negocio')
+        .replace(/\{empresa\}/g, dest.empresa);
+
+      const asuntoPersonalizado = asunto
+        .replace(/\{nombre\}/g, dest.nombre)
+        .replace(/\{rubro\}/g, dest.rubro || 'su negocio');
+
+      const res = await fetch('/api/correo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          para: dest.para, nombre: dest.nombre,
+          empresa: dest.empresa, asunto: asuntoPersonalizado,
+          cuerpo: cuerpoPersonalizado
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        enviados++;
+        estadosLocales[todosProspectos.find(p => p.correo === dest.para || correosLocales[p.id] === dest.para)?.id] = 'enviado';
+      } else {
+        fallidos++;
+      }
+    } catch(e) {
+      fallidos++;
+    }
+
+    // Anti-Spam Throttling: delay 5-10s entre correos (excepto el último)
+    if (i < lote.length - 1) {
+      const delay = Math.floor(Math.random() * 5000) + 5000;
+      const segundos = Math.ceil(delay / 1000);
+      document.getElementById('progressLabel').textContent = `⏳ Esperando ${segundos}s (Anti-Spam)...`;
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+
+  // Completado
+  document.getElementById('progressFill').style.width = '100%';
+  document.getElementById('progressPercent').textContent = '100%';
+  document.getElementById('progressLabel').textContent = `✅ Campaña completada: ${enviados} enviados · ${fallidos} fallidos`;
+
+  // Notificar Telegram
+  fetch('/api/telegram', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mensaje: `🚀 <b>Campaña completada</b>\n\nEnviados: ${enviados}\nFallidos: ${fallidos}\nTotal: ${lote.length}` })
+  });
+
+  showToast(`✅ ${enviados} correos enviados · ${fallidos} fallidos`);
+  document.getElementById('btnLanzar').disabled = false;
+  deseleccionarTodos();
+  actualizarStats();
+  filtrar();
+
+  // Ocultar progress después de 5s
+  setTimeout(() => progressSection.classList.remove('active'), 5000);
+}
+
+// ─── CORREO INDIVIDUAL ───────────────────────────────────────────
 function abrirModalCorreo(id) {
   const p = todosProspectos.find(x => x.id === id);
   if (!p) return;
-
   const correo = correosLocales[id] !== undefined ? correosLocales[id] : (p.correo || '');
-
   document.getElementById('correo-para').value = correo;
   document.getElementById('correo-nombre').value = p.nombre || '';
   document.getElementById('correo-empresa').value = p.empresa || p.nombre || '';
@@ -980,18 +826,17 @@ function abrirModalCorreo(id) {
   document.getElementById('correo-cuerpo').value =
 `Estimado(a) ${p.nombre},
 
-Me comunico de parte de TechZone Panamá para presentarle una propuesta personalizada para su negocio${p.rubro ? ' en el sector ' + p.rubro : ''}.
+Me comunico de parte de TechZone Panama para presentarle una propuesta personalizada para su negocio${p.rubro ? ' en el sector ' + p.rubro : ''}.
 
-Contamos con soluciones de tiendas web profesionales que le permitirán aumentar sus ventas y llegar a más clientes en Panamá.
+Contamos con soluciones de tiendas web profesionales que le permitiran aumentar sus ventas y llegar a mas clientes en Panama.
 
-¿Le gustaría agendar una llamada para contarle más detalles?
+Le gustaria agendar una llamada para contarle mas detalles?
 
-Quedo a su disposición.
+Quedo a su disposicion.
 
 Atentamente,
 Eduardo Aizprua
-TechZone Panamá`;
-
+TechZone Panama`;
   abrirModal('modalCorreo');
 }
 
@@ -1001,15 +846,10 @@ async function enviarCorreo() {
   const empresa = document.getElementById('correo-empresa').value.trim();
   const asunto = document.getElementById('correo-asunto').value.trim();
   const cuerpo = document.getElementById('correo-cuerpo').value.trim();
-
-  if (!para || !cuerpo) {
-    showToast('⚠ Completa los campos requeridos');
-    return;
-  }
+  if (!para || !cuerpo) { showToast('⚠ Completa los campos requeridos'); return; }
 
   const btn = document.getElementById('btnEnviarCorreo');
-  btn.disabled = true;
-  btn.textContent = '⏳ Enviando...';
+  btn.disabled = true; btn.textContent = '⏳ Enviando...';
 
   try {
     const res = await fetch('/api/correo', {
@@ -1017,37 +857,21 @@ async function enviarCorreo() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ para, nombre, empresa, asunto, cuerpo })
     });
-
     const data = await res.json();
-
     if (data.success) {
-      // Marcar como enviado
       const p = todosProspectos.find(x => x.correo === para || correosLocales[x.id] === para);
       if (p) estadosLocales[p.id] = 'enviado';
-
-      // Notificar Telegram
-      fetch('/api/telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mensaje: `📧 <b>Propuesta enviada desde Panel</b>\n\nPara: ${para}\nEmpresa: ${empresa}\nAsunto: ${asunto}` })
-      });
-
+      fetch('/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mensaje: `📧 <b>Propuesta enviada</b>\n\nPara: ${para}\nEmpresa: ${empresa}` }) });
       showToast('✅ Correo enviado a ' + para);
       cerrarModal('modalCorreo');
-      actualizarStats();
-      filtrar();
-    } else {
-      showToast('❌ Error: ' + (data.error || 'No se pudo enviar'));
-    }
-  } catch(e) {
-    showToast('❌ Error de conexión');
-  }
+      actualizarStats(); filtrar();
+    } else { showToast('❌ Error: ' + (data.error || 'No se pudo enviar')); }
+  } catch(e) { showToast('❌ Error de conexión'); }
 
-  btn.disabled = false;
-  btn.textContent = '📧 Enviar';
+  btn.disabled = false; btn.textContent = '📧 Enviar';
 }
 
-// ─── MODAL EDITAR CORREO ─────────────────────────────────────────
+// ─── EDITAR CORREO ───────────────────────────────────────────────
 function abrirModalEditarCorreo(id, correoActual) {
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-correo').value = correoActual;
@@ -1058,31 +882,22 @@ function guardarCorreo() {
   const id = parseInt(document.getElementById('edit-id').value);
   const correo = document.getElementById('edit-correo').value.trim();
   correosLocales[id] = correo;
-
-  // Actualizar en todosProspectos también
   const p = todosProspectos.find(x => x.id === id);
   if (p) p.correo = correo;
-
   showToast('✅ Correo actualizado');
   cerrarModal('modalEditarCorreo');
-  actualizarStats();
-  filtrar();
+  actualizarStats(); filtrar();
 }
 
-// ─── CAMBIAR ESTADO ──────────────────────────────────────────────
+// ─── ESTADO ──────────────────────────────────────────────────────
 function cambiarEstado(id) {
   const estados = ['nuevo', 'contactado', 'enviado', 'cerrado'];
   const actual = estadosLocales[id] || 'nuevo';
-  const idx = estados.indexOf(actual);
-  const siguiente = estados[(idx + 1) % estados.length];
+  const siguiente = estados[(estados.indexOf(actual) + 1) % estados.length];
   estadosLocales[id] = siguiente;
-
   const p = todosProspectos.find(x => x.id === id);
-  const nombre = p ? p.nombre : 'prospecto';
-  showToast(`🔄 ${nombre} → ${siguiente}`);
-
-  actualizarStats();
-  filtrar();
+  showToast(`🔄 ${p?.nombre || 'Prospecto'} → ${siguiente}`);
+  actualizarStats(); filtrar();
 }
 
 // ─── ELIMINAR ────────────────────────────────────────────────────
@@ -1094,102 +909,59 @@ function abrirModalEliminar(id, nombre) {
 
 function confirmarEliminar() {
   const id = parseInt(document.getElementById('eliminar-id').value);
-  // Eliminar localmente (hasta que exista DELETE en el backend)
   todosProspectos = todosProspectos.filter(p => p.id !== id);
-  delete estadosLocales[id];
-  delete correosLocales[id];
-
+  seleccionados.delete(id);
+  delete estadosLocales[id]; delete correosLocales[id];
   showToast('🗑 Prospecto eliminado');
   cerrarModal('modalEliminar');
-  poblarFiltroRubro();
-  actualizarStats();
-  filtrar();
+  poblarFiltros(); actualizarStats(); filtrar();
 }
 
-// ─── NUEVO PROSPECTO ─────────────────────────────────────────────
+// ─── NUEVO ───────────────────────────────────────────────────────
 function abrirModalNuevo() {
-  document.getElementById('nuevo-nombre').value = '';
-  document.getElementById('nuevo-empresa').value = '';
-  document.getElementById('nuevo-rubro').value = '';
-  document.getElementById('nuevo-correo').value = '';
-  document.getElementById('nuevo-web').value = '';
+  ['nuevo-nombre','nuevo-empresa','nuevo-rubro','nuevo-correo','nuevo-web'].forEach(id => document.getElementById(id).value = '');
   abrirModal('modalNuevo');
 }
 
 async function crearProspecto() {
   const nombre = document.getElementById('nuevo-nombre').value.trim();
   if (!nombre) { showToast('⚠ El nombre es requerido'); return; }
-
-  const datos = {
-    nombre,
-    empresa: document.getElementById('nuevo-empresa').value.trim() || nombre,
-    rubro: document.getElementById('nuevo-rubro').value.trim(),
-    correo: document.getElementById('nuevo-correo').value.trim(),
-    sitio_web: document.getElementById('nuevo-web').value.trim(),
-    fuente: 'panel'
-  };
-
+  const datos = { nombre, empresa: document.getElementById('nuevo-empresa').value.trim() || nombre, rubro: document.getElementById('nuevo-rubro').value.trim(), correo: document.getElementById('nuevo-correo').value.trim(), sitio_web: document.getElementById('nuevo-web').value.trim(), fuente: 'panel' };
   try {
-    const res = await fetch('/api/prospectos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(datos)
-    });
-
+    const res = await fetch('/api/prospectos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos) });
     const data = await res.json();
-
     if (data.success) {
-      // Notificar Telegram
-      fetch('/api/telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mensaje: `📋 <b>Nuevo prospecto (Panel)</b>\n\nNombre: ${nombre}\nRubro: ${datos.rubro || '—'}\nFuente: panel` })
-      });
-
+      fetch('/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mensaje: `📋 <b>Nuevo prospecto (Panel)</b>\n\nNombre: ${nombre}\nRubro: ${datos.rubro || '—'}` }) });
       showToast('✅ Prospecto guardado');
       cerrarModal('modalNuevo');
       await cargarProspectos();
-    } else {
-      showToast('❌ Error: ' + (data.error || 'No se pudo guardar'));
-    }
-  } catch(e) {
-    showToast('❌ Error de conexión');
-  }
+    } else { showToast('❌ Error: ' + (data.error || 'No se pudo guardar')); }
+  } catch(e) { showToast('❌ Error de conexión'); }
 }
 
-// ─── MODALES HELPERS ─────────────────────────────────────────────
-function abrirModal(id) {
-  document.getElementById(id).classList.add('open');
-}
+// ─── HELPERS ─────────────────────────────────────────────────────
+function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+function cerrarModal(id) { document.getElementById(id).classList.remove('open'); }
 
-function cerrarModal(id) {
-  document.getElementById(id).classList.remove('open');
-}
-
-// Cerrar modales con Escape
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
-  }
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
 });
 
-// Cerrar modal al hacer click en overlay
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.classList.remove('open');
-  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
 });
 
-// ─── TOAST ───────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function showToast(msg) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
-
   const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = msg;
+  toast.className = 'toast'; toast.textContent = msg;
   document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  setTimeout(() => toast.remove(), 3500);
 }
 </script>
 </body>
