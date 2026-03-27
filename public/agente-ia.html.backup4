@@ -1272,7 +1272,6 @@ async function sendMessage() {
     const result = await callGemini(text, memoriaContext);
 
     // Detectar si Kairós quiere enviar un correo
-    await detectarYEnviarLote(result.respuesta);
     await detectarYEnviarCorreo(result.respuesta);
 
     // Detectar y guardar prospecto si Kairós lo indica
@@ -1445,46 +1444,6 @@ async function notificarTelegram(mensaje) {
       body: JSON.stringify({ mensaje })
     });
   } catch(e) { /* silencioso */ }
-}
-
-
-// ─── ENVÍO EN LOTE AUTOMÁTICO ───────────────────────────────
-async function detectarYEnviarLote(respuesta) {
-  try {
-    const normalizada = respuesta
-      .replace(/\\"/g, '"')
-      .replace(/[""„‟]/g, '"')
-      .replace(/[''‚\u201a\u201b]/g, "'");
-
-    // Buscar JSON de lote en la respuesta
-    const loteMatch = normalizada.match(/\{[\s\S]*?"lote"\s*:\s*\[[\s\S]*?\][\s\S]*?\}/);
-    if (!loteMatch) return;
-
-    let datos;
-    try { datos = JSON.parse(loteMatch[0]); } catch(e) { return; }
-    if (!datos.lote || !Array.isArray(datos.lote)) return;
-
-    showToast('📧 Enviando ' + datos.lote.length + ' correos en lote...');
-
-    const res = await fetch('/api/correo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(datos)
-    });
-
-    const data = await res.json();
-
-    if (data.success) {
-      showToast('✅ Lote completado: ' + data.enviados + ' enviados, ' + data.fallidos + ' fallidos');
-      fetch('/api/telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mensaje: '📧 <b>Envio en lote</b>\n\nEnviados: ' + data.enviados + '\nFallidos: ' + data.fallidos })
-      });
-    } else {
-      showToast('⚠ Error en lote: ' + (data.error || 'Error desconocido'));
-    }
-  } catch(e) { /* No era JSON de lote */ }
 }
 
 // ─── ENVÍO AUTOMÁTICO DE CORREOS ────────────────────────────
