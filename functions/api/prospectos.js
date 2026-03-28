@@ -3,7 +3,7 @@ export async function onRequestGet(context) {
   const { env } = context;
   try {
     const result = await env.kairos_db.prepare(
-      "SELECT * FROM Prospectos ORDER BY id DESC"
+      "SELECT * FROM Prospectos ORDER BY score DESC, id DESC"
     ).all();
     return Response.json({ success: true, prospectos: result.results || [] });
   } catch (error) {
@@ -15,7 +15,7 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   const { request, env } = context;
   try {
-    const { nombre, empresa, rubro, sitio_web, correo, fuente } = await request.json();
+    const { nombre, empresa, rubro, sitio_web, correo, fuente, scoring, score } = await request.json();
 
     const fecha = new Intl.DateTimeFormat('es-PA', {
       timeZone: 'America/Panama',
@@ -23,8 +23,18 @@ export async function onRequestPost(context) {
     }).format(new Date());
 
     const result = await env.kairos_db.prepare(
-      "INSERT INTO Prospectos (nombre, empresa, rubro, sitio_web, correo, fuente, fecha) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(nombre || '', empresa || '', rubro || '', sitio_web || '', correo || '', fuente || 'manual', fecha).run();
+      "INSERT INTO Prospectos (nombre, empresa, rubro, sitio_web, correo, fuente, fecha, scoring, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      nombre || '',
+      empresa || '',
+      rubro || '',
+      sitio_web || '',
+      correo || '',
+      fuente || 'manual',
+      fecha,
+      scoring || '',
+      score || 0
+    ).run();
 
     return Response.json({ success: true, id: result.meta?.last_row_id });
   } catch (error) {

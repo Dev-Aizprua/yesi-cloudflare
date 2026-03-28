@@ -54,28 +54,21 @@ export async function onRequestPost(context) {
       const rating = p.totalScore || p.rating || 0;
       const telefono = p.phone || p.phoneUnformatted || null;
 
-      // Factor 1: Sin sitio web = oportunidad de oro
-      if (!tiene_web) score += 30;
-
-      // Factor 2: Reseñas > 50 = tiene flujo de clientes y dinero
-      if (resenas > 50) score += 30;
-
-      // Factor 3: Rating > 4.2 = cuida su marca
-      if (rating > 4.2) score += 20;
-
-      // Factor 4: Tiene teléfono = facilidad de cierre
-      if (telefono) score += 20;
+      if (!tiene_web) score += 30;       // Sin web = oportunidad de oro
+      if (resenas > 50) score += 30;     // Tiene flujo de clientes
+      if (rating > 4.2) score += 20;     // Cuida su marca
+      if (telefono) score += 20;         // Facilidad de cierre
 
       return score;
     }
 
     function clasificar(score) {
-      if (score >= 70) return { emoji: '🐋', label: 'Pez Gordo', color: 'verde' };
-      if (score >= 40) return { emoji: '🐟', label: 'Interesante', color: 'dorado' };
-      return { emoji: '⭕', label: 'Descartar', color: 'gris' };
+      if (score >= 70) return { emoji: '🐋', label: 'Pez Gordo' };
+      if (score >= 40) return { emoji: '🐟', label: 'Interesante' };
+      return { emoji: '⭕', label: 'Descartar' };
     }
 
-    // Normalizar, calcular score y ordenar de mayor a menor
+    // Normalizar, calcular score y ordenar
     const lugares = itemsFiltrados
       .map(p => {
         const tiene_web = !!(p.website && p.website !== 'undefined' && p.website !== 'null');
@@ -93,23 +86,23 @@ export async function onRequestPost(context) {
           resenas: p.reviewsCount || null,
           tiene_web,
           score,
+          scoring: clasificacion.label,  // 'Pez Gordo', 'Interesante', 'Descartar'
           prioridad: clasificacion.emoji,
           clasificacion: clasificacion.label,
           pais_verificado: 'PA',
           fuente: 'google_maps'
         };
       })
-      .sort((a, b) => b.score - a.score) // Ordenar de mayor a menor score
+      .sort((a, b) => b.score - a.score)
       .slice(0, 10)
       .map((p, index) => ({ numero: index + 1, ...p }));
 
-    // Estadísticas de scoring
-    const pezGordo = lugares.filter(l => l.clasificacion === 'Pez Gordo').length;
-    const interesante = lugares.filter(l => l.clasificacion === 'Interesante').length;
-    const descartar = lugares.filter(l => l.clasificacion === 'Descartar').length;
+    const pezGordo = lugares.filter(l => l.scoring === 'Pez Gordo').length;
+    const interesante = lugares.filter(l => l.scoring === 'Interesante').length;
+    const descartar = lugares.filter(l => l.scoring === 'Descartar').length;
 
-    console.log(`Scoring: ${pezGordo} Pez Gordo 🐋 | ${interesante} Interesante 🐟 | ${descartar} Descartar ⭕`);
-    console.log(`Google Maps: ${items.length} resultados -> ${lugares.length} verificados en Panama`);
+    console.log(`Scoring: ${pezGordo} Pez Gordo | ${interesante} Interesante | ${descartar} Descartar`);
+    console.log(`Google Maps: ${items.length} -> ${lugares.length} verificados en Panama`);
 
     return Response.json({
       success: true,
