@@ -963,46 +963,6 @@ function showToast(msg) {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 3500);
 }
-
-// ─── PLANTILLAS ──────────────────────────────────────────────────
-async function cargarPlantilla() {
-  const key = document.getElementById('campana-plantilla').value;
-  if (!key) return; // Plantilla personalizada — no tocar
-
-  try {
-    const res = await fetch('/api/plantillas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, nombre: '{nombre}', rubro: '{rubro}' })
-    });
-    const data = await res.json();
-    if (data.success) {
-      document.getElementById('campana-asunto').value = data.asunto;
-      document.getElementById('campana-cuerpo').value = data.cuerpo;
-      showToast(data.icono + ' Plantilla ' + data.rubro + ' cargada');
-    }
-  } catch(e) {
-    showToast('⚠ Error cargando plantilla');
-  }
-}
-
-// Cargar plantilla automatica en modal individual segun rubro del prospecto
-async function cargarPlantillaIndividual(rubro, nombre) {
-  if (!rubro) return;
-  try {
-    const res = await fetch('/api/plantillas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rubro, nombre })
-    });
-    const data = await res.json();
-    if (data.success) {
-      document.getElementById('correo-asunto').value = data.asunto;
-      document.getElementById('correo-cuerpo').value = data.cuerpo;
-    }
-  } catch(e) { /* silencioso */ }
-}
-
 </script>
 </body>
 </html>
