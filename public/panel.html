@@ -434,6 +434,9 @@
           <option value="retail">🛍️ Tienda / Retail</option>
           <option value="servicios_profesionales">⚖️ Servicios Profesionales</option>
           <option value="multiservicios">✨ Multiservicios / Otros</option>
+          <option disabled>──────────────────────</option>
+          <option value="seguimiento_valor">🔁 Seguimiento — Valor y Prueba Social (3-4 días)</option>
+          <option value="seguimiento_pez_gordo">🐋 Seguimiento — Pez Gordo / WhatsApp (3-4 días)</option>
         </select>
       </div>
       <div class="field">
@@ -727,7 +730,6 @@ async function ejecutarCampana() {
 
   if (!plantilla_asunto || !plantilla_cuerpo) { showToast('⚠ Completa asunto y cuerpo'); return; }
 
-  // Construir lote solo con prospectos que tienen correo
   const lote = [...seleccionados]
     .map(id => todosProspectos.find(p => p.id === id))
     .filter(p => p && (correosLocales[p.id] || p.correo))
@@ -746,15 +748,13 @@ async function ejecutarCampana() {
   cerrarModal('modalCampana');
   document.getElementById('btnLanzar').disabled = true;
 
-  // Mostrar progress
   const progressSection = document.getElementById('progressSection');
   progressSection.classList.add('active');
   document.getElementById('progressFill').style.width = '30%';
-  document.getElementById('progressLabel').textContent = `⏳ Enviando ${lote.length} correos... (esto tarda ~${lote.length * 2}-${lote.length * 3}s)`;
+  document.getElementById('progressLabel').textContent = `⏳ Enviando ${lote.length} correos...`;
   document.getElementById('progressPercent').textContent = '';
 
   try {
-    // ✅ UNA sola petición al Worker — él maneja el throttling internamente
     const res = await fetch('/api/correo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -769,7 +769,6 @@ async function ejecutarCampana() {
         `✅ Completado: ${data.enviados} enviados · ${data.fallidos} fallidos`;
       document.getElementById('progressPercent').textContent = '100%';
 
-      // Marcar estados locales
       lote.forEach(dest => {
         const p = todosProspectos.find(x => x.correo === dest.para || correosLocales[x.id] === dest.para);
         if (p) estadosLocales[p.id] = 'enviado';
@@ -791,6 +790,7 @@ async function ejecutarCampana() {
   document.getElementById('btnLanzar').disabled = false;
   setTimeout(() => progressSection.classList.remove('active'), 6000);
 }
+
 
 // ─── CORREO INDIVIDUAL ───────────────────────────────────────────
 function abrirModalCorreo(id) {

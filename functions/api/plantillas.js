@@ -118,6 +118,50 @@ TechZone Panamá
 📧 eduardo.aizpruap@gmail.com`
   },
 
+  // ─── 6. SEGUIMIENTO — VALOR Y PRUEBA SOCIAL ──────────────────
+  seguimiento_valor: {
+    rubro: 'Seguimiento',
+    tono: 'conversacional',
+    icono: '🔁',
+    asunto: 'Re: Propuesta de TechZone para {nombre} — un dato que olvidé mencionar',
+    cuerpo: `Hola de nuevo equipo de {nombre},
+
+Espero que estén teniendo una excelente semana.
+
+Solo pasaba por aquí para compartirles un dato que olvidé mencionar en mi correo anterior sobre {rubro}: Los negocios en Panamá que implementan un sistema de pedidos directos logran aumentar su margen de ganancia neta entre un 15% y un 25% desde el primer mes, simplemente eliminando las comisiones de terceros.
+
+Me gustaría mucho que {nombre} fuera el próximo caso de éxito. ¿Pudieron revisar la propuesta que les envié o tienen alguna duda técnica que podamos resolver en una llamada de 5 minutos?
+
+Quedo atento a su respuesta.
+
+Saludos,
+Eduardo Aizprua
+TechZone Panamá
+📧 eduardo.aizpruap@gmail.com`
+  },
+
+  // ─── 7. SEGUIMIENTO — PEZ GORDO (DIRECTO A WHATSAPP) ─────────
+  seguimiento_pez_gordo: {
+    rubro: 'Seguimiento Ejecutivo',
+    tono: 'directo',
+    icono: '🐋',
+    asunto: '¿Alguna duda con la estrategia para {nombre}?',
+    cuerpo: `Hola {nombre},
+
+Te escribo brevemente porque entiendo que tu agenda debe estar a tope.
+
+Sigo muy interesado en que trabajemos juntos para optimizar los procesos digitales de tu negocio. He reservado un espacio en mi agenda para mañana por si prefieres que te explique los beneficios de TechZone de forma más directa.
+
+Si te resulta más cómodo, puedes escribirme o enviarme un audio por WhatsApp al +507-6423-0862 y lo coordinamos por allá en un momento.
+
+Quedo a la espera de tus noticias para dar el siguiente paso.
+
+Saludos,
+Eduardo Aizprua
+TechZone Panamá
+📧 eduardo.aizpruap@gmail.com`
+  },
+
   // ─── 5. MULTISERVICIOS / OTROS ───────────────────────────────
   multiservicios: {
     rubro: 'Multiservicios',
