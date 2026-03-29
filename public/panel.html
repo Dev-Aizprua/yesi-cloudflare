@@ -457,7 +457,7 @@ Eduardo Aizprua
 TechZone Panama</textarea>
       </div>
       <div style="font-size:9px;color:var(--accent3);margin-top:8px;">
-        ⚡ Anti-Spam Throttling activo: delay de 5-10s entre correos para maxima entregabilidad
+        ⚡ Anti-Spam Throttling activo: delay de 2-3s entre correos · El Worker procesa todo en una sola petición
       </div>
     </div>
     <div class="modal-footer">
@@ -722,10 +722,10 @@ function abrirModalCampana() {
 }
 
 async function ejecutarCampana() {
-  const asunto = document.getElementById('campana-asunto').value.trim();
-  const cuerpo = document.getElementById('campana-cuerpo').value.trim();
+  const plantilla_asunto = document.getElementById('campana-asunto').value.trim();
+  const plantilla_cuerpo = document.getElementById('campana-cuerpo').value.trim();
 
-  if (!asunto || !cuerpo) { showToast('⚠ Completa asunto y cuerpo'); return; }
+  if (!plantilla_asunto || !plantilla_cuerpo) { showToast('⚠ Completa asunto y cuerpo'); return; }
 
   // Construir lote solo con prospectos que tienen correo
   const lote = [...seleccionados]
@@ -746,83 +746,50 @@ async function ejecutarCampana() {
   cerrarModal('modalCampana');
   document.getElementById('btnLanzar').disabled = true;
 
-  // Mostrar progress bar
+  // Mostrar progress
   const progressSection = document.getElementById('progressSection');
   progressSection.classList.add('active');
+  document.getElementById('progressFill').style.width = '30%';
+  document.getElementById('progressLabel').textContent = `⏳ Enviando ${lote.length} correos... (esto tarda ~${lote.length * 2}-${lote.length * 3}s)`;
+  document.getElementById('progressPercent').textContent = '';
 
-  let enviados = 0;
-  let fallidos = 0;
+  try {
+    // ✅ UNA sola petición al Worker — él maneja el throttling internamente
+    const res = await fetch('/api/correo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lote, plantilla_asunto, plantilla_cuerpo })
+    });
 
-  // Enviar uno por uno con throttling visual
-  for (let i = 0; i < lote.length; i++) {
-    const dest = lote[i];
-    const progPct = Math.round((i / lote.length) * 100);
+    const data = await res.json();
 
-    document.getElementById('progressLabel').textContent = `Enviando ${i + 1} de ${lote.length}: ${dest.nombre}...`;
-    document.getElementById('progressPercent').textContent = progPct + '%';
-    document.getElementById('progressFill').style.width = progPct + '%';
+    if (data.success) {
+      document.getElementById('progressFill').style.width = '100%';
+      document.getElementById('progressLabel').textContent =
+        `✅ Completado: ${data.enviados} enviados · ${data.fallidos} fallidos`;
+      document.getElementById('progressPercent').textContent = '100%';
 
-    try {
-      // Personalizar cuerpo
-      const cuerpoPersonalizado = cuerpo
-        .replace(/\{nombre\}/g, dest.nombre)
-        .replace(/\{rubro\}/g, dest.rubro || 'su negocio')
-        .replace(/\{empresa\}/g, dest.empresa);
-
-      const asuntoPersonalizado = asunto
-        .replace(/\{nombre\}/g, dest.nombre)
-        .replace(/\{rubro\}/g, dest.rubro || 'su negocio');
-
-      const res = await fetch('/api/correo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          para: dest.para, nombre: dest.nombre,
-          empresa: dest.empresa, asunto: asuntoPersonalizado,
-          cuerpo: cuerpoPersonalizado
-        })
+      // Marcar estados locales
+      lote.forEach(dest => {
+        const p = todosProspectos.find(x => x.correo === dest.para || correosLocales[x.id] === dest.para);
+        if (p) estadosLocales[p.id] = 'enviado';
       });
 
-      const data = await res.json();
-      if (data.success) {
-        enviados++;
-        estadosLocales[todosProspectos.find(p => p.correo === dest.para || correosLocales[p.id] === dest.para)?.id] = 'enviado';
-      } else {
-        fallidos++;
-      }
-    } catch(e) {
-      fallidos++;
+      showToast(`✅ ${data.enviados} correos enviados · ${data.fallidos} fallidos`);
+      deseleccionarTodos();
+      actualizarStats();
+      filtrar();
+    } else {
+      document.getElementById('progressLabel').textContent = '❌ Error en la campaña';
+      showToast('❌ Error: ' + (data.error || 'No se pudo enviar'));
     }
-
-    // Anti-Spam Throttling: delay 5-10s entre correos (excepto el último)
-    if (i < lote.length - 1) {
-      const delay = Math.floor(Math.random() * 5000) + 5000;
-      const segundos = Math.ceil(delay / 1000);
-      document.getElementById('progressLabel').textContent = `⏳ Esperando ${segundos}s (Anti-Spam)...`;
-      await new Promise(r => setTimeout(r, delay));
-    }
+  } catch(e) {
+    document.getElementById('progressLabel').textContent = '❌ Error de conexión';
+    showToast('❌ Error de conexión');
   }
 
-  // Completado
-  document.getElementById('progressFill').style.width = '100%';
-  document.getElementById('progressPercent').textContent = '100%';
-  document.getElementById('progressLabel').textContent = `✅ Campaña completada: ${enviados} enviados · ${fallidos} fallidos`;
-
-  // Notificar Telegram
-  fetch('/api/telegram', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mensaje: `🚀 <b>Campaña completada</b>\n\nEnviados: ${enviados}\nFallidos: ${fallidos}\nTotal: ${lote.length}` })
-  });
-
-  showToast(`✅ ${enviados} correos enviados · ${fallidos} fallidos`);
   document.getElementById('btnLanzar').disabled = false;
-  deseleccionarTodos();
-  actualizarStats();
-  filtrar();
-
-  // Ocultar progress después de 5s
-  setTimeout(() => progressSection.classList.remove('active'), 5000);
+  setTimeout(() => progressSection.classList.remove('active'), 6000);
 }
 
 // ─── CORREO INDIVIDUAL ───────────────────────────────────────────

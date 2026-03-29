@@ -58,7 +58,7 @@ async function enviarUno(env, para, nombre, empresa, asunto, cuerpo, panamaTime)
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'TechZone Panama <onboarding@resend.dev>',
+      from: 'Kairós <kairos@agente.techzone-pro.com>',
       to: [para],
       subject: asunto || `Propuesta para ${empresa || nombre || 'su negocio'}`,
       html: htmlBody,
@@ -143,9 +143,9 @@ export async function onRequestPost(context) {
         resultados.push(resultado);
         if (resultado.success) enviados++; else fallidos++;
 
-        // Anti-Spam Throttling: delay entre correos (excepto el ultimo)
+        // Anti-Spam Throttling: delay 2-3s entre correos (dentro del límite de 30s de CF Workers)
         if (i < lote.length - 1) {
-          const espera = Math.floor(Math.random() * 5000) + 5000;
+          const espera = Math.floor(Math.random() * 1000) + 2000;
           console.log(`Throttling: esperando ${espera}ms antes del siguiente correo...`);
           await delay(espera);
         }
