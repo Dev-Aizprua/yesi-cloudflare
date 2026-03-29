@@ -12,7 +12,7 @@ export async function onRequestPost(context) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         searchStringsArray: [searchQuery],
-        maxCrawledPlacesPerSearch: 10,
+        maxCrawledPlacesPerSearch: 5,
         language: 'es',
         countryCode: 'pa',
         locationQuery: 'Panama',
