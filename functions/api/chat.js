@@ -39,10 +39,13 @@ export async function onRequestPost(context) {
     const usarPro = requiereMotorPro(mensaje);
     const apiKey = usarPro && env.GROQ_API_KEY_PRO ? env.GROQ_API_KEY_PRO : env.GROQ_API_KEY;
     const modelo = usarPro && env.GROQ_API_KEY_PRO ? 'llama-3.3-70b-versatile' : 'llama-3.1-8b-instant';
+    // SIEMPRE usar LLaMA 3.3 cuando hay búsqueda local o contacto — nunca degradar
+    const apiKeyFinal = requiereBusquedaLocal(mensaje) || requiereContacto(mensaje) ? (env.GROQ_API_KEY_PRO || env.GROQ_API_KEY) : apiKey;
+    const modeloFinal = requiereBusquedaLocal(mensaje) || requiereContacto(mensaje) ? 'llama-3.3-70b-versatile' : modelo;
 
-    console.log(`Motor: ${modelo} | Pro: ${usarPro}`);
+    console.log(`Motor: ${modeloFinal} | Pro: ${usarPro} | Forzado: ${requiereBusquedaLocal(mensaje) || requiereContacto(mensaje)}`);
 
-    const groq = new Groq({ apiKey });
+    const groq = new Groq({ apiKey: apiKeyFinal });
     const tavilyClient = tavily({ apiKey: env.TAVILY_API_KEY });
 
     let searchContext = '';
@@ -190,7 +193,7 @@ export async function onRequestPost(context) {
     messages.push({ role: 'user', content: mensaje });
 
     const completion = await groq.chat.completions.create({
-      model: modelo,
+      model: modeloFinal,
       messages,
       temperature: (lugaresContext || contactoContext) ? 0.1 : (usarPro ? 0.3 : 0.7),
       max_tokens: usarPro ? 4096 : 2048,

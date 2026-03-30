@@ -29,23 +29,26 @@ export async function onRequestPost(context) {
         const emailRegex = /\b[a-zA-Z0-9._%+\-]{2,}@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6}\b/g;
         const matches = html.match(emailRegex) || [];
 
-        // Filtrar correos basura y falsos positivos
+        // Filtrar correos basura, falsos positivos y correos de agencias/hosting
+        const dominiosAgencia = [
+          'webstudio', 'hosting', 'wix', 'wordpress', 'squarespace',
+          'godaddy', 'bluehost', 'siteground', 'namecheap', 'hostgator',
+          'agencia', 'developer', 'devops', 'studio', 'solutions'
+        ];
+
         const filtrados = matches.filter(e => {
-          // Debe tener formato usuario@dominio.tld válido
           const partes = e.split('@');
           if (partes.length !== 2) return false;
           const [usuario, dominio] = partes;
-          // Usuario no puede empezar con número seguido de guión (patrón de URL)
           if (/^\d+-/.test(usuario)) return false;
-          // Dominio debe tener al menos un punto y extensión válida
           if (!dominio.includes('.')) return false;
-          // Extensión debe ser texto puro (no .html, .php, .js, etc.)
           const ext = dominio.split('.').pop().toLowerCase();
           if (['html','php','js','css','png','jpg','gif','svg','xml','json'].includes(ext)) return false;
-          // Filtrar dominios conocidos como basura
           if (e.includes('noreply') || e.includes('no-reply') ||
               e.includes('example.com') || e.includes('sentry') ||
               e.includes('wixpress') || e.includes('schema.org')) return false;
+          // Filtrar correos de agencias web y proveedores de hosting
+          if (dominiosAgencia.some(p => e.toLowerCase().includes(p))) return false;
           return true;
         });
 
@@ -71,8 +74,8 @@ export async function onRequestPost(context) {
     }
 
     // ─── NIVEL 2: LANZAR VDRMOTA EN BACKGROUND ───────────────────
-    // No esperamos — lanzamos y notificamos por Telegram cuando llegue
-    console.log(`Scraper directo sin resultado. Lanzando vdrmota en background para: ${sitio_web}`);
+    // SIEMPRE se lanza cuando scraper directo no encuentra correo válido
+    console.log(`⚡ BACKGROUND ACTIVADO: Lanzando vdrmota para: ${sitio_web}`);
 
     try {
       const callbackUrl = `${new URL(request.url).origin}/api/contacto-callback`;
