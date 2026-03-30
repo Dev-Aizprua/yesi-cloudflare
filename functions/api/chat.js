@@ -166,7 +166,9 @@ export async function onRequestPost(context) {
         });
 
         if (searchResult.answer) {
-          searchContext = `\n\nINFORMACION VERIFICADA DE INTERNET:\n${searchResult.answer}\n`;
+          searchContext = `\n\n⚠️ INFORMACION VERIFICADA DE INTERNET (fuente: Tavily):\n`;
+          searchContext += `INSTRUCCION: Presenta esta información de forma natural y conversacional. NO uses formato de scoring (Pez Gordo/Interesante/Descartar). NO inventes datos adicionales. Solo usa lo que aparece aquí.\n\n`;
+          searchContext += `${searchResult.answer}\n`;
         }
         if (searchResult.results?.length > 0) {
           searchContext += `\nFUENTES:\n`;
@@ -179,10 +181,18 @@ export async function onRequestPost(context) {
       }
     }
 
-    // MENSAJES PARA GROQ
-    const systemContent = lugaresContext
-      ? lugaresContext + '\n\n' + (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + searchContext
-      : (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + contactoContext + searchContext;
+    // MENSAJES PARA GROQ — orden de prioridad del contexto
+    let systemContent;
+    if (lugaresContext) {
+      // Búsqueda local: datos Google Maps primero, ancla después
+      systemContent = lugaresContext + '\n\n' + (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.');
+    } else if (searchContext) {
+      // Búsqueda Tavily: datos reales primero — ancla simplificada sin scoring
+      systemContent = searchContext + '\n\nEres Kairos, agente de ventas de TechZone Panama. Responde en español de forma natural y conversacional basándote UNICAMENTE en la información verificada de arriba. NO uses formato de scoring ni emojis de pez.';
+    } else {
+      // Conversación normal: ancla completa
+      systemContent = (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + contactoContext;
+    }
 
     const messages = [
       {
