@@ -3,64 +3,74 @@ export async function onRequestPost(context) {
 
   try {
     const body = await request.json();
-    // Apify puede enviar el runId en distintos campos según la versión
-    const runId = body.runId || body.resource?.id || body.actorRunId;
-    const sitio_web = body.sitio_web || 'Sin URL';
-    const nombre = body.nombre || '';
-    const status = body.status || body.eventType || '';
+    const url = new URL(request.url);
+
+    // sitio_web y nombre vienen en query params
+    const sitio_web = url.searchParams.get('sitio_web') || 'Sin URL';
+    const nombre = url.searchParams.get('nombre') || '';
+
+    // runId viene en el payload default de Apify
+    const runId = body?.resource?.id || body?.data?.id || body?.runId;
+    const status = body?.eventType || body?.status || '';
 
     console.log(`Callback recibido: runId=${runId} status=${status} sitio=${sitio_web}`);
     console.log(`Body completo: ${JSON.stringify(body)}`);
 
-    // Si el run falló o hizo timeout
-    if (!runId || status === 'ACTOR.RUN.FAILED' || status === 'ACTOR.RUN.TIMED_OUT') {
-      await notificarTelegram(env, `⚠️ <b>Búsqueda de correo sin resultado</b>\n\nNegocio: ${nombre || sitio_web}\nSitio: ${sitio_web}\nEstado: Sin correo público encontrado`);
+    if (!runId) {
+      console.log('Sin runId — no se puede obtener resultado');
+      await notificarTelegram(env,
+        `⚠️ <b>Callback sin runId</b>\n\nSitio: ${sitio_web}\nBody: ${JSON.stringify(body).substring(0, 200)}`
+      );
       return Response.json({ success: true });
     }
 
-    // Si el run fue exitoso — obtener resultados
-    if (status === 'ACTOR.RUN.SUCCEEDED') {
-      const itemsRes = await fetch(
-        `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${env.APIFY_TOKEN_CONTACT}`
+    // Si el run falló o hizo timeout
+    if (status.includes('FAILED') || status.includes('TIMED_OUT')) {
+      await notificarTelegram(env,
+        `⚠️ <b>Búsqueda sin resultado</b>\n\nNegocio: ${nombre || sitio_web}\nSitio: ${sitio_web}\nEstado: Sin correo público encontrado`
       );
-      const items = await itemsRes.json();
+      return Response.json({ success: true });
+    }
 
-      let correoEncontrado = null;
+    // Obtener resultados del dataset
+    const itemsRes = await fetch(
+      `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${env.APIFY_TOKEN_CONTACT}`
+    );
+    const items = await itemsRes.json();
 
-      if (Array.isArray(items) && items.length > 0) {
-        for (const item of items) {
-          const emails = item.emails || [];
-          const emailFiltrado = emails.find(e =>
-            !e.includes('noreply') &&
-            !e.includes('no-reply') &&
-            !e.includes('example.com') &&
-            !e.includes('sentry')
-          );
-          if (emailFiltrado) {
-            correoEncontrado = emailFiltrado;
-            break;
-          }
+    let correoEncontrado = null;
+
+    if (Array.isArray(items) && items.length > 0) {
+      for (const item of items) {
+        const emails = item.emails || [];
+        const emailFiltrado = emails.find(e =>
+          !e.includes('noreply') &&
+          !e.includes('no-reply') &&
+          !e.includes('example.com') &&
+          !e.includes('sentry')
+        );
+        if (emailFiltrado) {
+          correoEncontrado = emailFiltrado;
+          break;
         }
       }
+    }
 
-      if (correoEncontrado) {
-        // ✅ Correo encontrado — notificar con el dato listo para copiar
-        await notificarTelegram(env,
-          `📧 <b>Correo encontrado</b>\n\n` +
-          `Negocio: ${nombre || 'Sin nombre'}\n` +
-          `Sitio: ${sitio_web}\n` +
-          `Correo: <code>${correoEncontrado}</code>\n\n` +
-          `💡 Copia el correo y agrégalo en el Panel de Kairós`
-        );
-      } else {
-        // Sin correo — notificar limpiamente
-        await notificarTelegram(env,
-          `🔍 <b>Búsqueda completada — sin correo público</b>\n\n` +
-          `Negocio: ${nombre || 'Sin nombre'}\n` +
-          `Sitio: ${sitio_web}\n` +
-          `Resultado: No tiene correo público visible`
-        );
-      }
+    if (correoEncontrado) {
+      await notificarTelegram(env,
+        `📧 <b>Correo encontrado</b>\n\n` +
+        `Negocio: ${nombre || 'Sin nombre'}\n` +
+        `Sitio: ${sitio_web}\n` +
+        `Correo: <code>${correoEncontrado}</code>\n\n` +
+        `💡 Agrégalo en el Panel de Kairós`
+      );
+    } else {
+      await notificarTelegram(env,
+        `🔍 <b>Búsqueda completada — sin correo público</b>\n\n` +
+        `Negocio: ${nombre || 'Sin nombre'}\n` +
+        `Sitio: ${sitio_web}\n` +
+        `Resultado: No tiene correo público visible`
+      );
     }
 
     return Response.json({ success: true });
@@ -73,8 +83,7 @@ export async function onRequestPost(context) {
 
 async function notificarTelegram(env, mensaje) {
   try {
-    const url = `https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`;
-    await fetch(url, {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

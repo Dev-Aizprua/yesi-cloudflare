@@ -78,16 +78,15 @@ export async function onRequestPost(context) {
       const callbackUrl = `${new URL(request.url).origin}/api/contacto-callback`;
       console.log(`Webhook URL: ${callbackUrl}`);
 
-      // Webhook como parámetro de query — variables Apify: {{resource.id}} y {{eventData.actorRunId}}
+      // Webhook sin payloadTemplate — Apify envía su payload default con resource.id real
+      // Pasamos sitio_web y nombre en la URL como query params
+      const encodedSitio = encodeURIComponent(sitio_web);
+      const encodedNombre = encodeURIComponent(nombre || '');
+      const callbackUrlConParams = `${callbackUrl}?sitio_web=${encodedSitio}&nombre=${encodedNombre}`;
+
       const webhookObj = [{
         eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED', 'ACTOR.RUN.TIMED_OUT'],
-        requestUrl: callbackUrl,
-        payloadTemplate: JSON.stringify({
-          runId: "{{resource.id}}",
-          status: "{{eventType}}",
-          sitio_web: sitio_web,
-          nombre: (nombre || '').replace(/"/g, "'")
-        })
+        requestUrl: callbackUrlConParams
       }];
       const webhookPayload = btoa(JSON.stringify(webhookObj));
 
