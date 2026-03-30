@@ -77,20 +77,22 @@ export async function onRequestPost(context) {
     try {
       const callbackUrl = `${new URL(request.url).origin}/api/contacto-callback`;
       console.log(`Webhook URL: ${callbackUrl}`);
-      const runRes = await fetch(`https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/runs?token=${env.APIFY_TOKEN_CONTACT}&memory=256`, {
+
+      // Webhook como parámetro de query — única forma que acepta la API de Apify
+      const webhookPayload = Buffer.from(JSON.stringify([{
+        eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED', 'ACTOR.RUN.TIMED_OUT'],
+        requestUrl: callbackUrl,
+        payloadTemplate: `{"runId":"{{resource.id}}","sitio_web":"${sitio_web}","nombre":"${(nombre||'').replace(/"/g,"'")}","status":"{{eventType}}"}`
+      }])).toString('base64');
+
+      const runRes = await fetch(`https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/runs?token=${env.APIFY_TOKEN_CONTACT}&memory=256&webhooks=${webhookPayload}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           startUrls: [{ url: sitio_web }],
           maxDepth: 1,
           maxPagesPerStartUrl: 1,
-          proxyConfiguration: { useApifyProxy: true },
-          // Webhook: cuando termine, llama a nuestro endpoint
-          webhooks: [{
-            eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED', 'ACTOR.RUN.TIMED_OUT'],
-            requestUrl: `${new URL(request.url).origin}/api/contacto-callback`,
-            payloadTemplate: `{"runId":"{{resource.id}}","sitio_web":"${sitio_web}","nombre":"${nombre || ''}","status":"{{eventType}}"}`
-          }]
+          proxyConfiguration: { useApifyProxy: true }
         })
       });
 
