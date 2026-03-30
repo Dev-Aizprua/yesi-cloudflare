@@ -75,6 +75,8 @@ export async function onRequestPost(context) {
     console.log(`Scraper directo sin resultado. Lanzando vdrmota en background para: ${sitio_web}`);
 
     try {
+      const callbackUrl = `${new URL(request.url).origin}/api/contacto-callback`;
+      console.log(`Webhook URL: ${callbackUrl}`);
       const runRes = await fetch(`https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/runs?token=${env.APIFY_TOKEN_CONTACT}&memory=256`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
