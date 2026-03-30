@@ -10,93 +10,101 @@ export async function onRequestPost(context) {
 
     console.log(`Extrayendo correo de: ${sitio_web} (${nombre})`);
 
-    // ─── PASO 1: Lanzar el actor de forma asíncrona ───────────────
-    const runRes = await fetch(`https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/runs?token=${env.APIFY_TOKEN_CONTACT}&memory=256`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        startUrls: [{ url: sitio_web }],
-        maxDepth: 1,
-        maxPagesPerStartUrl: 1,
-        proxyConfiguration: { useApifyProxy: true }
-      })
-    });
+    // ─── NIVEL 1: SCRAPER DIRECTO (3-5s, gratis) ─────────────────
+    let correoDirecto = null;
+    try {
+      const htmlRes = await fetch(sitio_web, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'es-PA,es;q=0.9,en;q=0.8',
+        },
+        signal: AbortSignal.timeout(8000) // 8s máximo
+      });
 
-    if (!runRes.ok) {
-      const err = await runRes.json().catch(() => ({}));
-      console.error('Error lanzando actor:', JSON.stringify(err));
-      return Response.json({ success: true, correo: null, mensaje: 'No se pudo iniciar la búsqueda de contacto.' });
-    }
+      if (htmlRes.ok) {
+        const html = await htmlRes.text();
 
-    const runData = await runRes.json();
-    const runId = runData?.data?.id;
+        // Regex para emails válidos — evita falsos positivos
+        const emailRegex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+        const matches = html.match(emailRegex) || [];
 
-    if (!runId) {
-      return Response.json({ success: true, correo: null, mensaje: 'No se obtuvo ID del run.' });
-    }
-
-    console.log(`Run lanzado: ${runId} — esperando resultados...`);
-
-    // ─── PASO 2: Polling cada 4s hasta 24s máximo ─────────────────
-    const maxEspera = 24000;
-    const intervalo = 4000;
-    let elapsed = 0;
-    let status = 'RUNNING';
-
-    while (elapsed < maxEspera) {
-      await new Promise(r => setTimeout(r, intervalo));
-      elapsed += intervalo;
-
-      const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${env.APIFY_TOKEN_CONTACT}`);
-      const statusData = await statusRes.json();
-      status = statusData?.data?.status;
-
-      console.log(`Run ${runId} status: ${status} (${elapsed}ms)`);
-
-      if (status === 'SUCCEEDED') break;
-      if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
-        return Response.json({ success: true, correo: null, mensaje: 'Búsqueda completada. No se encontró correo público.' });
-      }
-    }
-
-    if (status !== 'SUCCEEDED') {
-      console.log(`Run no completó a tiempo: ${status}`);
-      return Response.json({ success: true, correo: null, mensaje: 'Búsqueda exitosa. No se encontró correo público en el sitio web.' });
-    }
-
-    // ─── PASO 3: Obtener resultados ───────────────────────────────
-    const itemsRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${env.APIFY_TOKEN_CONTACT}`);
-    const items = await itemsRes.json();
-
-    if (!Array.isArray(items) || items.length === 0) {
-      return Response.json({ success: true, correo: null, mensaje: 'Búsqueda exitosa. No se encontró correo público en el sitio web.' });
-    }
-
-    // ─── PASO 4: Buscar primer correo válido ──────────────────────
-    let correoEncontrado = null;
-    for (const item of items) {
-      const emails = item.emails || [];
-      if (emails.length > 0) {
-        const emailFiltrado = emails.find(e =>
+        // Filtrar correos basura
+        const filtrados = matches.filter(e =>
           !e.includes('noreply') &&
           !e.includes('no-reply') &&
           !e.includes('example.com') &&
-          !e.includes('sentry')
+          !e.includes('sentry') &&
+          !e.includes('wixpress') &&
+          !e.includes('schema.org') &&
+          !e.includes('.png') &&
+          !e.includes('.jpg') &&
+          !e.includes('.gif') &&
+          !e.endsWith('.js') &&
+          !e.endsWith('.css') &&
+          e.includes('.')
         );
-        if (emailFiltrado) {
-          correoEncontrado = emailFiltrado;
-          break;
+
+        // Deduplicar y tomar el primero
+        const unicos = [...new Set(filtrados)];
+        if (unicos.length > 0) {
+          correoDirecto = unicos[0];
+          console.log(`Scraper directo encontró: ${correoDirecto}`);
         }
       }
+    } catch(e) {
+      console.log(`Scraper directo falló (bloqueado o timeout): ${e.message}`);
     }
 
-    if (correoEncontrado) {
-      console.log(`Correo encontrado para ${nombre}: ${correoEncontrado}`);
-      return Response.json({ success: true, correo: correoEncontrado, sitio_web });
-    } else {
-      console.log(`Sin correo para ${nombre}`);
-      return Response.json({ success: true, correo: null, mensaje: 'Búsqueda exitosa. No se encontró correo público en el sitio web.' });
+    // ─── Si encontró correo directo — responde inmediatamente ─────
+    if (correoDirecto) {
+      return Response.json({
+        success: true,
+        correo: correoDirecto,
+        sitio_web,
+        metodo: 'directo'
+      });
     }
+
+    // ─── NIVEL 2: LANZAR VDRMOTA EN BACKGROUND ───────────────────
+    // No esperamos — lanzamos y notificamos por Telegram cuando llegue
+    console.log(`Scraper directo sin resultado. Lanzando vdrmota en background para: ${sitio_web}`);
+
+    try {
+      const runRes = await fetch(`https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/runs?token=${env.APIFY_TOKEN_CONTACT}&memory=256`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startUrls: [{ url: sitio_web }],
+          maxDepth: 1,
+          maxPagesPerStartUrl: 1,
+          proxyConfiguration: { useApifyProxy: true },
+          // Webhook: cuando termine, llama a nuestro endpoint
+          webhooks: [{
+            eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED', 'ACTOR.RUN.TIMED_OUT'],
+            requestUrl: `${new URL(request.url).origin}/api/contacto-callback`,
+            payloadTemplate: `{"runId":"{{resource.id}}","sitio_web":"${sitio_web}","nombre":"${nombre || ''}","status":"{{eventType}}"}`
+          }]
+        })
+      });
+
+      if (runRes.ok) {
+        const runData = await runRes.json();
+        const runId = runData?.data?.id;
+        console.log(`vdrmota lanzado en background. RunId: ${runId}`);
+      }
+    } catch(e) {
+      console.log(`Error lanzando vdrmota: ${e.message}`);
+    }
+
+    // Responder inmediatamente sin bloquear
+    return Response.json({
+      success: true,
+      correo: null,
+      sitio_web,
+      metodo: 'background',
+      mensaje: 'Búsqueda profunda iniciada. Resultado llegará por Telegram en ~2 minutos.'
+    });
 
   } catch (error) {
     console.error('Error en contacto:', error.message);

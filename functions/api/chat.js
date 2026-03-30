@@ -118,7 +118,14 @@ export async function onRequestPost(context) {
             contactoContext = `\n\n⚠️ DATO REAL de /api/contacto. USA SOLO ESTE VALOR, NO INVENTES NADA:\n`;
             contactoContext += `Sitio web consultado: ${urlEncontrada}\n`;
             contactoContext += `Correo encontrado: ${contactoData.correo}\n`;
+            contactoContext += `Metodo: ${contactoData.metodo || 'directo'}\n`;
             contactoContext += `INSTRUCCION: Presenta este correo exactamente como aparece arriba.\n`;
+          } else if (contactoData.metodo === 'background') {
+            console.log(`Búsqueda en background iniciada para: ${urlEncontrada}`);
+            contactoContext = `\n\nEXTRACCION DE CONTACTO:\n`;
+            contactoContext += `El scraper directo no encontró correo en el HTML del sitio (puede estar protegido).\n`;
+            contactoContext += `Se inició una búsqueda profunda en background.\n`;
+            contactoContext += `INSTRUCCION: Informa al usuario exactamente esto: "No encontré correo en el HTML del sitio. Lancé una búsqueda profunda — te llegará el resultado por Telegram en aproximadamente 2 minutos."\n`;
           } else {
             console.log(`Sin correo para: ${urlEncontrada}`);
             contactoContext = `\n\n⚠️ DATO REAL de /api/contacto:\n`;
