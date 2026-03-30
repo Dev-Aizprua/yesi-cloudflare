@@ -145,9 +145,14 @@ export async function onRequestPost(context) {
     }
 
     // BUSQUEDA WEB CON TAVILY — solo si no hubo busqueda local
-    const needsSearch = !busquedaRealizada && /\b(hoy|actual|reciente|noticia|precio|clima|investiga|verifica)\b/i.test(mensaje);
+    // Tavily se activa para cualquier pregunta que requiera datos actuales o verificación
+    const needsSearch = !busquedaRealizada && (
+      /\b(hoy|actual|reciente|noticia|precio|clima|investiga|verifica|busca|buscar|encuentra|existe|disponible|nuevo|lanzó|salio|version|2024|2025|2026|quien es|que es|como esta|cuanto cuesta|cuanto vale|donde esta|cuando fue|es verdad|es cierto)\b/i.test(mensaje) ||
+      mensaje.includes('?') && mensaje.length > 30  // cualquier pregunta larga probablemente necesita verificación
+    );
 
     if (needsSearch) {
+      console.log('🔍 Tavily activado para:', mensaje.substring(0, 60));
       try {
         const searchResult = await tavilyClient.search(mensaje, {
           maxResults: 5,
