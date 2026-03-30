@@ -1217,12 +1217,6 @@ async function sendMessage() {
   const text = input.value.trim();
   if (!text || isLoading) return;
 
-  if (!config.geminiKey) {
-    showToast('⚠ Configura tu API Key de Gemini primero');
-    toggleConfig();
-    return;
-  }
-
   const logIndex = logs.length;
   isLoading = true;
   document.getElementById('sendBtn').disabled = true;
@@ -1685,4 +1679,4 @@ function speakText(btn, logIndex) {
 }
 </script>
 </body>
-</html> 
+</html>
