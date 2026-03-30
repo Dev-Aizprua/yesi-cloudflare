@@ -10,13 +10,14 @@ export async function onRequestPost(context) {
 
     console.log(`Extrayendo correo de: ${sitio_web} (${nombre})`);
 
-    const contactRes = await fetch(`https://api.apify.com/v2/acts/9Sk4JJhEma9vBKqrg/run-sync-get-dataset-items?token=${env.APIFY_TOKEN_CONTACT}&timeout=25&memory=256`, {
+    // Actor misceres/contact-info-scraper — rapido (10-15s), reemplaza vdrmota que siempre hacia timeout
+    const contactRes = await fetch(`https://api.apify.com/v2/acts/misceres~contact-info-scraper/run-sync-get-dataset-items?token=${env.APIFY_TOKEN_CONTACT}&timeout=25&memory=256`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         startUrls: [{ url: sitio_web }],
         maxDepth: 1,
-        maxPagesPerStartUrl: 1,  // Solo página principal para reducir tiempo
+        maxPagesPerStartUrl: 1,
         proxyConfiguration: { useApifyProxy: true }
       })
     });
