@@ -10,13 +10,13 @@ export async function onRequestPost(context) {
 
     console.log(`Extrayendo correo de: ${sitio_web} (${nombre})`);
 
-    const contactRes = await fetch(`https://api.apify.com/v2/acts/9Sk4JJhEma9vBKqrg/run-sync-get-dataset-items?token=${env.APIFY_TOKEN_CONTACT}&timeout=55&memory=256`, {
+    const contactRes = await fetch(`https://api.apify.com/v2/acts/9Sk4JJhEma9vBKqrg/run-sync-get-dataset-items?token=${env.APIFY_TOKEN_CONTACT}&timeout=25&memory=256`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         startUrls: [{ url: sitio_web }],
         maxDepth: 1,
-        maxPagesPerStartUrl: 3,
+        maxPagesPerStartUrl: 1,  // Solo página principal para reducir tiempo
         proxyConfiguration: { useApifyProxy: true }
       })
     });
@@ -57,7 +57,8 @@ export async function onRequestPost(context) {
       return Response.json({ success: true, correo: correoEncontrado, sitio_web });
     } else {
       console.log(`Sin correo para ${nombre}`);
-      return Response.json({ success: false, correo: null, mensaje: 'No se encontro correo publico en el sitio web' });
+      // success: true = búsqueda exitosa pero sin resultado. success: false = error técnico.
+      return Response.json({ success: true, correo: null, mensaje: 'Búsqueda exitosa. No se encontró correo público en el sitio web.' });
     }
 
   } catch (error) {
