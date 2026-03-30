@@ -2,12 +2,32 @@ import Groq from 'groq-sdk';
 import { tavily } from '@tavily/core';
 
 function requiereMotorPro(mensaje) {
-  // INCLUYE todas las palabras de requiereBusquedaLocal para garantizar LLaMA 3.3 en búsquedas
   return /\b(busca|encuentra|analiza|investiga|prospectos|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|correo|propuesta|redacta|elabora|compara|evalua|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores|dame|lista|muestra|hay)\b/i.test(mensaje);
 }
 
 function requiereBusquedaLocal(mensaje) {
   return /\b(busca|encuentra|dame|lista|muestra|hay|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores)\b/i.test(mensaje);
+}
+
+function requiereContacto(mensaje) {
+  return /\b(extrae|extraer|busca|obtener|consigue|correo|email|contacto)\b/i.test(mensaje) &&
+         /\b(correo|email|contacto|mail)\b/i.test(mensaje);
+}
+
+function extraerUrlDeMensaje(mensaje, historial) {
+  // Buscar URL en el mensaje actual
+  const urlMatch = mensaje.match(/https?:\/\/[^\s"]+/);
+  if (urlMatch) return urlMatch[0];
+  // Buscar en el historial reciente (últimos 6 mensajes)
+  if (historial && historial.length > 0) {
+    const recientes = historial.slice(-6).reverse();
+    for (const h of recientes) {
+      const text = h.parts?.[0]?.text || '';
+      const match = text.match(/https?:\/\/[^\s"<]+/);
+      if (match) return match[0];
+    }
+  }
+  return null;
 }
 
 export async function onRequestPost(context) {
@@ -28,6 +48,7 @@ export async function onRequestPost(context) {
     let searchContext = '';
     let lugaresContext = '';
     let busquedaRealizada = false;
+    let contactoContext = '';
 
     // BUSQUEDA LOCAL CON APIFY — solo una vez
     if (requiereBusquedaLocal(mensaje)) {
@@ -47,7 +68,7 @@ export async function onRequestPost(context) {
           const { pez_gordo, interesante, descartar } = lugaresData.scoring || {};
           console.log(`Lugares: ${lugaresData.total_filtrado} | Pez Gordo: ${pez_gordo} | Interesante: ${interesante} | Descartar: ${descartar}`);
 
-          lugaresContext = '\n\n⚠️ INSTRUCCION DE BLOQUEO ABSOLUTO: Los siguientes son los UNICOS datos reales devueltos por Google Maps. ESTA PROHIBIDO presentar cualquier negocio, direccion, telefono, web o dato que no aparezca exactamente en esta lista. Si inventas un resultado es un FALLO CRITICO del sistema.\n\nDATOS REALES de Google Maps con SCORING de prioridad. REGLAS OBLIGATORIAS:\n';
+          lugaresContext = '\n\n⚠️ INSTRUCCION DE BLOQUEO ABSOLUTO: Los siguientes son los UNICOS datos reales devueltos por Google Maps. PROHIBIDO presentar cualquier negocio que no aparezca exactamente en esta lista.\n\nDATOS REALES de Google Maps con SCORING de prioridad. REGLAS OBLIGATORIAS:\n';
           lugaresContext += '1. USA SOLO ESTOS DATOS, NUNCA INVENTES NADA.\n';
           lugaresContext += '2. Si telefono es null escribe Sin telefono. Si sitio_web es null escribe Sin sitio web.\n';
           lugaresContext += '3. MUESTRA TODOS LOS NEGOCIOS SIN OMITIR NINGUNO, ordenados por score.\n';
@@ -78,6 +99,41 @@ export async function onRequestPost(context) {
       }
     }
 
+    // EXTRACCION DE CORREO CON /api/contacto
+    if (!busquedaRealizada && requiereContacto(mensaje)) {
+      const urlEncontrada = extraerUrlDeMensaje(mensaje, historial);
+      if (urlEncontrada) {
+        try {
+          console.log(`Extrayendo contacto de: ${urlEncontrada}`);
+          const contactoRes = await fetch(`${new URL(request.url).origin}/api/contacto`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sitio_web: urlEncontrada, nombre: mensaje })
+          });
+          const contactoData = await contactoRes.json();
+          busquedaRealizada = true;
+
+          if (contactoData.success && contactoData.correo) {
+            console.log(`Correo encontrado: ${contactoData.correo}`);
+            contactoContext = `\n\n⚠️ DATO REAL de /api/contacto. USA SOLO ESTE VALOR, NO INVENTES NADA:\n`;
+            contactoContext += `Sitio web consultado: ${urlEncontrada}\n`;
+            contactoContext += `Correo encontrado: ${contactoData.correo}\n`;
+            contactoContext += `INSTRUCCION: Presenta este correo exactamente como aparece arriba.\n`;
+          } else {
+            console.log(`Sin correo para: ${urlEncontrada}`);
+            contactoContext = `\n\n⚠️ DATO REAL de /api/contacto:\n`;
+            contactoContext += `Sitio web consultado: ${urlEncontrada}\n`;
+            contactoContext += `Correo encontrado: No disponible\n`;
+            contactoContext += `INSTRUCCION: El correo es "No disponible". No deduzcas ni inventes correos.\n`;
+          }
+        } catch(e) {
+          console.log('Error extrayendo contacto:', e.message);
+          contactoContext = `\n\nEXTRACCION DE CONTACTO: Error técnico. Informa que no fue posible obtener el correo.\n`;
+          busquedaRealizada = true;
+        }
+      }
+    }
+
     // BUSQUEDA WEB CON TAVILY — solo si no hubo busqueda local
     const needsSearch = !busquedaRealizada && /\b(hoy|actual|reciente|noticia|precio|clima|investiga|verifica)\b/i.test(mensaje);
 
@@ -104,10 +160,9 @@ export async function onRequestPost(context) {
     }
 
     // MENSAJES PARA GROQ
-    // lugaresContext va PRIMERO para que tenga maxima prioridad en el modelo
     const systemContent = lugaresContext
       ? lugaresContext + '\n\n' + (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + searchContext
-      : (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + searchContext;
+      : (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + contactoContext + searchContext;
 
     const messages = [
       {
@@ -130,7 +185,7 @@ export async function onRequestPost(context) {
     const completion = await groq.chat.completions.create({
       model: modelo,
       messages,
-      temperature: lugaresContext ? 0.1 : (usarPro ? 0.3 : 0.7),  // 0.1 cuando hay datos reales para evitar alucinaciones
+      temperature: (lugaresContext || contactoContext) ? 0.1 : (usarPro ? 0.3 : 0.7),
       max_tokens: usarPro ? 4096 : 2048,
       top_p: 0.95,
     });
