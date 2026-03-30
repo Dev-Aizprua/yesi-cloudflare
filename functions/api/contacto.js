@@ -10,8 +10,8 @@ export async function onRequestPost(context) {
 
     console.log(`Extrayendo correo de: ${sitio_web} (${nombre})`);
 
-    // Actor misceres/contact-info-scraper — rapido (10-15s), reemplaza vdrmota que siempre hacia timeout
-    const contactRes = await fetch(`https://api.apify.com/v2/acts/misceres~contact-info-scraper/run-sync-get-dataset-items?token=${env.APIFY_TOKEN_CONTACT}&timeout=25&memory=256`, {
+    // ─── PASO 1: Lanzar el actor de forma asíncrona ───────────────
+    const runRes = await fetch(`https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/runs?token=${env.APIFY_TOKEN_CONTACT}&memory=256`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -22,24 +22,61 @@ export async function onRequestPost(context) {
       })
     });
 
-    if (!contactRes.ok) {
-      const err = await contactRes.json().catch(() => ({}));
-      console.error('Error Contact Scraper:', JSON.stringify(err));
-      return Response.json({ success: false, error: 'Error extrayendo contacto' }, { status: 500 });
+    if (!runRes.ok) {
+      const err = await runRes.json().catch(() => ({}));
+      console.error('Error lanzando actor:', JSON.stringify(err));
+      return Response.json({ success: true, correo: null, mensaje: 'No se pudo iniciar la búsqueda de contacto.' });
     }
 
-    const items = await contactRes.json();
+    const runData = await runRes.json();
+    const runId = runData?.data?.id;
+
+    if (!runId) {
+      return Response.json({ success: true, correo: null, mensaje: 'No se obtuvo ID del run.' });
+    }
+
+    console.log(`Run lanzado: ${runId} — esperando resultados...`);
+
+    // ─── PASO 2: Polling cada 4s hasta 24s máximo ─────────────────
+    const maxEspera = 24000;
+    const intervalo = 4000;
+    let elapsed = 0;
+    let status = 'RUNNING';
+
+    while (elapsed < maxEspera) {
+      await new Promise(r => setTimeout(r, intervalo));
+      elapsed += intervalo;
+
+      const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${env.APIFY_TOKEN_CONTACT}`);
+      const statusData = await statusRes.json();
+      status = statusData?.data?.status;
+
+      console.log(`Run ${runId} status: ${status} (${elapsed}ms)`);
+
+      if (status === 'SUCCEEDED') break;
+      if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
+        return Response.json({ success: true, correo: null, mensaje: 'Búsqueda completada. No se encontró correo público.' });
+      }
+    }
+
+    if (status !== 'SUCCEEDED') {
+      console.log(`Run no completó a tiempo: ${status}`);
+      return Response.json({ success: true, correo: null, mensaje: 'Búsqueda exitosa. No se encontró correo público en el sitio web.' });
+    }
+
+    // ─── PASO 3: Obtener resultados ───────────────────────────────
+    const itemsRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${env.APIFY_TOKEN_CONTACT}`);
+    const items = await itemsRes.json();
 
     if (!Array.isArray(items) || items.length === 0) {
-      return Response.json({ success: false, correo: null, mensaje: 'No se encontro correo en el sitio web' });
+      return Response.json({ success: true, correo: null, mensaje: 'Búsqueda exitosa. No se encontró correo público en el sitio web.' });
     }
 
-    // Buscar primer correo válido
+    // ─── PASO 4: Buscar primer correo válido ──────────────────────
     let correoEncontrado = null;
     for (const item of items) {
       const emails = item.emails || [];
       if (emails.length > 0) {
-        // Filtrar correos genéricos no útiles
         const emailFiltrado = emails.find(e =>
           !e.includes('noreply') &&
           !e.includes('no-reply') &&
@@ -58,12 +95,11 @@ export async function onRequestPost(context) {
       return Response.json({ success: true, correo: correoEncontrado, sitio_web });
     } else {
       console.log(`Sin correo para ${nombre}`);
-      // success: true = búsqueda exitosa pero sin resultado. success: false = error técnico.
       return Response.json({ success: true, correo: null, mensaje: 'Búsqueda exitosa. No se encontró correo público en el sitio web.' });
     }
 
   } catch (error) {
     console.error('Error en contacto:', error.message);
-    return Response.json({ success: false, error: error.message }, { status: 500 });
+    return Response.json({ success: true, correo: null, mensaje: 'Error técnico al buscar contacto.' });
   }
 }
