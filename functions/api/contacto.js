@@ -12,6 +12,7 @@ export async function onRequestPost(context) {
 
     // ─── NIVEL 1: SCRAPER DIRECTO (3-5s, gratis) ─────────────────
     let correoDirecto = null;
+    let whatsappDirecto = null;
     try {
       const htmlRes = await fetch(sitio_web, {
         headers: {
@@ -56,18 +57,35 @@ export async function onRequestPost(context) {
         const unicos = [...new Set(filtrados)];
         if (unicos.length > 0) {
           correoDirecto = unicos[0];
-          console.log(`Scraper directo encontró: ${correoDirecto}`);
+          console.log(`Scraper directo encontró correo: ${correoDirecto}`);
+        }
+
+        // Buscar WhatsApp en el HTML — patrones wa.me/507... o api.whatsapp.com/send?phone=507...
+        const waPatterns = [
+          /wa\.me\/(507\d{7,8})/,
+          /api\.whatsapp\.com\/send\?phone=(507\d{7,8})/,
+          /whatsapp\.com\/send\?phone=(507\d{7,8})/,
+          /wa\.me\/(\d{10,12})/,
+        ];
+        for (const pattern of waPatterns) {
+          const waMatch = html.match(pattern);
+          if (waMatch) {
+            whatsappDirecto = '+' + waMatch[1];
+            console.log(`Scraper directo encontró WhatsApp: ${whatsappDirecto}`);
+            break;
+          }
         }
       }
     } catch(e) {
       console.log(`Scraper directo falló (bloqueado o timeout): ${e.message}`);
     }
 
-    // ─── Si encontró correo directo — responde inmediatamente ─────
-    if (correoDirecto) {
+    // ─── Si encontró correo o WhatsApp directo — responde inmediatamente ─────
+    if (correoDirecto || whatsappDirecto) {
       return Response.json({
         success: true,
         correo: correoDirecto,
+        whatsapp: whatsappDirecto,
         sitio_web,
         metodo: 'directo'
       });

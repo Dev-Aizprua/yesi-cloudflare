@@ -38,41 +38,52 @@ export async function onRequestPost(context) {
     const items = await itemsRes.json();
 
     let correoEncontrado = null;
+    let whatsappEncontrado = null;
 
     if (Array.isArray(items) && items.length > 0) {
       for (const item of items) {
-        const emails = item.emails || [];
-        const emailFiltrado = emails.find(e =>
-          !e.includes('noreply') &&
-          !e.includes('no-reply') &&
-          !e.includes('example.com') &&
-          !e.includes('sentry')
-        );
-        if (emailFiltrado) {
-          correoEncontrado = emailFiltrado;
-          break;
+        // Extraer correo
+        if (!correoEncontrado) {
+          const emails = item.emails || [];
+          const emailFiltrado = emails.find(e =>
+            !e.includes('noreply') &&
+            !e.includes('no-reply') &&
+            !e.includes('example.com') &&
+            !e.includes('sentry')
+          );
+          if (emailFiltrado) correoEncontrado = emailFiltrado;
         }
+        // Extraer primer WhatsApp
+        if (!whatsappEncontrado) {
+          const whatsapps = item.whatsapps || [];
+          const wa = whatsapps.find(w => w && (w.includes('507') || w.length >= 10));
+          if (wa) whatsappEncontrado = wa.startsWith('+') ? wa : '+' + wa;
+        }
+        if (correoEncontrado && whatsappEncontrado) break;
       }
     }
 
-    if (correoEncontrado) {
-      await notificarTelegram(env,
-        `📧 <b>Correo encontrado</b>\n\n` +
-        `Negocio: ${nombre || 'Sin nombre'}\n` +
-        `Sitio: ${sitio_web}\n` +
-        `Correo: <code>${correoEncontrado}</code>\n\n` +
-        `💡 Agrégalo en el Panel de Kairós`
-      );
+    const hayDatos = correoEncontrado || whatsappEncontrado;
+
+    if (hayDatos) {
+      let msg = `📬 <b>Contacto encontrado</b>\n\n`;
+      msg += `Negocio: ${nombre || 'Sin nombre'}\n`;
+      msg += `Sitio: ${sitio_web}\n`;
+      if (correoEncontrado) msg += `📧 Correo: <code>${correoEncontrado}</code>\n`;
+      if (whatsappEncontrado) msg += `📱 WhatsApp: <code>${whatsappEncontrado}</code>\n`;
+      msg += `\n💡 Agrégalo en el Panel de Kairós`;
+      await notificarTelegram(env, msg);
     } else {
       await notificarTelegram(env,
-        `🔍 <b>Búsqueda completada — sin correo público</b>\n\n` +
+        `🔍 <b>Búsqueda completada — sin contacto público</b>\n\n` +
         `Negocio: ${nombre || 'Sin nombre'}\n` +
         `Sitio: ${sitio_web}\n` +
-        `Resultado: No tiene correo público visible`
+        `Resultado: No tiene correo ni WhatsApp público visible`
       );
     }
 
     return Response.json({ success: true });
+
 
   } catch (error) {
     console.error('Error en contacto-callback:', error.message);
