@@ -14,7 +14,6 @@ export async function onRequestPost(context) {
     const status = body?.eventType || body?.status || '';
 
     console.log(`Callback recibido: runId=${runId} status=${status} sitio=${sitio_web}`);
-    console.log(`Body completo: ${JSON.stringify(body)}`);
 
     if (!runId) {
       console.log('Sin runId — no se puede obtener resultado');
