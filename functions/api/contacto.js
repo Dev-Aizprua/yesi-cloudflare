@@ -25,25 +25,29 @@ export async function onRequestPost(context) {
       if (htmlRes.ok) {
         const html = await htmlRes.text();
 
-        // Regex para emails válidos — evita falsos positivos
-        const emailRegex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+        // Regex estricto para emails válidos — evita falsos positivos de URLs
+        const emailRegex = /\b[a-zA-Z0-9._%+\-]{2,}@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6}\b/g;
         const matches = html.match(emailRegex) || [];
 
-        // Filtrar correos basura
-        const filtrados = matches.filter(e =>
-          !e.includes('noreply') &&
-          !e.includes('no-reply') &&
-          !e.includes('example.com') &&
-          !e.includes('sentry') &&
-          !e.includes('wixpress') &&
-          !e.includes('schema.org') &&
-          !e.includes('.png') &&
-          !e.includes('.jpg') &&
-          !e.includes('.gif') &&
-          !e.endsWith('.js') &&
-          !e.endsWith('.css') &&
-          e.includes('.')
-        );
+        // Filtrar correos basura y falsos positivos
+        const filtrados = matches.filter(e => {
+          // Debe tener formato usuario@dominio.tld válido
+          const partes = e.split('@');
+          if (partes.length !== 2) return false;
+          const [usuario, dominio] = partes;
+          // Usuario no puede empezar con número seguido de guión (patrón de URL)
+          if (/^\d+-/.test(usuario)) return false;
+          // Dominio debe tener al menos un punto y extensión válida
+          if (!dominio.includes('.')) return false;
+          // Extensión debe ser texto puro (no .html, .php, .js, etc.)
+          const ext = dominio.split('.').pop().toLowerCase();
+          if (['html','php','js','css','png','jpg','gif','svg','xml','json'].includes(ext)) return false;
+          // Filtrar dominios conocidos como basura
+          if (e.includes('noreply') || e.includes('no-reply') ||
+              e.includes('example.com') || e.includes('sentry') ||
+              e.includes('wixpress') || e.includes('schema.org')) return false;
+          return true;
+        });
 
         // Deduplicar y tomar el primero
         const unicos = [...new Set(filtrados)];
