@@ -123,23 +123,19 @@ export async function onRequestPost(context) {
 
           if (contactoData.success && contactoData.correo) {
             console.log(`Correo encontrado: ${contactoData.correo}`);
-            contactoContext = `\n\n⚠️ DATO REAL de /api/contacto. USA SOLO ESTE VALOR, NO INVENTES NADA:\n`;
-            contactoContext += `Sitio web consultado: ${urlEncontrada}\n`;
-            contactoContext += `Correo encontrado: ${contactoData.correo}\n`;
-            contactoContext += `Metodo: ${contactoData.metodo || 'directo'}\n`;
-            contactoContext += `INSTRUCCION: Presenta este correo exactamente como aparece arriba.\n`;
+            const tieneWa = contactoData.whatsapp ? `\nWhatsApp: ${contactoData.whatsapp}` : '';
+            contactoContext = `\n\n⚠️ DATO REAL EXTRAÍDO. USA SOLO ESTOS VALORES:\n`;
+            contactoContext += `Correo: ${contactoData.correo}${tieneWa}\n`;
+            contactoContext += `INSTRUCCION: Responde de forma natural. Ejemplo: "Encontré el correo de [negocio]: [correo]${contactoData.whatsapp ? ' y su WhatsApp: [wa]' : ''}". NO muestres campos técnicos como "Metodo" ni "Sitio web consultado".\n`;
           } else if (contactoData.metodo === 'background') {
             console.log(`Búsqueda en background iniciada para: ${urlEncontrada}`);
             contactoContext = `\n\nEXTRACCION DE CONTACTO:\n`;
-            contactoContext += `El scraper directo no encontró correo en el HTML del sitio (puede estar protegido).\n`;
-            contactoContext += `Se inició una búsqueda profunda en background.\n`;
-            contactoContext += `INSTRUCCION: Informa al usuario exactamente esto: "No encontré correo en el HTML del sitio. Lancé una búsqueda profunda — te llegará el resultado por Telegram en aproximadamente 2 minutos."\n`;
+            contactoContext += `INSTRUCCION: Informa al usuario: "No encontré correo en el HTML del sitio. Lancé una búsqueda profunda — te llegará el resultado por Telegram en aproximadamente 2 minutos."\n`;
           } else {
             console.log(`Sin correo para: ${urlEncontrada}`);
-            contactoContext = `\n\n⚠️ DATO REAL de /api/contacto:\n`;
-            contactoContext += `Sitio web consultado: ${urlEncontrada}\n`;
-            contactoContext += `Correo encontrado: No disponible\n`;
-            contactoContext += `INSTRUCCION: El correo es "No disponible". No deduzcas ni inventes correos.\n`;
+            contactoContext = `\n\n⚠️ DATO REAL EXTRAÍDO:\n`;
+            contactoContext += `Correo: No disponible\n`;
+            contactoContext += `INSTRUCCION: Informa de forma natural que no se encontró correo público. No inventes ni deduzcas correos.\n`;
           }
         } catch(e) {
           console.log('Error extrayendo contacto:', e.message);
