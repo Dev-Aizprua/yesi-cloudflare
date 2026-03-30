@@ -6,7 +6,12 @@ function requiereMotorPro(mensaje) {
 }
 
 function requiereBusquedaLocal(mensaje) {
-  return /\b(busca|encuentra|dame|lista|muestra|hay|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores)\b/i.test(mensaje);
+  const msg = mensaje.toLowerCase();
+  // Debe contener un tipo de negocio físico — no palabras genéricas como "busca noticias"
+  const tieneNegocio = /\b(negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores|locales|comercios)\b/i.test(msg);
+  // Palabras que EXCLUYEN la búsqueda local aunque tengan "busca"
+  const esConsultaGeneral = /\b(noticias|noticia|clima|precio|dolar|tasa|ley|decreto|gobierno|politica|economia|deporte|futbol|farandula)\b/i.test(msg);
+  return tieneNegocio && !esConsultaGeneral;
 }
 
 function requiereContacto(mensaje) {
