@@ -78,12 +78,18 @@ export async function onRequestPost(context) {
       const callbackUrl = `${new URL(request.url).origin}/api/contacto-callback`;
       console.log(`Webhook URL: ${callbackUrl}`);
 
-      // Webhook como parámetro de query — única forma que acepta la API de Apify
-      const webhookPayload = Buffer.from(JSON.stringify([{
+      // Webhook como parámetro de query — variables Apify: {{resource.id}} y {{eventData.actorRunId}}
+      const webhookObj = [{
         eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED', 'ACTOR.RUN.TIMED_OUT'],
         requestUrl: callbackUrl,
-        payloadTemplate: `{"runId":"{{resource.id}}","sitio_web":"${sitio_web}","nombre":"${(nombre||'').replace(/"/g,"'")}","status":"{{eventType}}"}`
-      }])).toString('base64');
+        payloadTemplate: JSON.stringify({
+          runId: "{{resource.id}}",
+          status: "{{eventType}}",
+          sitio_web: sitio_web,
+          nombre: (nombre || '').replace(/"/g, "'")
+        })
+      }];
+      const webhookPayload = btoa(JSON.stringify(webhookObj));
 
       const runRes = await fetch(`https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/runs?token=${env.APIFY_TOKEN_CONTACT}&memory=256&webhooks=${webhookPayload}`, {
         method: 'POST',

@@ -3,12 +3,17 @@ export async function onRequestPost(context) {
 
   try {
     const body = await request.json();
-    const { runId, sitio_web, nombre, status } = body;
+    // Apify puede enviar el runId en distintos campos según la versión
+    const runId = body.runId || body.resource?.id || body.actorRunId;
+    const sitio_web = body.sitio_web || 'Sin URL';
+    const nombre = body.nombre || '';
+    const status = body.status || body.eventType || '';
 
     console.log(`Callback recibido: runId=${runId} status=${status} sitio=${sitio_web}`);
+    console.log(`Body completo: ${JSON.stringify(body)}`);
 
     // Si el run falló o hizo timeout
-    if (status === 'ACTOR.RUN.FAILED' || status === 'ACTOR.RUN.TIMED_OUT') {
+    if (!runId || status === 'ACTOR.RUN.FAILED' || status === 'ACTOR.RUN.TIMED_OUT') {
       await notificarTelegram(env, `⚠️ <b>Búsqueda de correo sin resultado</b>\n\nNegocio: ${nombre || sitio_web}\nSitio: ${sitio_web}\nEstado: Sin correo público encontrado`);
       return Response.json({ success: true });
     }
