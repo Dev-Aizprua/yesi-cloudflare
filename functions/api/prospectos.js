@@ -41,3 +41,20 @@ export async function onRequestPost(context) {
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+// DELETE: eliminar prospecto
+export async function onRequestDelete(context) {
+  const { request, env } = context;
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) {
+      return Response.json({ success: false, error: 'ID requerido' }, { status: 400 });
+    }
+    await env.kairos_db.prepare(
+      "DELETE FROM Prospectos WHERE id = ?"
+    ).bind(parseInt(id)).run();
+    return Response.json({ success: true });
+  } catch (error) {
+    return Response.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
