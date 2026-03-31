@@ -35,6 +35,16 @@ function extraerUrlDeMensaje(mensaje, historial) {
   return null;
 }
 
+function extraerNombreDeMensaje(mensaje) {
+  // Eliminar URL del mensaje
+  let nombre = mensaje.replace(/https?:\/\/[^\s"]+/g, '').trim();
+  // Eliminar verbos de comando al inicio
+  nombre = nombre.replace(/^(extrae|extraer|busca|obtener|consigue|dame|el correo de|correo de|contacto de|email de)\s*/i, '').trim();
+  // Limpiar puntuación sobrante al final
+  nombre = nombre.replace(/[.,;:]+$/, '').trim();
+  return nombre || 'Sin nombre';
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -116,7 +126,7 @@ export async function onRequestPost(context) {
           const contactoRes = await fetch(`${new URL(request.url).origin}/api/contacto`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sitio_web: urlEncontrada, nombre: mensaje })
+            body: JSON.stringify({ sitio_web: urlEncontrada, nombre: extraerNombreDeMensaje(mensaje) })
           });
           const contactoData = await contactoRes.json();
           busquedaRealizada = true;
