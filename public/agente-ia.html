@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agente IA — Eduardo Aizprua</title>
+<title>Kairós — Agente de Ventas IA</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -791,7 +791,7 @@
 <header>
   <div class="header-left">
     <div class="logo-dot"></div>
-    <span class="header-title">Agente<span>_IA</span></span>
+    <span class="header-title">Kairo<span>S</span></span>
   </div>
   <div class="header-meta">
     <div class="status-badge">
@@ -806,11 +806,11 @@
 <div class="phase-bar">
   <div class="phase-item done">
     <div class="phase-num">1</div>
-    Base + Gemini
+    Base + Groq
   </div>
   <div class="phase-item done">
     <div class="phase-num">2</div>
-    Memoria Sheets
+    Memoria D1
   </div>
   <div class="phase-item done">
     <div class="phase-num">3</div>
@@ -818,7 +818,7 @@
   </div>
   <div class="phase-item active">
     <div class="phase-num">4</div>
-    Aprendizaje
+    Seguimiento
   </div>
 </div>
 
@@ -829,33 +829,21 @@
   <h3>⚙ Configuración</h3>
 
   <div class="config-field">
-    <label>Gemini API Key *</label>
-    <input type="password" id="cfg-gemini-key" placeholder="AIza..." />
-  </div>
-  <div class="config-field">
-    <label>Google Sheets ID</label>
-    <input type="text" id="cfg-sheet-id" value="1JbcsekjdeU1o91ByS9OaT0xdiBsH1A-c-C6tNmO4Rk8" />
-  </div>
-  <div class="config-field">
-    <label>Sheets API Key *</label>
-    <input type="password" id="cfg-sheets-key" placeholder="AIza..." />
-  </div>
-  <div class="config-field">
     <label>System Prompt (personalidad del agente)</label>
     <textarea id="cfg-system-prompt">Eres un agente IA inteligente y útil. Responde en español. Eres preciso, conciso y amigable. Cuando no sepas algo, dilo claramente.</textarea>
   </div>
   <div class="config-field">
     <label>Nombre del agente</label>
-    <input type="text" id="cfg-agent-name" value="Agente IA" />
+    <input type="text" id="cfg-agent-name" value="Kairós" />
   </div>
   <button class="save-btn" onclick="saveConfig()">Guardar configuración</button>
 
   <div style="margin-top:20px; padding: 12px; background: var(--surface2); border-radius:4px; border: 1px solid var(--border);">
-    <div style="font-size:9px; color: var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px;">Notas de desarrollo</div>
+    <div style="font-size:9px; color: var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px;">Stack activo</div>
     <div style="font-size:10px; color: var(--text-muted); line-height:1.6;">
-      • Fase 2: Sheets guardará logs [Comando, Respuesta, Feedback, Estado]<br>
-      • Fase 3: Web Speech API para voz<br>
-      • Fase 4: Feedback loop → auto-aprendizaje
+      • Groq LLaMA 3.3-70b (Pro) + 3.1-8b (General)<br>
+      • D1: kairos-db · Resend · Apify · Tavily<br>
+      • Fase 4: Cron seguimiento 72h (pendiente)
     </div>
   </div>
 </div>
@@ -871,7 +859,7 @@
     </div>
     <div>
       <h2>Hola, <span>Eduardo</span></h2>
-      <p style="margin-top:6px">Agente IA — Fase 1 · Configurá tu API Key de Gemini en ⚙ Config para comenzar.</p>
+      <p style="margin-top:6px">Kairós — Agente de ventas IA · TechZone Panamá</p>
     </div>
     <div class="suggestion-grid">
       <div class="suggestion" onclick="useSuggestion('¿Cuál es el estado del proyecto TechZone?')">
@@ -959,7 +947,7 @@
     <div style="display:flex;align-items:center;gap:12px;">
       <div class="sheet-status connected" id="sheetStatus">
         <div class="dot"></div>
-        <span>Sheets: activo</span>
+        <span>D1: activo</span>
       </div>
       <span class="char-count"><span id="charCount">0</span> chars</span>
     </div>
@@ -972,11 +960,8 @@ let messages = [];
 let logs = [];
 let sessionId = 'session_' + Date.now();
 let config = {
-  geminiKey: '',
-  sheetId: '1JbcsekjdeU1o91ByS9OaT0xdiBsH1A-c-C6tNmO4Rk8',
-  sheetsKey: '',
   systemPrompt: 'Eres un agente IA inteligente y útil. Responde en español. Eres preciso, conciso y amigable. Cuando no sepas algo, dilo claramente.',
-  agentName: 'Agente IA'
+  agentName: 'Kairós'
 };
 let isLoading = false;
 let logsVisible = false;
@@ -987,9 +972,6 @@ function loadConfig() {
     const saved = localStorage.getItem('agente-ia-config');
     if (saved) {
       config = { ...config, ...JSON.parse(saved) };
-      document.getElementById('cfg-gemini-key').value = config.geminiKey || '';
-      document.getElementById('cfg-sheet-id').value = config.sheetId || '';
-      document.getElementById('cfg-sheets-key').value = config.sheetsKey || '';
       document.getElementById('cfg-system-prompt').value = config.systemPrompt || '';
       document.getElementById('cfg-agent-name').value = config.agentName || '';
     }
@@ -997,9 +979,6 @@ function loadConfig() {
 }
 
 function saveConfig() {
-  config.geminiKey = document.getElementById('cfg-gemini-key').value;
-  config.sheetId = document.getElementById('cfg-sheet-id').value;
-  config.sheetsKey = document.getElementById('cfg-sheets-key').value;
   config.systemPrompt = document.getElementById('cfg-system-prompt').value;
   config.agentName = document.getElementById('cfg-agent-name').value;
 
@@ -1063,7 +1042,7 @@ function addWelcome() {
       </div>
       <div>
         <h2>Hola, <span>Eduardo</span></h2>
-        <p style="margin-top:6px">Chat reiniciado · Configurá tu API Key de Gemini en ⚙ Config para comenzar.</p>
+        <p style="margin-top:6px">Chat reiniciado · Kairós lista.</p>
       </div>
     </div>
   `;
@@ -1185,8 +1164,8 @@ function updateLogCount() {
   document.getElementById('logCount').textContent = logs.length;
 }
 
-// Guardar log en Google Sheets via API Route
-async function saveLogToSheets(comando, respuesta, feedback, estado) {
+// Guardar log en D1 via API Route
+async function saveLogToD1(comando, respuesta, feedback, estado) {
   try {
     await fetch('/api/logs', {
       method: 'POST',
@@ -1194,7 +1173,7 @@ async function saveLogToSheets(comando, respuesta, feedback, estado) {
       body: JSON.stringify({ comando, respuesta, feedback, estado })
     });
   } catch(e) {
-    console.warn('No se pudo guardar en Sheets:', e.message);
+    console.warn('No se pudo guardar log:', e.message);
   }
 }
 
@@ -1206,8 +1185,8 @@ function giveFeedback(logIndex, value, btn) {
     const row = btn.closest('.feedback-row');
     row.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    saveLogToSheets(logs[logIndex].command, logs[logIndex].response, value, logs[logIndex].estado);
-    showToast(value === 'bueno' ? '👍 Guardado en Sheets' : '👎 Guardado en Sheets');
+    saveLogToD1(logs[logIndex].command, logs[logIndex].response, value, logs[logIndex].estado);
+    showToast(value === 'bueno' ? '👍 Feedback guardado' : '👎 Feedback guardado');
   }
 }
 
@@ -1263,7 +1242,7 @@ async function sendMessage() {
       } catch(e) { /* memoria no disponible */ }
     } // fin cada 5 mensajes
 
-    const result = await callGemini(text, memoriaContext);
+    const result = await callKairos(text, memoriaContext);
 
     // Detectar si Kairós quiere enviar un correo
     await detectarYEnviarLote(result.respuesta);
@@ -1291,7 +1270,7 @@ async function sendMessage() {
     logs[logIndex].response = result.respuesta;
     logs[logIndex].estado = 'ok';
     renderLogs();
-    saveLogToSheets(text, result.respuesta, 'pendiente', 'ok');
+    saveLogToD1(text, result.respuesta, 'pendiente', 'ok');
 
   } catch(err) {
     hideTyping();
@@ -1301,7 +1280,7 @@ async function sendMessage() {
     logs[logIndex].response = errMsg;
     logs[logIndex].estado = 'error';
     renderLogs();
-    saveLogToSheets(text, errMsg, 'pendiente', 'error');
+    saveLogToD1(text, errMsg, 'pendiente', 'error');
   }
 
   isLoading = false;
@@ -1309,9 +1288,9 @@ async function sendMessage() {
   input.focus();
 }
 
-// Gemini API call via servidor
-async function callGemini(userMessage, memoriaContext = '') {
-  const systemPrompt = (config.systemPrompt || 'Eres Yesi, asistente técnica experta. Responde en español.') + memoriaContext;
+// API call via servidor
+async function callKairos(userMessage, memoriaContext = '') {
+  const systemPrompt = (config.systemPrompt || 'Eres Kairós, agente de ventas IA experta. Responde en español.') + memoriaContext;
 
   const res = await fetch('/api/chat', {
     method: 'POST',
@@ -1374,7 +1353,7 @@ async function loadHistory() {
       const container = document.getElementById('chatContainer');
       const div = document.createElement('div');
       div.style.cssText = 'text-align:center;padding:12px;font-size:10px;color:var(--accent3);font-family:"JetBrains Mono",monospace;border:1px solid rgba(16,185,129,0.2);border-radius:6px;background:rgba(16,185,129,0.04);margin-bottom:8px;';
-      div.textContent = `🧠 Yesi lista · Ancla cargada · ${data.historial.length} mensajes recientes`;
+      div.textContent = `🧠 Kairós lista · Ancla cargada · ${data.historial.length} mensajes recientes`;
       container.appendChild(div);
     }
 
@@ -1424,7 +1403,7 @@ function promptRecordar(logIndex) {
   const categoria = prompt('¿En qué categoría guardar este dato?\n\nEjemplos: Proyecto, Preferencia, Dato importante, Cliente, etc.');
   if (!categoria) return;
 
-  const dato = prompt('¿Qué dato específico quieres que Yesi recuerde siempre?\n\nEjemplo: "Eduardo prefiere respuestas cortas y técnicas"');
+  const dato = prompt('¿Qué dato específico quieres que Kairós recuerde siempre?\n\nEjemplo: "Eduardo prefiere respuestas cortas y técnicas"');
   if (!dato) return;
 
   guardarEnMemoria(categoria, dato);

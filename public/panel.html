@@ -885,8 +885,17 @@ function abrirModalEliminar(id, nombre) {
   abrirModal('modalEliminar');
 }
 
-function confirmarEliminar() {
+async function confirmarEliminar() {
   const id = parseInt(document.getElementById('eliminar-id').value);
+  try {
+    const res = await fetch(`/api/prospectos?id=${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Error al eliminar');
+  } catch(e) {
+    showToast('⚠ Error eliminando: ' + e.message);
+    cerrarModal('modalEliminar');
+    return;
+  }
   todosProspectos = todosProspectos.filter(p => p.id !== id);
   seleccionados.delete(id);
   delete estadosLocales[id]; delete correosLocales[id];
