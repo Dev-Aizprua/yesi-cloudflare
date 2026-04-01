@@ -495,11 +495,12 @@ TechZone Panama</textarea>
 <div class="modal-overlay" id="modalEditarCorreo">
   <div class="modal" style="width:400px">
     <div class="modal-header">
-      <span class="modal-title">✏️ Editar Correo</span>
+      <span class="modal-title">✏️ Editar Contacto</span>
       <button class="modal-close" onclick="cerrarModal('modalEditarCorreo')">✕</button>
     </div>
     <div class="modal-body">
       <div class="field"><label>Correo electrónico</label><input type="email" id="edit-correo" /></div>
+      <div class="field"><label>WhatsApp (ej: +50764230862)</label><input type="text" id="edit-whatsapp" placeholder="+507..." /></div>
       <input type="hidden" id="edit-id" />
     </div>
     <div class="modal-footer">
@@ -863,30 +864,33 @@ async function enviarCorreo() {
 
 // ─── EDITAR CORREO ───────────────────────────────────────────────
 function abrirModalEditarCorreo(id, correoActual) {
+  const p = todosProspectos.find(x => x.id === id);
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-correo').value = correoActual;
+  document.getElementById('edit-whatsapp').value = p?.whatsapp || '';
   abrirModal('modalEditarCorreo');
 }
 
 async function guardarCorreo() {
   const id = parseInt(document.getElementById('edit-id').value);
   const correo = document.getElementById('edit-correo').value.trim();
+  const whatsapp = document.getElementById('edit-whatsapp').value.trim();
   try {
     const res = await fetch(`/api/prospectos?id=${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ correo })
+      body: JSON.stringify({ correo, whatsapp })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Error al guardar');
   } catch(e) {
-    showToast('⚠ Error guardando correo: ' + e.message);
+    showToast('⚠ Error guardando contacto: ' + e.message);
     cerrarModal('modalEditarCorreo');
     return;
   }
   const p = todosProspectos.find(x => x.id === id);
-  if (p) p.correo = correo;
-  showToast('✅ Correo actualizado');
+  if (p) { p.correo = correo; p.whatsapp = whatsapp; }
+  showToast('✅ Contacto actualizado');
   cerrarModal('modalEditarCorreo');
   actualizarStats(); filtrar();
 }
