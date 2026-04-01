@@ -58,3 +58,34 @@ export async function onRequestDelete(context) {
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+// PATCH: actualizar estado y/o correo
+export async function onRequestPatch(context) {
+  const { request, env } = context;
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) {
+      return Response.json({ success: false, error: 'ID requerido' }, { status: 400 });
+    }
+    const body = await request.json();
+    const campos = [];
+    const valores = [];
+
+    if (body.estado !== undefined) { campos.push('estado = ?'); valores.push(body.estado); }
+    if (body.correo !== undefined) { campos.push('correo = ?'); valores.push(body.correo); }
+    if (body.whatsapp !== undefined) { campos.push('whatsapp = ?'); valores.push(body.whatsapp); }
+
+    if (campos.length === 0) {
+      return Response.json({ success: false, error: 'Nada que actualizar' }, { status: 400 });
+    }
+
+    valores.push(parseInt(id));
+    await env.kairos_db.prepare(
+      `UPDATE Prospectos SET ${campos.join(', ')} WHERE id = ?`
+    ).bind(...valores).run();
+
+    return Response.json({ success: true });
+  } catch (error) {
+    return Response.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

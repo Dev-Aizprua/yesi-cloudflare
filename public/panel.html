@@ -553,8 +553,6 @@ TechZone Panama</textarea>
 <script>
 let todosProspectos = [];
 let prospectosFiltrados = [];
-let estadosLocales = {};
-let correosLocales = {};
 let seleccionados = new Set();
 
 document.addEventListener('DOMContentLoaded', cargarProspectos);
@@ -571,8 +569,8 @@ async function cargarProspectos() {
 
     todosProspectos = (data.prospectos || []).map(p => ({
       ...p,
-      correo: correosLocales[p.id] !== undefined ? correosLocales[p.id] : (p.correo || ''),
-      estado: estadosLocales[p.id] !== undefined ? estadosLocales[p.id] : 'nuevo'
+      correo: p.correo || '',
+      estado: p.estado || 'nuevo'
     }));
 
     actualizarStats();
@@ -588,7 +586,7 @@ function actualizarStats() {
   document.getElementById('statTotal').textContent = todosProspectos.length;
   document.getElementById('statPezGordo').textContent = todosProspectos.filter(p => (p.scoring || '') === 'Pez Gordo' || seleccionados.has(p.id)).length;
   document.getElementById('statConCorreo').textContent = todosProspectos.filter(p => p.correo).length;
-  document.getElementById('statContactados').textContent = todosProspectos.filter(p => estadosLocales[p.id] === 'enviado' || estadosLocales[p.id] === 'contactado').length;
+  document.getElementById('statContactados').textContent = todosProspectos.filter(p => p.estado === 'enviado' || p.estado === 'contactado').length;
   document.getElementById('statSinWeb').textContent = todosProspectos.filter(p => !p.sitio_web).length;
 }
 
@@ -615,7 +613,7 @@ function filtrar() {
   prospectosFiltrados = todosProspectos.filter(p => {
     const matchQ = !q || (p.nombre||'').toLowerCase().includes(q) || (p.rubro||'').toLowerCase().includes(q) || (p.correo||'').toLowerCase().includes(q);
     const matchRubro = !rubro || p.rubro === rubro;
-    const matchEstado = !estado || (estadosLocales[p.id] || 'nuevo') === estado;
+    const matchEstado = !estado || (p.estado || 'nuevo') === estado;
     const matchPrioridad = !prioridad || (p.scoring || '') === prioridad;
     return matchQ && matchRubro && matchEstado && matchPrioridad;
   });
@@ -634,8 +632,8 @@ function renderTabla() {
   }
 
   tbody.innerHTML = prospectosFiltrados.map((p, i) => {
-    const estado = estadosLocales[p.id] || 'nuevo';
-    const correo = correosLocales[p.id] !== undefined ? correosLocales[p.id] : (p.correo || '');
+    const estado = p.estado || 'nuevo';
+    const correo = p.correo || '';
     const scoring = p.scoring || '';
     const isSelected = seleccionados.has(p.id);
 
@@ -715,7 +713,7 @@ function abrirModalCampana() {
   const count = seleccionados.size;
   const conCorreo = [...seleccionados].filter(id => {
     const p = todosProspectos.find(x => x.id === id);
-    return p && (correosLocales[id] || p.correo);
+    return p && p.correo;
   }).length;
 
   document.getElementById('campanaResumen').innerHTML =
@@ -732,9 +730,9 @@ async function ejecutarCampana() {
 
   const lote = [...seleccionados]
     .map(id => todosProspectos.find(p => p.id === id))
-    .filter(p => p && (correosLocales[p.id] || p.correo))
+    .filter(p => p && p.correo)
     .map(p => ({
-      para: correosLocales[p.id] || p.correo,
+      para: p.correo,
       nombre: p.nombre || p.empresa || '',
       empresa: p.empresa || p.nombre || '',
       rubro: p.rubro || ''
@@ -770,8 +768,15 @@ async function ejecutarCampana() {
       document.getElementById('progressPercent').textContent = '100%';
 
       lote.forEach(dest => {
-        const p = todosProspectos.find(x => x.correo === dest.para || correosLocales[x.id] === dest.para);
-        if (p) estadosLocales[p.id] = 'enviado';
+        const p = todosProspectos.find(x => x.correo === dest.para);
+        if (p) {
+          p.estado = 'enviado';
+          fetch(`/api/prospectos?id=${p.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: 'enviado' })
+          });
+        }
       });
 
       showToast(`✅ ${data.enviados} correos enviados · ${data.fallidos} fallidos`);
@@ -796,7 +801,7 @@ async function ejecutarCampana() {
 function abrirModalCorreo(id) {
   const p = todosProspectos.find(x => x.id === id);
   if (!p) return;
-  const correo = correosLocales[id] !== undefined ? correosLocales[id] : (p.correo || '');
+  const correo = p.correo || '';
   document.getElementById('correo-para').value = correo;
   document.getElementById('correo-nombre').value = p.nombre || '';
   document.getElementById('correo-empresa').value = p.empresa || p.nombre || '';
@@ -837,8 +842,15 @@ async function enviarCorreo() {
     });
     const data = await res.json();
     if (data.success) {
-      const p = todosProspectos.find(x => x.correo === para || correosLocales[x.id] === para);
-      if (p) estadosLocales[p.id] = 'enviado';
+      const p = todosProspectos.find(x => x.correo === para);
+      if (p) {
+        p.estado = 'enviado';
+        fetch(`/api/prospectos?id=${p.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ estado: 'enviado' })
+        });
+      }
       fetch('/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mensaje: `📧 <b>Propuesta enviada</b>\n\nPara: ${para}\nEmpresa: ${empresa}` }) });
       showToast('✅ Correo enviado a ' + para);
       cerrarModal('modalCorreo');
@@ -856,10 +868,22 @@ function abrirModalEditarCorreo(id, correoActual) {
   abrirModal('modalEditarCorreo');
 }
 
-function guardarCorreo() {
+async function guardarCorreo() {
   const id = parseInt(document.getElementById('edit-id').value);
   const correo = document.getElementById('edit-correo').value.trim();
-  correosLocales[id] = correo;
+  try {
+    const res = await fetch(`/api/prospectos?id=${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ correo })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Error al guardar');
+  } catch(e) {
+    showToast('⚠ Error guardando correo: ' + e.message);
+    cerrarModal('modalEditarCorreo');
+    return;
+  }
   const p = todosProspectos.find(x => x.id === id);
   if (p) p.correo = correo;
   showToast('✅ Correo actualizado');
@@ -868,12 +892,24 @@ function guardarCorreo() {
 }
 
 // ─── ESTADO ──────────────────────────────────────────────────────
-function cambiarEstado(id) {
+async function cambiarEstado(id) {
   const estados = ['nuevo', 'contactado', 'enviado', 'cerrado'];
-  const actual = estadosLocales[id] || 'nuevo';
-  const siguiente = estados[(estados.indexOf(actual) + 1) % estados.length];
-  estadosLocales[id] = siguiente;
   const p = todosProspectos.find(x => x.id === id);
+  const actual = p?.estado || 'nuevo';
+  const siguiente = estados[(estados.indexOf(actual) + 1) % estados.length];
+  try {
+    const res = await fetch(`/api/prospectos?id=${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estado: siguiente })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Error al actualizar');
+  } catch(e) {
+    showToast('⚠ Error actualizando estado: ' + e.message);
+    return;
+  }
+  if (p) p.estado = siguiente;
   showToast(`🔄 ${p?.nombre || 'Prospecto'} → ${siguiente}`);
   actualizarStats(); filtrar();
 }
@@ -898,7 +934,6 @@ async function confirmarEliminar() {
   }
   todosProspectos = todosProspectos.filter(p => p.id !== id);
   seleccionados.delete(id);
-  delete estadosLocales[id]; delete correosLocales[id];
   showToast('🗑 Prospecto eliminado');
   cerrarModal('modalEliminar');
   poblarFiltros(); actualizarStats(); filtrar();
