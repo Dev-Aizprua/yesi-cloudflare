@@ -38,11 +38,17 @@ function extraerUrlDeMensaje(mensaje, historial) {
 function extraerNombreDeMensaje(mensaje) {
   // Eliminar URL del mensaje
   let nombre = mensaje.replace(/https?:\/\/[^\s"]+/g, '').trim();
-  // Eliminar verbos de comando al inicio
-  nombre = nombre.replace(/^(extrae|extraer|busca|obtener|consigue|dame|el correo de|correo de|contacto de|email de)\s*/i, '').trim();
-  // Limpiar puntuación sobrante al final
-  nombre = nombre.replace(/[.,;:]+$/, '').trim();
-  return nombre || 'Sin nombre';
+  // Patrón exacto: "Extrae/Extra el correo de [NOMBRE]"
+  const match = nombre.match(/^(?:extrae?|busca|obtener|consigue|dame)\s+(?:el\s+)?(?:correo|email|contacto|mail)\s+de\s+(.+)/i);
+  if (match) {
+    const candidato = match[1].trim().replace(/[.,;:]+$/, '');
+    if (/^(esta\s+)?(direcci[oó]n|url|p[aá]gina|sitio|web|link|aqu[ií])$/i.test(candidato)) return 'Sin nombre';
+    return candidato;
+  }
+  // Fallback: quitar toda la frase de comando
+  nombre = nombre.replace(/^(?:extrae?|busca|obtener|consigue|dame)\s+(?:el\s+)?(?:correo|email|contacto|mail)\s+de\s*/i, '').trim();
+  nombre = nombre.replace(/^(?:extrae?|busca|obtener|consigue|dame)\s*/i, '').trim();
+  return nombre.replace(/[.,;:]+$/, '').trim() || 'Sin nombre';
 }
 
 export async function onRequestPost(context) {
