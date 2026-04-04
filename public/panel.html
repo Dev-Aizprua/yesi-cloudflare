@@ -772,10 +772,12 @@ async function ejecutarCampana() {
         const p = todosProspectos.find(x => x.correo === dest.para);
         if (p) {
           p.estado = 'enviado';
+          const fechaEnvio = new Date().toISOString();
+          p.fecha_primer_envio = fechaEnvio;
           fetch(`/api/prospectos?id=${p.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ estado: 'enviado' })
+            body: JSON.stringify({ estado: 'enviado', fecha_primer_envio: fechaEnvio })
           });
         }
       });
@@ -846,10 +848,12 @@ async function enviarCorreo() {
       const p = todosProspectos.find(x => x.correo === para);
       if (p) {
         p.estado = 'enviado';
+        const fechaEnvio = new Date().toISOString();
+        p.fecha_primer_envio = fechaEnvio;
         fetch(`/api/prospectos?id=${p.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ estado: 'enviado' })
+          body: JSON.stringify({ estado: 'enviado', fecha_primer_envio: fechaEnvio })
         });
       }
       fetch('/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mensaje: `📧 <b>Propuesta enviada</b>\n\nPara: ${para}\nEmpresa: ${empresa}` }) });

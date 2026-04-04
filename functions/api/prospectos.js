@@ -74,6 +74,8 @@ export async function onRequestPatch(context) {
     if (body.estado !== undefined) { campos.push('estado = ?'); valores.push(body.estado); }
     if (body.correo !== undefined) { campos.push('correo = ?'); valores.push(body.correo); }
     if (body.whatsapp !== undefined) { campos.push('whatsapp = ?'); valores.push(body.whatsapp); }
+    if (body.fecha_primer_envio !== undefined) { campos.push('fecha_primer_envio = ?'); valores.push(body.fecha_primer_envio); }
+    if (body.seguimiento_hecho !== undefined) { campos.push('seguimiento_hecho = ?'); valores.push(body.seguimiento_hecho); }
 
     if (campos.length === 0) {
       return Response.json({ success: false, error: 'Nada que actualizar' }, { status: 400 });
