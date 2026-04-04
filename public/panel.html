@@ -125,6 +125,14 @@
   }
   .campaign-btn.select-pez:hover { background: rgba(245,158,11,0.1); }
 
+  .campaign-btn.extract {
+    border-color: var(--info);
+    color: var(--info);
+    background: none;
+  }
+  .campaign-btn.extract:hover { background: rgba(59,130,246,0.1); }
+  .campaign-btn.extract:disabled { opacity: 0.4; cursor: not-allowed; }
+
   .campaign-btn.deselect {
     background: none; color: var(--text-dim); border-color: var(--border);
   }
@@ -348,6 +356,7 @@
   <button class="campaign-btn select-pez" onclick="seleccionarPezGordo()">🐋 Seleccionar Pez Gordo</button>
   <button class="campaign-btn deselect" onclick="deseleccionarTodos()">✕ Deseleccionar</button>
   <div class="selected-count">Seleccionados: <span id="selectedCount">0</span></div>
+  <button class="campaign-btn extract" id="btnExtraer" onclick="extraerContactosMasivo()" disabled>📥 Extraer Contactos</button>
   <button class="campaign-btn launch" id="btnCampana" onclick="abrirModalCampana()" disabled>🚀 Ejecutar Campaña</button>
 </div>
 
@@ -707,6 +716,73 @@ function actualizarBtnCampana() {
   const count = seleccionados.size;
   document.getElementById('selectedCount').textContent = count;
   document.getElementById('btnCampana').disabled = count === 0;
+  document.getElementById('btnExtraer').disabled = count === 0;
+}
+
+// ─── EXTRACCIÓN MASIVA ───────────────────────────────────────────
+async function extraerContactosMasivo() {
+  const prospectosSinContacto = [...seleccionados]
+    .map(id => todosProspectos.find(p => p.id === id))
+    .filter(p => p && p.sitio_web && !p.correo && !p.whatsapp);
+
+  if (prospectosSinContacto.length === 0) {
+    showToast('⚠ Los seleccionados ya tienen contacto o no tienen sitio web');
+    return;
+  }
+
+  const btn = document.getElementById('btnExtraer');
+  btn.disabled = true;
+  btn.textContent = `⏳ Extrayendo 0/${prospectosSinContacto.length}...`;
+
+  let exitosos = 0;
+  let enBackground = 0;
+  let fallidos = 0;
+
+  for (let i = 0; i < prospectosSinContacto.length; i++) {
+    const p = prospectosSinContacto[i];
+    btn.textContent = `⏳ Extrayendo ${i + 1}/${prospectosSinContacto.length}...`;
+
+    try {
+      const res = await fetch('/api/contacto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sitio_web: p.sitio_web, nombre: p.nombre })
+      });
+      const data = await res.json();
+
+      if (data.success && (data.correo || data.whatsapp)) {
+        await fetch(`/api/prospectos?id=${p.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ correo: data.correo || p.correo, whatsapp: data.whatsapp || p.whatsapp })
+        });
+        if (data.correo) p.correo = data.correo;
+        if (data.whatsapp) p.whatsapp = data.whatsapp;
+        exitosos++;
+      } else if (data.metodo === 'background') {
+        enBackground++;
+      } else {
+        fallidos++;
+      }
+    } catch(e) {
+      fallidos++;
+    }
+
+    if (i < prospectosSinContacto.length - 1) {
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
+  btn.textContent = '📥 Extraer Contactos';
+  btn.disabled = seleccionados.size === 0;
+
+  let msg = `✅ Extracción completa: ${exitosos} encontrados`;
+  if (enBackground > 0) msg += ` · ${enBackground} en Telegram (~2min)`;
+  if (fallidos > 0) msg += ` · ${fallidos} sin resultado`;
+  showToast(msg);
+
+  actualizarStats();
+  filtrar();
 }
 
 // ─── CAMPAÑA MASIVA ──────────────────────────────────────────────
