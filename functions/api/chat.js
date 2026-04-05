@@ -51,11 +51,117 @@ function extraerNombreDeMensaje(mensaje) {
   return nombre.replace(/[.,;:]+$/, '').trim() || 'Sin nombre';
 }
 
+function detectarRecordatorio(mensaje) {
+  // Detectar frases de recordatorio
+  const esRecordatorio = /\b(recuérdame|recuerdame|avísame|avisame|recuérdame|acuérdame|acuerdame)\b/i.test(mensaje);
+  if (!esRecordatorio) return null;
+
+  const ahora = new Date();
+  const ahoraPA = new Date(ahora.toLocaleString('en-US', { timeZone: 'America/Panama' }));
+  let fechaHora = null;
+
+  // ─── HORA ESPECÍFICA: "a las 3pm", "a las 9:00 AM" ───
+  const horaMatch = mensaje.match(/a las\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM)?/i);
+  if (horaMatch) {
+    let hora = parseInt(horaMatch[1]);
+    const minutos = parseInt(horaMatch[2] || '0');
+    const ampm = (horaMatch[3] || '').toLowerCase();
+    if (ampm === 'pm' && hora < 12) hora += 12;
+    if (ampm === 'am' && hora === 12) hora = 0;
+
+    // Determinar el día
+    let dia = new Date(ahoraPA);
+
+    if (/mañana/i.test(mensaje)) {
+      dia.setDate(dia.getDate() + 1);
+    } else if (/lunes/i.test(mensaje)) {
+      const diff = (1 - dia.getDay() + 7) % 7 || 7;
+      dia.setDate(dia.getDate() + diff);
+    } else if (/martes/i.test(mensaje)) {
+      const diff = (2 - dia.getDay() + 7) % 7 || 7;
+      dia.setDate(dia.getDate() + diff);
+    } else if (/miércoles|miercoles/i.test(mensaje)) {
+      const diff = (3 - dia.getDay() + 7) % 7 || 7;
+      dia.setDate(dia.getDate() + diff);
+    } else if (/jueves/i.test(mensaje)) {
+      const diff = (4 - dia.getDay() + 7) % 7 || 7;
+      dia.setDate(dia.getDate() + diff);
+    } else if (/viernes/i.test(mensaje)) {
+      const diff = (5 - dia.getDay() + 7) % 7 || 7;
+      dia.setDate(dia.getDate() + diff);
+    } else if (/sábado|sabado/i.test(mensaje)) {
+      const diff = (6 - dia.getDay() + 7) % 7 || 7;
+      dia.setDate(dia.getDate() + diff);
+    } else if (/domingo/i.test(mensaje)) {
+      const diff = (0 - dia.getDay() + 7) % 7 || 7;
+      dia.setDate(dia.getDate() + diff);
+    }
+
+    dia.setHours(hora, minutos, 0, 0);
+    fechaHora = dia.toISOString();
+  }
+
+  // ─── SIN HORA: solo día ───
+  if (!fechaHora) {
+    let dia = new Date(ahoraPA);
+    if (/mañana/i.test(mensaje)) {
+      dia.setDate(dia.getDate() + 1);
+      dia.setHours(9, 0, 0, 0);
+      fechaHora = dia.toISOString();
+    } else if (/lunes/i.test(mensaje)) {
+      const diff = (1 - dia.getDay() + 7) % 7 || 7;
+      dia.setDate(dia.getDate() + diff);
+      dia.setHours(9, 0, 0, 0);
+      fechaHora = dia.toISOString();
+    }
+    // si no hay día ni hora no se puede programar
+  }
+
+  if (!fechaHora) return null;
+
+  // Extraer la tarea — todo lo que viene después del tiempo
+  let tarea = mensaje
+    .replace(/^(recuérdame|recuerdame|avísame|avisame|acuérdame|acuerdame)\s*/i, '')
+    .replace(/\b(hoy|mañana|manana|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)\b/gi, '')
+    .replace(/a las\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!tarea) tarea = 'Recordatorio sin descripción';
+
+  return { tarea, fechaHora };
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
   try {
     const { mensaje, historial, systemPrompt } = await request.json();
+
+    // ─── RECORDATORIOS ────────────────────────────────────────────
+    const recordatorio = detectarRecordatorio(mensaje);
+    if (recordatorio) {
+      try {
+        const fechaCreacion = new Date().toISOString();
+        await env.kairos_db.prepare(
+          'INSERT INTO Recordatorios (tarea, fecha_hora, enviado, fecha_creacion) VALUES (?, ?, 0, ?)'
+        ).bind(recordatorio.tarea, recordatorio.fechaHora, fechaCreacion).run();
+
+        const fechaFormateada = new Date(recordatorio.fechaHora).toLocaleString('es-PA', {
+          timeZone: 'America/Panama',
+          weekday: 'long', year: 'numeric', month: 'long',
+          day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+
+        return Response.json({
+          success: true,
+          respuesta: `✅ Recordatorio guardado. Te avisaré el **${fechaFormateada}**:\n\n📌 ${recordatorio.tarea}`,
+          motor: 'sistema'
+        });
+      } catch(e) {
+        console.log('Error guardando recordatorio:', e.message);
+      }
+    }
 
     const usarPro = requiereMotorPro(mensaje);
     const apiKey = usarPro && env.GROQ_API_KEY_PRO ? env.GROQ_API_KEY_PRO : env.GROQ_API_KEY;
