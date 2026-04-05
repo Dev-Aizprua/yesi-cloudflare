@@ -98,6 +98,8 @@ function detectarRecordatorio(mensaje) {
     }
 
     dia.setHours(hora, minutos, 0, 0);
+    // Compensar UTC-5 (Panamá) — sumar 5 horas para que el Cron en UTC dispare a la hora correcta
+    dia.setTime(dia.getTime() + (5 * 60 * 60 * 1000));
     fechaHora = dia.toISOString();
   }
 
@@ -107,11 +109,13 @@ function detectarRecordatorio(mensaje) {
     if (/mañana/i.test(mensaje)) {
       dia.setDate(dia.getDate() + 1);
       dia.setHours(9, 0, 0, 0);
+      dia.setTime(dia.getTime() + (5 * 60 * 60 * 1000));
       fechaHora = dia.toISOString();
     } else if (/lunes/i.test(mensaje)) {
       const diff = (1 - dia.getDay() + 7) % 7 || 7;
       dia.setDate(dia.getDate() + diff);
       dia.setHours(9, 0, 0, 0);
+      dia.setTime(dia.getTime() + (5 * 60 * 60 * 1000));
       fechaHora = dia.toISOString();
     }
     // si no hay día ni hora no se puede programar
