@@ -2,14 +2,12 @@ import Groq from 'groq-sdk';
 import { tavily } from '@tavily/core';
 
 function requiereMotorPro(mensaje) {
-  return /\b(busca|encuentra|analiza|investiga|prospectos|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|correo|propuesta|redacta|elabora|compara|evalua|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores|dame|lista|muestra|hay)\b/i.test(mensaje);
+  return /\b(busca|encuentra|analiza|investiga|prospectos|negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|correo|propuesta|redacta|elabora|compara|evalua|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores|dame|lista|muestra|hay|veterinaria|veterinarias|optica|opticas|joyeria|joyerias|lavanderia|lavanderias|floristeria|floristerias|panaderia|panaderias|mecanica|mecanicas|taller|talleres|escuela|escuelas|colegio|colegios|iglesia|iglesias|hotel|hoteles|hostal|hostales|laboratorio|laboratorios|constructora|constructoras|inmobiliaria|inmobiliarias|mudanza|mudanzas|transporte|seguros|aseguradora|aseguradoras|camara|camaras|alarma|alarmas|aire|aires|acondicionado|refrigeracion|estetica|dental|unas|limpieza|insumos|instalacion|reparacion|seguridad|sistemas)\b/i.test(mensaje);
 }
 
 function requiereBusquedaLocal(mensaje) {
   const msg = mensaje.toLowerCase();
-  // Debe contener un tipo de negocio físico — no palabras genéricas como "busca noticias"
-  const tieneNegocio = /\b(negocios|empresas|restaurantes|hoteles|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores|locales|comercios)\b/i.test(msg);
-  // Palabras que EXCLUYEN la búsqueda local aunque tengan "busca"
+  const tieneNegocio = /\b(negocios|empresas|restaurantes|hoteles|hostal|ferreter|tiendas|agencias|farmacias|clinicas|gimnasios|bares|cafes|supermercados|bancos|peluquerias|spa|salon|dentistas|medicos|abogados|contadores|locales|comercios|veterinaria|veterinarias|optica|opticas|joyeria|joyerias|lavanderia|lavanderias|floristeria|floristerias|panaderia|panaderias|mecanica|mecanicas|taller|talleres|escuela|escuelas|colegio|colegios|laboratorio|laboratorios|constructora|constructoras|inmobiliaria|inmobiliarias|mudanza|mudanzas|transporte|seguros|aseguradora|aseguradoras|camara|camaras|alarma|alarmas|aire|aires|acondicionado|refrigeracion|estetica|dental|unas|limpieza|insumos|instalacion|reparacion|seguridad|sistemas)\b/i.test(msg);
   const esConsultaGeneral = /\b(noticias|noticia|clima|precio|dolar|tasa|ley|decreto|gobierno|politica|economia|deporte|futbol|farandula)\b/i.test(msg);
   return tieneNegocio && !esConsultaGeneral;
 }
