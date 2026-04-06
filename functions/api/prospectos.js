@@ -15,7 +15,7 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   const { request, env } = context;
   try {
-    const { nombre, empresa, rubro, sitio_web, correo, fuente, scoring, score } = await request.json();
+    const { nombre, empresa, rubro, sitio_web, correo, whatsapp, telefono, fuente, scoring, score } = await request.json();
 
     const fecha = new Intl.DateTimeFormat('es-PA', {
       timeZone: 'America/Panama',
@@ -23,13 +23,15 @@ export async function onRequestPost(context) {
     }).format(new Date());
 
     const result = await env.kairos_db.prepare(
-      "INSERT INTO Prospectos (nombre, empresa, rubro, sitio_web, correo, fuente, fecha, scoring, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO Prospectos (nombre, empresa, rubro, sitio_web, correo, whatsapp, telefono, fuente, fecha, scoring, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).bind(
       nombre || '',
       empresa || '',
       rubro || '',
       sitio_web || '',
       correo || '',
+      whatsapp || '',
+      telefono || '',
       fuente || 'manual',
       fecha,
       scoring || '',
@@ -74,6 +76,7 @@ export async function onRequestPatch(context) {
     if (body.estado !== undefined) { campos.push('estado = ?'); valores.push(body.estado); }
     if (body.correo !== undefined) { campos.push('correo = ?'); valores.push(body.correo); }
     if (body.whatsapp !== undefined) { campos.push('whatsapp = ?'); valores.push(body.whatsapp); }
+    if (body.telefono !== undefined) { campos.push('telefono = ?'); valores.push(body.telefono); }
     if (body.fecha_primer_envio !== undefined) { campos.push('fecha_primer_envio = ?'); valores.push(body.fecha_primer_envio); }
     if (body.seguimiento_hecho !== undefined) { campos.push('seguimiento_hecho = ?'); valores.push(body.seguimiento_hecho); }
 

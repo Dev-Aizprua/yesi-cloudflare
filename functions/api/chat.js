@@ -134,6 +134,12 @@ function detectarRecordatorio(mensaje) {
   return { tarea, fechaHora };
 }
 
+function requiereMensajeWhatsApp(mensaje) {
+  return /\b(redacta|escribe|crea|genera|prepara)\b.*\b(whatsapp|mensaje|texto|msg)\b/i.test(mensaje) ||
+         /\b(mensaje|texto)\b.*\b(whatsapp|wa)\b/i.test(mensaje) ||
+         /\b(que le digo|que le escribo|como le escribo)\b/i.test(mensaje);
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -205,7 +211,8 @@ export async function onRequestPost(context) {
           lugaresContext += '2. Si telefono es null escribe Sin telefono. Si sitio_web es null escribe Sin sitio web.\n';
           lugaresContext += '3. MUESTRA TODOS LOS NEGOCIOS SIN OMITIR NINGUNO, ordenados por score.\n';
           lugaresContext += '4. Muestra el emoji de prioridad (🐋 Pez Gordo / 🐟 Interesante / ⭕ Descartar) junto al nombre.\n';
-          lugaresContext += '5. NO hagas busquedas adicionales.\n\n';
+          lugaresContext += '5. NO hagas busquedas adicionales.\n';
+          lugaresContext += '6. Al guardar un prospecto en JSON incluye SIEMPRE los campos: nombre, empresa, rubro, sitio_web, correo, telefono, scoring, score, fuente="kairos". Si tiene WhatsApp incluye whatsapp.\n\n';
 
           lugaresContext += `RESUMEN: ${pez_gordo || 0} Pez Gordo 🐋 | ${interesante || 0} Interesante 🐟 | ${descartar || 0} Descartar ⭕\n\n`;
 
@@ -213,8 +220,10 @@ export async function onRequestPost(context) {
             lugaresContext += `${l.numero}. ${l.prioridad} ${l.clasificacion} (${l.score}pts) — ${l.nombre}\n`;
             lugaresContext += `   Dir: ${l.direccion}\n`;
             lugaresContext += `   Tel: ${l.telefono ?? 'Sin telefono'}\n`;
+            lugaresContext += `   WhatsApp: ${l.whatsapp ?? 'Sin whatsapp'}\n`;
             lugaresContext += `   Web: ${l.sitio_web ?? 'Sin sitio web'}\n`;
-            lugaresContext += `   Rating: ${l.rating ?? 'N/D'} | Resenas: ${l.resenas ?? 'N/D'}\n\n`;
+            lugaresContext += `   Rating: ${l.rating ?? 'N/D'} | Resenas: ${l.resenas ?? 'N/D'}\n`;
+            lugaresContext += `   Score: ${l.score} | Scoring: ${l.scoring}\n\n`;
           });
 
           lugaresContext += `Total verificados en Panama: ${lugaresData.total_filtrado}\n`;
@@ -301,6 +310,20 @@ export async function onRequestPost(context) {
       }
     }
 
+    // ─── CONTEXTO WHATSAPP ────────────────────────────────────────
+    let whatsappContext = '';
+    if (requiereMensajeWhatsApp(mensaje)) {
+      whatsappContext = `\n\n📱 MODO MENSAJE WHATSAPP:\nEstás redactando un mensaje de ventas para WhatsApp. Reglas OBLIGATORIAS:
+1. Máximo 3 líneas — los mensajes largos se ignoran en WhatsApp
+2. Tono directo y personal — como si fuera un conocido, no un vendedor
+3. Menciona el negocio por nombre si está disponible en el contexto
+4. Termina SIEMPRE con: "Si no le interesa, responda NO y no le escribiré más." (Opt-out obligatorio para evitar reportes de SPAM)
+5. NO uses emojis excesivos — máximo 1-2
+6. El objetivo es que respondan, no cerrar la venta en el primer mensaje
+Ejemplo de formato ideal:
+"Hola [nombre], vi [negocio] en Google Maps. Tengo algo que puede ayudarles a conseguir más clientes sin pagar comisiones. ¿Les interesa saber más? Si no le interesa, responda NO y no le escribiré más."`;
+    }
+
     // MENSAJES PARA GROQ — orden de prioridad del contexto
     let systemContent;
     if (lugaresContext) {
@@ -311,7 +334,7 @@ export async function onRequestPost(context) {
       systemContent = searchContext + '\n\nEres Kairos, agente de ventas de TechZone Panama. Responde en español de forma natural y conversacional basándote UNICAMENTE en la información verificada de arriba. NO uses formato de scoring ni emojis de pez.';
     } else {
       // Conversación normal: ancla completa
-      systemContent = (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + contactoContext;
+      systemContent = (systemPrompt || 'Eres Kairos, agente de ventas experto en tiendas web para negocios en Panama.') + contactoContext + whatsappContext;
     }
 
     const messages = [
