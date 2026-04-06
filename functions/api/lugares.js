@@ -53,18 +53,38 @@ export async function onRequestPost(context) {
       const resenas = p.reviewsCount || 0;
       const rating = p.totalScore || p.rating || 0;
       const telefono = p.phone || p.phoneUnformatted || null;
+      const categoria = (p.categoryName || p.categories?.[0] || '').toLowerCase();
 
-      if (!tiene_web) score += 30;       // Sin web = oportunidad de oro
-      if (resenas > 50) score += 30;     // Tiene flujo de clientes
-      if (rating > 4.2) score += 20;     // Cuida su marca
-      if (telefono) score += 20;         // Facilidad de cierre
+      // ─── CRITERIOS BASE ───────────────────────────────────────
+      if (!tiene_web) score += 35;       // Sin web = oportunidad de oro (+5)
+      if (resenas > 50) score += 25;     // Tiene flujo de clientes
+      if (resenas > 100) score += 10;    // Extra por volumen alto
+      if (telefono) score += 15;         // Facilidad de cierre
+
+      // ─── RATING: bajos necesitan ayuda urgente ─────────────────
+      if (rating >= 4.5) score += 20;    // Excelente reputación
+      else if (rating >= 4.2) score += 15; // Buena reputación
+      else if (rating >= 3.5 && rating < 4.2) score += 20; // Rating medio — necesitan mejorar presencia
+      else if (rating > 0 && rating < 3.5) score += 25;    // Rating bajo — necesitan ayuda urgente
+
+      // ─── RUBROS PRIORITARIOS ──────────────────────────────────
+      // Aires acondicionados y refrigeración — alto ticket
+      if (/aire|acondicionado|refriger|hvac|clima/i.test(categoria)) score += 20;
+      // Cámaras y seguridad — recurrente y alto ticket
+      if (/camara|seguridad|alarma|cctv|vigilancia/i.test(categoria)) score += 20;
+      // Odontología y salud — agenda online = gran valor
+      if (/dental|odontologo|clinica|medico|salud|ortodoncia/i.test(categoria)) score += 15;
+      // Restaurantes con delivery — pierden comisiones
+      if (/restaurante|comida|pizza|sushi|mariscos|parrilla/i.test(categoria)) score += 10;
+      // Retail — catálogo online
+      if (/tienda|retail|ropa|joyeria|boutique|moda/i.test(categoria)) score += 10;
 
       return score;
     }
 
     function clasificar(score) {
-      if (score >= 70) return { emoji: '🐋', label: 'Pez Gordo' };
-      if (score >= 40) return { emoji: '🐟', label: 'Interesante' };
+      if (score >= 75) return { emoji: '🐋', label: 'Pez Gordo' };
+      if (score >= 45) return { emoji: '🐟', label: 'Interesante' };
       return { emoji: '⭕', label: 'Descartar' };
     }
 
