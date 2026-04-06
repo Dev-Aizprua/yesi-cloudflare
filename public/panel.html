@@ -665,7 +665,7 @@ function renderTabla() {
         <td>${scoreHtml}</td>
         <td class="td-nombre" title="${escHtml(p.nombre)}">${escHtml(p.nombre||'—')}</td>
         <td class="td-rubro">${escHtml(p.rubro||'—')}</td>
-        <td class="td-correo">${correo ? escHtml(correo.length>22?correo.substring(0,22)+'…':correo) : '<span style="color:var(--text-muted);font-size:10px;">sin correo</span>'}${p.whatsapp ? ' <a href="https://wa.me/'+escHtml(p.whatsapp.replace(/\D/g,''))+'?text='+encodeURIComponent('Hola, soy Eduardo de TechZone Panamá. Vi su negocio en Google Maps y tengo una propuesta que puede ayudarles a conseguir más clientes. ¿Tienen 5 minutos para conversar?')+'" target="_blank" title="WhatsApp: '+escHtml(p.whatsapp)+'" style="text-decoration:none;">📱</a>' : ''}</td>
+        <td class="td-correo">${correo ? escHtml(correo.length>22?correo.substring(0,22)+'…':correo) : '<span style="color:var(--text-muted);font-size:10px;">sin correo</span>'}${p.whatsapp ? ' <a href="https://wa.me/'+escHtml(p.whatsapp.replace(/\D/g,''))+'?text='+encodeURIComponent('Buenas, equipo de '+( p.nombre||'su negocio')+'. Los felicito por sus reseñas en Google, se nota que son referentes en su zona. Noté que podrían estar perdiendo ventas sin un catálogo digital. ¿Me permite enviarles una demo de cómo se vería su tienda automatizada, sin compromiso? (Si no desea más info, responda NO)')+'" target="_blank" title="WhatsApp: '+escHtml(p.whatsapp)+'" style="text-decoration:none;">📱</a>' : ''}</td>
         <td class="td-web">${webHtml}</td>
         <td><span class="badge ${badges[estado]||'badge-nuevo'}">● ${estado}</span></td>
         <td class="td-fecha">${escHtml(p.fecha||'—')}</td>
@@ -933,7 +933,7 @@ async function enviarCorreo() {
         });
       }
       const pWhatsApp = todosProspectos.find(x => x.correo === para);
-      const waLink = pWhatsApp?.whatsapp ? `\n📱 <a href="https://wa.me/${pWhatsApp.whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy Eduardo de TechZone Panamá. Vi su negocio en Google Maps y tengo una propuesta que puede ayudarles a conseguir más clientes. ¿Tienen 5 minutos para conversar?')}">Abrir WhatsApp</a>` : '';
+      const waLink = pWhatsApp?.whatsapp ? `\n📱 <a href="https://wa.me/${pWhatsApp.whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent('Buenas, equipo de '+(pWhatsApp.nombre||'su negocio')+'. Los felicito por sus reseñas en Google, se nota que son referentes en su zona. Noté que podrían estar perdiendo ventas sin un catálogo digital. ¿Me permite enviarles una demo de cómo se vería su tienda automatizada, sin compromiso? (Si no desea más info, responda NO)')}">Abrir WhatsApp</a>` : '';
       fetch('/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mensaje: `📧 <b>Propuesta enviada</b>\n\nPara: ${para}\nEmpresa: ${empresa}${waLink}` }) });
       showToast('✅ Correo enviado a ' + para);
       cerrarModal('modalCorreo');
