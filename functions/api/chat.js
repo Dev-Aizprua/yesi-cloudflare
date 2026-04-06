@@ -313,15 +313,30 @@ export async function onRequestPost(context) {
     // ─── CONTEXTO WHATSAPP ────────────────────────────────────────
     let whatsappContext = '';
     if (requiereMensajeWhatsApp(mensaje)) {
-      whatsappContext = `\n\n📱 MODO MENSAJE WHATSAPP:\nEstás redactando un mensaje de ventas para WhatsApp. Reglas OBLIGATORIAS:
-1. Máximo 3 líneas — los mensajes largos se ignoran en WhatsApp
-2. Tono directo y personal — como si fuera un conocido, no un vendedor
-3. Menciona el negocio por nombre si está disponible en el contexto
-4. Termina SIEMPRE con: "Si no le interesa, responda NO y no le escribiré más." (Opt-out obligatorio para evitar reportes de SPAM)
-5. NO uses emojis excesivos — máximo 1-2
-6. El objetivo es que respondan, no cerrar la venta en el primer mensaje
-Ejemplo de formato ideal:
-"Hola [nombre], vi [negocio] en Google Maps. Tengo algo que puede ayudarles a conseguir más clientes sin pagar comisiones. ¿Les interesa saber más? Si no le interesa, responda NO y no le escribiré más."`;
+      whatsappContext = `\n\n📱 MODO MENSAJE WHATSAPP — ESTRATEGIA 2 PASOS:
+
+PASO 1 — MENSAJE DE APERTURA (sin links):
+- Saluda mencionando el nombre del negocio
+- Felicita por sus reseñas usando el número REAL de Google Maps
+- Menciona oportunidad específica que pierden (sin web = sin catálogo, comisiones de delivery, etc.)
+- Pregunta PERMISO para enviar más información
+- Termina SIEMPRE con: "(Si no desea más información, responda NO)"
+- Máximo 4 líneas, tono personal y directo
+- NO incluyas links en el Paso 1
+
+EJEMPLO PASO 1:
+"Buenas, equipo de [Negocio]. Los felicito por sus [X] reseñas en Google, se nota que son referentes en [zona]. Noté que no tienen catálogo digital y eso les quita ventas frente a la competencia. ¿Me permite enviarles una demo de cómo se vería su tienda automatizada, sin compromiso? (Si no desea más info, responda NO)"
+
+PASO 2 — ENVÍO DEL LINK (solo si el cliente responde positivamente con Sí, Dale, ¿De qué trata?, etc.):
+- Agradece la respuesta
+- Envía link según rubro: restaurantes/retail → https://techzone-pro.com | joyería → https://elegancejewelry-pa.com
+- Ofrece llamada de 15 minutos
+- Máximo 3 líneas
+
+EJEMPLO PASO 2:
+"Gracias por su respuesta. Aquí la demo: [link]. Son solo 15 minutos para ver cómo aumentar sus ventas sin pagar comisiones. ¿Le parece bien mañana a las 10am?"
+
+REGLA CRÍTICA: Usa SIEMPRE datos reales del negocio — nombre, número de reseñas, zona. Nunca inventes datos.`;
     }
 
     // MENSAJES PARA GROQ — orden de prioridad del contexto
