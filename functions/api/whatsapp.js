@@ -1,46 +1,58 @@
 // CONFIGURACIÓN DE KAIRÓS PARA WHATSAPP
-const VERIFY_TOKEN = "KAIROS_WA_2026"; // Esta es la palabra clave para Meta
+const VERIFY_TOKEN = "KAIROS_WA_2026"; 
 
 export async function onRequestGet(context) {
-  // 1. OBTENER LOS PARÁMETROS QUE ENVÍA META
   const { searchParams } = new URL(context.request.url);
-  
   const mode = searchParams.get("hub.mode");
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
-  // 2. VALIDACIÓN DEL WEBHOOK
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("WEBHOOK_VERIFIED");
-    // Meta espera recibir el 'challenge' de vuelta para confirmar que el servidor es tuyo
     return new Response(challenge, { status: 200 });
   }
-
-  // Si el token no coincide
-  return new Response("Error de verificación: Token incorrecto", { status: 403 });
+  return new Response("Error de verificación", { status: 403 });
 }
 
 export async function onRequestPost(context) {
+  const { env } = context; // Aquí es donde viven tus secretos
+  
   try {
-    // 3. RECIBIR LOS MENSAJES DE WHATSAPP
     const body = await context.request.json();
 
-    // Verificamos que sea un mensaje de WhatsApp válido
     if (body.object === "whatsapp_business_account") {
-      if (body.entry && body.entry[0].changes && body.entry[0].changes[0].value.messages) {
-        
-        // Aquí es donde Kairós procesará el mensaje en el futuro
+      const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+      
+      if (message) {
         console.log("Nuevo mensaje recibido de WhatsApp");
+        const from = message.from; // El número de quien te escribe (tu celular)
+
+        // --- LÓGICA DE RESPUESTA DE KAIRÓS ---
+        const url = `https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`;
         
-        // Respondemos 200 OK a Meta para confirmar que recibimos el mensaje
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: from,
+            type: "text",
+            text: { body: "¡Hola! Soy Kairós. Recibí tu mensaje: " + message.text.body }
+          }),
+        });
+
+        const result = await response.json();
+        console.log("Respuesta de Meta:", JSON.stringify(result));
+        
         return new Response("EVENT_RECEIVED", { status: 200 });
       }
     }
-
-    return new Response("Objeto no reconocido", { status: 404 });
+    return new Response("No es un mensaje", { status: 200 });
     
   } catch (error) {
-    console.error("Error procesando mensaje:", error);
-    return new Response("Error interno", { status: 500 });
+    console.error("Error en Kairós:", error);
+    return new Response("Error", { status: 500 });
   }
 }
