@@ -35,14 +35,144 @@ export async function onRequestPost(context) {
     const from = message.from;
     const tipo = message.type;
 
-    // ─── SOLO TEXTO POR AHORA ─────────────────────────────────
-    if (tipo !== "text") {
-      await enviarMensaje(env, from, "Recibí tu mensaje. Por ahora solo proceso texto — pronto podré escuchar audios también.");
+    // ─── MANEJO DE AUDIO CON GROQ WHISPER ────────────────────
+    if (tipo === "audio") {
+      const audioId = message.audio?.id;
+      const duracion = message.audio?.duration || 0;
+
+      // Audio largo (>20s) — Eduardo toma el control
+      if (duracion > 20) {
+        await enviarMensaje(env, from, "Don, recibí su audio. Lo escucharé personalmente para no perder detalles y le escribo en breve. 🎧");
+        try {
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: env.TELEGRAM_CHAT_ID,
+              text: `🎙️ <b>Audio largo en WhatsApp</b>\n\nDe: +${from}\nDuración: ${duracion}s\n\n⚠️ Requiere tu atención personal para cerrar la venta.`,
+              parse_mode: "HTML"
+            })
+          });
+        } catch(e) {}
+        return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+
+      // Audio corto (<20s) — transcribir con Groq Whisper
+      try {
+        // 1. Obtener URL del audio desde Meta
+        const mediaRes = await fetch(`https://graph.facebook.com/v21.0/${audioId}`, {
+          headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
+        });
+        const mediaData = await mediaRes.json();
+        const audioUrl = mediaData.url;
+
+        // 2. Descargar el audio
+        const audioRes = await fetch(audioUrl, {
+          headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
+        });
+        const audioBlob = await audioRes.arrayBuffer();
+
+        // 3. Enviar a Groq Whisper para transcripción
+        const formData = new FormData();
+        formData.append("file", new Blob([audioBlob], { type: "audio/ogg" }), "audio.ogg");
+        formData.append("model", "whisper-large-v3");
+        formData.append("language", "es");
+
+        const whisperRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${env.GROQ_API_KEY_PRO || env.GROQ_API_KEY}` },
+          body: formData
+        });
+
+        const whisperData = await whisperRes.json();
+        const transcripcion = whisperData.text || "";
+
+        console.log(`Audio transcrito: ${transcripcion}`);
+
+        if (!transcripcion) {
+          await enviarMensaje(env, from, "No pude entender bien el audio. ¿Puede escribirme su consulta?");
+          return new Response("EVENT_RECEIVED", { status: 200 });
+        }
+
+        // 4. Procesar la transcripción como si fuera texto
+        // Notificar Telegram con transcripción
+        try {
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: env.TELEGRAM_CHAT_ID,
+              text: `🎤 <b>Audio transcrito</b>\n\nDe: +${from}\n📝 "${transcripcion}"`,
+              parse_mode: "HTML"
+            })
+          });
+        } catch(e) {}
+
+        // Continuar con la transcripción como texto
+        message.text = { body: transcripcion };
+        message.type = "text";
+
+      } catch(e) {
+        console.log("Error transcribiendo audio:", e.message);
+        await enviarMensaje(env, from, "No pude procesar el audio. ¿Puede escribirme su consulta?");
+        return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+    }
+
+    // ─── OTROS TIPOS (imagen, video, etc.) ───────────────────
+    if (tipo !== "text" && tipo !== "audio") {
+      await enviarMensaje(env, from, "Recibí tu mensaje. Por ahora proceso texto y audios cortos. ¿En qué puedo ayudarte?");
       return new Response("EVENT_RECEIVED", { status: 200 });
     }
 
-    const textoRecibido = message.text.body;
+    const textoRecibido = message.text?.body || "";
     console.log(`Mensaje de ${from}: ${textoRecibido}`);
+
+    // ─── DEBOUNCE — AGRUPAR MENSAJES MÚLTIPLES ───────────────
+    // Guardar mensaje en buffer D1
+    const fechaBuffer = new Date().toISOString();
+    try {
+      await env.kairos_db.prepare(
+        "INSERT INTO Buffer_WA (numero, contenido, fecha, procesado) VALUES (?, ?, ?, 0)"
+      ).bind(from, textoRecibido, fechaBuffer).run();
+    } catch(e) {
+      console.log("Error buffer:", e.message);
+    }
+
+    // Esperar 15 segundos — ventana de silencio
+    await new Promise(r => setTimeout(r, 15000));
+
+    // Verificar si llegaron más mensajes después de este
+    let mensajesBuffer = [];
+    try {
+      const bufferResult = await env.kairos_db.prepare(
+        "SELECT id, contenido FROM Buffer_WA WHERE numero = ? AND procesado = 0 ORDER BY id ASC"
+      ).bind(from).all();
+      mensajesBuffer = bufferResult.results || [];
+    } catch(e) {
+      console.log("Error leyendo buffer:", e.message);
+      mensajesBuffer = [{ contenido: textoRecibido }];
+    }
+
+    // Si no hay mensajes pendientes — ya fue procesado por otra instancia
+    if (mensajesBuffer.length === 0) {
+      return new Response("EVENT_RECEIVED", { status: 200 });
+    }
+
+    // Consolidar todos los mensajes en uno
+    const textoConsolidado = mensajesBuffer.map(m => m.contenido).join(" ");
+    const idsBuffer = mensajesBuffer.map(m => m.id);
+
+    // Marcar como procesados
+    try {
+      await env.kairos_db.prepare(
+        `UPDATE Buffer_WA SET procesado = 1 WHERE id IN (${idsBuffer.join(",")})`
+      ).run();
+    } catch(e) {
+      console.log("Error marcando buffer:", e.message);
+    }
+
+    console.log(`Texto consolidado (${mensajesBuffer.length} msgs): ${textoConsolidado}`);
 
     // ─── CARGAR HISTORIAL DE D1 ───────────────────────────────
     let historial = [];
@@ -93,7 +223,7 @@ REGLAS:
         messages: [
           { role: "system", content: systemPrompt },
           ...historial,
-          { role: "user", content: textoRecibido }
+          { role: "user", content: textoConsolidado }
         ],
         temperature: 0.3,
         max_tokens: 300
@@ -109,7 +239,7 @@ REGLAS:
       const fecha = new Date().toISOString();
       await env.kairos_db.prepare(
         "INSERT INTO Conversaciones_WA (numero, rol, contenido, fecha) VALUES (?, ?, ?, ?)"
-      ).bind(from, "user", textoRecibido, fecha).run();
+      ).bind(from, "user", textoConsolidado, fecha).run();
 
       await env.kairos_db.prepare(
         "INSERT INTO Conversaciones_WA (numero, rol, contenido, fecha) VALUES (?, ?, ?, ?)"
@@ -131,7 +261,7 @@ REGLAS:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: env.TELEGRAM_CHAT_ID,
-          text: `📱 <b>WhatsApp — Conversación</b>\n\nDe: +${from}\n💬 ${textoRecibido}\n🤖 Kairós: ${respuesta}`,
+          text: `📱 <b>WhatsApp — Conversación</b>\n\nDe: +${from}\n💬 ${textoConsolidado}\n🤖 Kairós: ${respuesta}`,
           parse_mode: "HTML"
         })
       });
