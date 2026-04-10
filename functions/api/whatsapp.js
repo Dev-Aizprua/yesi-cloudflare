@@ -131,10 +131,12 @@ export async function onRequestPost(context) {
     // ─── DEBOUNCE — AGRUPAR MENSAJES MÚLTIPLES ───────────────
     // Guardar mensaje en buffer D1
     const fechaBuffer = new Date().toISOString();
+    let miId = null;
     try {
-      await env.kairos_db.prepare(
+      const insertResult = await env.kairos_db.prepare(
         "INSERT INTO Buffer_WA (numero, contenido, fecha, procesado) VALUES (?, ?, ?, 0)"
       ).bind(from, textoRecibido, fechaBuffer).run();
+      miId = insertResult.meta?.last_row_id;
     } catch(e) {
       console.log("Error buffer:", e.message);
     }
@@ -159,11 +161,19 @@ export async function onRequestPost(context) {
       return new Response("EVENT_RECEIVED", { status: 200 });
     }
 
+    // ─── LOCK: solo el primer mensaje (id más bajo) procesa ───
+    const primerIdPendiente = mensajesBuffer[0].id;
+    if (miId && miId !== primerIdPendiente) {
+      // Esta instancia no es la primera — ceder el control
+      console.log(`Instancia ${miId} cede control a instancia ${primerIdPendiente}`);
+      return new Response("EVENT_RECEIVED", { status: 200 });
+    }
+
     // Consolidar todos los mensajes en uno
     const textoConsolidado = mensajesBuffer.map(m => m.contenido).join(" ");
     const idsBuffer = mensajesBuffer.map(m => m.id);
 
-    // Marcar como procesados
+    // Marcar como procesados ANTES de responder — evita duplicados
     try {
       await env.kairos_db.prepare(
         `UPDATE Buffer_WA SET procesado = 1 WHERE id IN (${idsBuffer.join(",")})`
