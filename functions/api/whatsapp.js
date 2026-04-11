@@ -119,14 +119,109 @@ export async function onRequestPost(context) {
       }
     }
 
-    // ─── OTROS TIPOS (imagen, video, etc.) ───────────────────
-    if (tipo !== "text" && tipo !== "audio") {
-      await enviarMensaje(env, from, "Recibí tu mensaje. Por ahora proceso texto y audios cortos. ¿En qué puedo ayudarte?");
+    // ─── MANEJO DE IMÁGENES CON LLAMA 4 SCOUT ────────────────
+    let contextoVisual = '';
+    if (tipo === "image") {
+      const imageId = message.image?.id;
+      const caption = message.image?.caption || '';
+
+      try {
+        // 1. Obtener URL de la imagen desde Meta
+        const mediaRes = await fetch(`https://graph.facebook.com/v21.0/${imageId}`, {
+          headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
+        });
+        const mediaData = await mediaRes.json();
+        const imageUrl = mediaData.url;
+
+        // 2. Descargar la imagen
+        const imageRes = await fetch(imageUrl, {
+          headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
+        });
+        const imageBuffer = await imageRes.arrayBuffer();
+        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        const mimeType = mediaData.mime_type || "image/jpeg";
+
+        // 3. Analizar con LLaMA 4 Scout (visión)
+        const visionRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.GROQ_VISION_API_KEY || env.GROQ_API_KEY_PRO || env.GROQ_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "meta-llama/llama-4-scout-17b-16e-instruct",
+            messages: [{
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: { url: `data:${mimeType};base64,${base64Image}` }
+                },
+                {
+                  type: "text",
+                  text: `Eres un analista de ventas experto. Analiza esta imagen y extrae ESPECÍFICAMENTE:
+1. Si es un sitio web o captura de pantalla: precios visibles, servicios ofrecidos, errores de diseño o usabilidad
+2. Si es un negocio o local: tipo de negocio, productos visibles, oportunidades de mejora digital
+3. Si es competencia: precios, servicios, ventajas y debilidades vs TechZone Panamá
+Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del cliente: "${caption}"`
+                }
+              ]
+            }],
+            temperature: 0.1,
+            max_tokens: 400
+          })
+        });
+
+        const visionData = await visionRes.json();
+        const analisis = visionData.choices?.[0]?.message?.content || '';
+
+        if (analisis) {
+          contextoVisual = `\n\n📸 CONTEXTO VISUAL (análisis de imagen enviada por el cliente):\n${analisis}\nUSA este contexto para personalizar tu respuesta de ventas.`;
+
+          // Notificar Telegram con el análisis
+          try {
+            await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: env.TELEGRAM_CHAT_ID,
+                text: `👁️ <b>Imagen analizada — WhatsApp</b>\n\nDe: +${from}\n📝 Análisis: ${analisis}`,
+                parse_mode: "HTML"
+              })
+            });
+          } catch(e) {}
+
+          // Guardar análisis en D1
+          try {
+            await env.kairos_db.prepare(
+              "INSERT INTO Conversaciones_WA (numero, rol, contenido, fecha) VALUES (?, ?, ?, ?)"
+            ).bind(from, "user", `[Imagen analizada] ${analisis}`, new Date().toISOString()).run();
+          } catch(e) {}
+        }
+
+        // Continuar flujo con texto vacío + contexto visual
+        message.text = { body: caption || "El cliente envió una imagen." };
+        message.type = "text";
+
+      } catch(e) {
+        console.log("Error analizando imagen:", e.message);
+        await enviarMensaje(env, from, "Recibí tu imagen. ¿Puedes contarme más sobre lo que necesitas?");
+        return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+    }
+
+    // ─── OTROS TIPOS (video, documento, etc.) ────────────────
+    if (tipo !== "text" && tipo !== "audio" && tipo !== "image") {
+      await enviarMensaje(env, from, "Recibí tu mensaje. Por ahora proceso texto, audios e imágenes. ¿En qué puedo ayudarte?");
       return new Response("EVENT_RECEIVED", { status: 200 });
     }
 
     const textoRecibido = message.text?.body || "";
-    console.log(`Mensaje de ${from}: ${textoRecibido}`);
+    // Si hay contexto visual, enriquece el texto del buffer
+    const textoBuffer = contextoVisual
+      ? `${textoRecibido} [Imagen analizada: ${contextoVisual.replace(/\n/g, ' ')}]`
+      : textoRecibido;
+    console.log(`Mensaje de ${from}: ${textoBuffer}`);
 
     // ─── DEBOUNCE — AGRUPAR MENSAJES MÚLTIPLES ───────────────
     // Guardar mensaje en buffer D1
@@ -135,7 +230,7 @@ export async function onRequestPost(context) {
     try {
       const insertResult = await env.kairos_db.prepare(
         "INSERT INTO Buffer_WA (numero, contenido, fecha, procesado) VALUES (?, ?, ?, 0)"
-      ).bind(from, textoRecibido, fechaBuffer).run();
+      ).bind(from, textoBuffer, fechaBuffer).run();
       miId = insertResult.meta?.last_row_id;
     } catch(e) {
       console.log("Error buffer:", e.message);
@@ -201,25 +296,42 @@ export async function onRequestPost(context) {
     // ─── SYSTEM PROMPT DE VENTAS ──────────────────────────────
     const systemPrompt = `Eres Kairós, agente de ventas de TechZone Panamá. Respondes por WhatsApp Business.
 
-MISIÓN: Convertir prospectos en clientes de tiendas web y presencia digital.
+MISIÓN: Convertir prospectos en clientes de tiendas web y presencia digital. Tu meta final es SIEMPRE agendar una llamada de 15 minutos con Eduardo Aizprua.
 
-METODOLOGÍA DE VENTAS:
-- Si muestra INTERÉS ("sí", "dale", "cuéntame", "¿cuánto?", "¿de qué trata?"):
-  → Envía link de demo según rubro: restaurantes/retail → https://techzone-pro.com | joyería → https://elegancejewelry-pa.com
-  → Ofrece llamada de 15 minutos
-- Si tiene DUDAS de precio o seguridad:
-  → ROI: "Los negocios recuperan la inversión en 30-60 días con solo 2-3 ventas extra al mes"
-  → Seguridad: "Incluye SSL y carga en menos de 1 segundo gracias a Cloudflare"
-  → "Funciona perfecto desde el celular, donde está el 90% de sus clientes"
-- Si RECHAZA ("no gracias", "no me interesa", "NO"):
-  → Retirada elegante: agradece y quédate disponible, no insistas
+METODOLOGÍA DE VENTAS EN 2 PASOS:
+PASO 1 — APERTURA (ya enviado): El prospecto respondió. Ahora detecta su intención.
+PASO 2 — CIERRE: Según la intención detectada:
 
-REGLAS:
-- Máximo 3-4 líneas por mensaje
-- Tono cercano y profesional
+SI MUESTRA INTERÉS ("sí", "dale", "cuéntame", "¿cuánto?", "¿de qué trata?", "mándame"):
+→ Envía demo ESPECÍFICA según rubro detectado:
+   - Restaurante/Comida/Bar: https://techzone-pro.com
+   - Joyería/Accesorios: https://elegancejewelry-pa.com
+   - Clínica/Dental/Salud: https://techzone-pro.com
+   - Retail/Tienda: https://techzone-pro.com
+→ Inmediatamente después ofrece la llamada: "¿Le parece bien una llamada de 15 minutos mañana para mostrarle cómo adaptamos esto a su negocio?"
+
+SI OBJETA EL PRECIO (menciona "$250", "caro", "mucho", "no tengo presupuesto"):
+→ NUNCA ofrezcas descuento. Responde con ROI:
+   "Entiendo. Piénselo así: si la tienda web le trae solo 3 clientes nuevos al mes que antes no tenía, ya se paga sola. La mayoría la recupera en 30 días. ¿Le agendo 15 minutos con Eduardo para mostrarle los números exactos de su rubro?"
+→ Meta: llevar a la llamada, no defender el precio.
+
+SI OBJETA SEGURIDAD ("¿es seguro?", "mis datos", "no confío"):
+→ "Incluye SSL (candado verde), alojado en Cloudflare — la misma infraestructura que usa Amazon. Sus clientes verán que es un sitio confiable desde el primer clic."
+
+SI PREGUNTA TIEMPO DE ENTREGA:
+→ "Normalmente entre 5 y 7 días hábiles desde que aprobamos el diseño. En la llamada le mostramos el proceso completo."
+
+SI RECHAZA ("no gracias", "no me interesa", "NO", "estoy bien"):
+→ Retirada elegante: "Entiendo, no hay problema. Si en algún momento cambia de opinión, aquí estamos. ¡Éxitos con su negocio!"
+→ NO insistas después del rechazo.
+
+REGLAS DE COMUNICACIÓN:
+- Máximo 3-4 líneas por mensaje — WhatsApp no es email
+- Tono cercano: como un colega inteligente, no un vendedor agresivo
 - Si preguntan si eres IA: "Soy un asistente digital de TechZone Panamá"
 - Máximo 1-2 emojis por mensaje
-- Siempre en español`;
+- Siempre en español panameño
+- PRIORIDAD ABSOLUTA: llevar al prospecto a una llamada de 15 minutos con Eduardo` + contextoVisual;
 
     // ─── LLAMAR A GROQ ────────────────────────────────────────
     const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
