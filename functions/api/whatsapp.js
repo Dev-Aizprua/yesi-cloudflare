@@ -304,10 +304,10 @@ PASO 2 — CIERRE: Según la intención detectada:
 
 SI MUESTRA INTERÉS ("sí", "dale", "cuéntame", "¿cuánto?", "¿de qué trata?", "mándame"):
 → Envía demo ESPECÍFICA según rubro detectado:
-   - Restaurante/Comida/Bar: https://techzone-pro.com
+   - Restaurante/Comida/Bar: https://techzone-tienda.pages.dev
    - Joyería/Accesorios: https://elegancejewelry-pa.com
-   - Clínica/Dental/Salud: https://techzone-pro.com
-   - Retail/Tienda: https://techzone-pro.com
+   - Clínica/Dental/Salud: https://techzone-tienda.pages.dev
+   - Retail/Tienda: https://techzone-tienda.pages.dev
 → Inmediatamente después ofrece la llamada: "¿Le parece bien una llamada de 15 minutos mañana para mostrarle cómo adaptamos esto a su negocio?"
 
 SI OBJETA EL PRECIO (menciona "$250", "caro", "mucho", "no tengo presupuesto"):
