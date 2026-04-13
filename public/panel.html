@@ -318,6 +318,7 @@
   <div class="header-right">
     <button class="nav-btn" onclick="abrirModalNuevo()">+ Nuevo</button>
     <button class="nav-btn" onclick="cargarProspectos()">↻ Actualizar</button>
+    <a href="https://wa.me/50760164559" target="_blank" class="nav-btn" style="border-color:#25D366;color:#25D366;">📱 Kairós WA</a>
     <a href="/agente-ia.html" class="nav-btn primary">← Agente</a>
   </div>
 </header>
@@ -933,7 +934,11 @@ async function enviarCorreo() {
         });
       }
       const pWhatsApp = todosProspectos.find(x => x.correo === para);
-      const waLink = pWhatsApp?.whatsapp ? `\n📱 <a href="https://wa.me/${pWhatsApp.whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent('Buenas, equipo de '+(pWhatsApp.nombre||'su negocio')+'. Los felicito por sus reseñas en Google, se nota que son referentes en su zona. Noté que podrían estar perdiendo ventas sin un catálogo digital. ¿Me permite enviarles una demo de cómo se vería su tienda automatizada, sin compromiso? (Si no desea más info, responda NO)')}">Abrir WhatsApp</a>` : '';
+      const numeroWA = pWhatsApp?.whatsapp ? pWhatsApp.whatsapp.replace(/\D/g,'') : '50760164559';
+      const textoWA = pWhatsApp?.whatsapp
+        ? encodeURIComponent('Buenas, equipo de '+(pWhatsApp.nombre||'su negocio')+'. Los felicito por sus reseñas en Google, se nota que son referentes en su zona. Noté que podrían estar perdiendo ventas sin un catálogo digital. ¿Me permite enviarles una demo de cómo se vería su tienda automatizada, sin compromiso? (Si no desea más info, responda NO)')
+        : encodeURIComponent('Hola, soy Kairós de TechZone Panamá.');
+      const waLink = `\n📱 <a href="https://wa.me/${numeroWA}?text=${textoWA}">Abrir WhatsApp</a>`;
       fetch('/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mensaje: `📧 <b>Propuesta enviada</b>\n\nPara: ${para}\nEmpresa: ${empresa}${waLink}` }) });
       showToast('✅ Correo enviado a ' + para);
       cerrarModal('modalCorreo');
