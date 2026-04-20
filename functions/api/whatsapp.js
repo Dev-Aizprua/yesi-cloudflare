@@ -308,8 +308,8 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     }
 
     const saludo = nombreLead
-      ? `Hola ${nombreLead}, un gusto saludarle. Soy Kairós. He estado analizando el impacto digital en su sector y he preparado una propuesta visual para que vea cómo podemos llevar su negocio al siguiente nivel.`
-      : `Hola, un gusto saludarle. Soy Kairós. He estado analizando el impacto digital en su sector y he preparado una propuesta visual para que vea cómo podemos llevar su negocio al siguiente nivel.`;
+      ? `Hola ${nombreLead}, un gusto saludarle. Soy Kairós. He estado analizando el impacto digital en su sector y he preparado una propuesta visual para que vea cómo podemos llevar su negocio al siguiente nivel. ¿Me permite mostrarle una simulación interactiva de lo que tengo en mente para usted?`
+      : `Hola, un gusto saludarle. Soy Kairós. He estado analizando el impacto digital en su sector y he preparado una propuesta visual para que vea cómo podemos llevar su negocio al siguiente nivel. ¿Me permite mostrarle una simulación interactiva de lo que tengo en mente para usted?`;
 
     // ─── SYSTEM PROMPT DE VENTAS ──────────────────────────────
     const systemPrompt = `Eres Kairós, el asesor experto en transformación digital de TechZone, liderado por Eduardo Aizprua.
