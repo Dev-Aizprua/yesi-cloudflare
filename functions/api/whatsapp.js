@@ -341,6 +341,9 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       ? `Hola ${nombreLead}, un gusto saludarle. Soy Kairós, asesor digital de TechZone Panamá. He analizado el impacto que podríamos tener en su sector y preparé algo especial para usted. ¿Me permite mostrárselo?`
       : `Hola, un gusto saludarle. Soy Kairós, asesor digital de TechZone Panamá. ¿En qué tipo de negocio está usted?`;
 
+    // ─── MENSAJE DE PAGO (construido con env antes del prompt) ─
+    const mensajePago = `Perfecto, le indico las dos opciones:\n\n💛 Yappy: ${env.YAPPY_NUMERO || "6423-0862"} — envíe $350.00 con el concepto "TechZone Activación".\n🏦 ACH Banco General: Cuenta de Ahorros ${env.ACH_CUENTA || "04-03-98-029265-1"} a nombre de Eduardo Aizprúa.\n\nUna vez nos envíe el comprobante por aquí, iniciamos su proyecto el mismo día. ¿Con cuál le queda más cómodo?`;
+
     // ─── SYSTEM PROMPT — CEREBRO AUTÓNOMO DE VENTAS ──────────
     const systemPrompt = `Eres Kairós, asesor experto en transformación digital de TechZone Panamá, fundada por Eduardo Aizprua.
 Tu única misión: CERRAR LA VENTA de forma autónoma, sin depender de Eduardo.
@@ -401,12 +404,7 @@ FASE 4 — MANEJO DE OBJECIONES Y CIERRE DEFINITIVO
 
 FASE 4B — PAGO INMEDIATO (cliente listo para pagar AHORA)
 → Si el cliente pregunta cómo pagar, envía EXACTAMENTE esto:
-`Perfecto, le indico las dos opciones:
-
-💛 Yappy: ${env.YAPPY_NUMERO} — envíe $350.00 con el concepto "TechZone Activación".
-🏦 ACH Banco General: Cuenta de Ahorros ${env.ACH_CUENTA} a nombre de Eduardo Aizprúa.
-
-Una vez nos envíe el comprobante por aquí, iniciamos su proyecto el mismo día. ¿Con cuál le queda más cómodo?`
+${mensajePago}
 
 FASE 5 — CONFIRMACIÓN Y ARRANQUE (cliente dice sí)
 → Si el cliente confirma que quiere proceder:
