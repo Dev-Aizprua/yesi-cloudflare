@@ -337,6 +337,11 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     const objecionConfianza = ["seguro", "garantía", "confiar", "funciona", "resultados", "comprobado"].some(s => textoLower.includes(s));
     const quiereLlamar    = ["llamada", "llamar", "hablar", "teléfono", "reunión", "zoom", "meet"].some(s => textoLower.includes(s));
 
+    // Señales de rechazo — despedida cordial sin más preguntas
+    const esRechazo = ["no me interesa", "no gracias", "no quiero", "no estoy interesado",
+      "no estoy interesada", "no por ahora", "no gracias", "déjame tranquilo",
+      "no molestes", "retírese", "no contactar", "quíteme", "borre mi número"].some(s => textoLower.includes(s));
+
     const saludo = nombreLead
       ? `Hola ${nombreLead}, un gusto saludarle. Soy Kairós, asesor digital de TechZone Panamá. He analizado el impacto que podríamos tener en su sector y preparé algo especial para usted. ¿Me permite mostrárselo?`
       : `Hola, un gusto saludarle. Soy Kairós, asesor digital de TechZone Panamá. ¿En qué tipo de negocio está usted?`;
@@ -363,6 +368,7 @@ CONTEXTO DEL PROSPECTO (actualizado en tiempo real)
 • Objeción de tiempo: ${objecionTiempo ? "⚠️ SÍ — resaltar 5-7 días" : "NO"}
 • Objeción de confianza: ${objecionConfianza ? "⚠️ SÍ — usar prueba social" : "NO"}
 • Quiere llamada: ${quiereLlamar ? "✅ SÍ — agendar con Eduardo" : "NO"}
+• Rechazo directo: ${esRechazo ? "🛑 SÍ — despedida cordial, CERO preguntas, no insistir" : "NO"}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EMBUDO DE CIERRE AUTÓNOMO — 5 FASES
@@ -455,7 +461,8 @@ REGLAS DE ORO
 • Máximo 2 emojis por mensaje.
 • NUNCA des descuento. Si insisten: "El precio refleja la calidad de la infraestructura. No manejamos descuentos."
 • NUNCA digas "no sé". Si no tienes la respuesta exacta: "Déjeme verificarlo con el equipo técnico y le confirmo."
-• SIEMPRE termina con una pregunta o un llamado a la acción. Nunca dejes la pelota en el aire.
+• Termina con una pregunta o llamado a la acción SOLO SI el cliente muestra interés o dudas (Fases 1 a 4).
+• Si el cliente expresa rechazo directo ("no me interesa", "no gracias", "no quiero"), responde ÚNICAMENTE con una despedida cordial y NO hagas más preguntas. Ejemplo: "Entendido, sin problema. Quedo a su disposición si en algún momento cambia de opinión. ¡Que le vaya muy bien! 😊"
 • Si preguntan si eres IA: "Soy Kairós, el asistente digital de TechZone Panamá."
 • Idioma: siempre español. Tono: profesional pero cercano, como un buen vendedor panameño.` + contextoVisual;
 
@@ -480,6 +487,12 @@ REGLAS DE ORO
 
     const groqData = await groqRes.json();
     const respuesta = groqData.choices?.[0]?.message?.content || "Un momento, estoy procesando tu consulta.";
+
+    // ─── OVERRIDE DE SEGURIDAD — RECHAZO DIRECTO ─────────────
+    // Fuerza despedida en código, independiente de lo que Groq genere
+    if (esRechazo) {
+      respuesta = "Entendido, sin problema. Quedo a su disposición si en algún momento cambia de opinión. ¡Que le vaya muy bien! 😊";
+    }
     console.log(`Kairós responde: ${respuesta}`);
 
     // ─── GUARDAR EN D1 ────────────────────────────────────────
