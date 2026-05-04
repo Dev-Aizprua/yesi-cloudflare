@@ -236,8 +236,8 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       console.log("Error buffer:", e.message);
     }
 
-    // Esperar 15 segundos — ventana de silencio
-    await new Promise(r => setTimeout(r, 15000));
+    // Esperar 8 segundos — ventana de silencio
+    await new Promise(r => setTimeout(r, 8000));
 
     // Verificar si llegaron más mensajes después de este
     let mensajesBuffer = [];
@@ -504,7 +504,7 @@ REGLAS DE ORO
     }
 
     // ─── SIMULAR ESCRIBIENDO (3 segundos) ────────────────────
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 2000));
 
     // ─── ENVIAR RESPUESTA ─────────────────────────────────────
     await enviarMensaje(env, from, respuesta);
