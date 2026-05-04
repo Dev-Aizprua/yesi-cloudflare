@@ -25,6 +25,8 @@ En TechZone construimos tiendas web con pedidos directos para restaurantes panam
 
 ¿Tienen 15 minutos esta semana para una llamada rápida? Puedo mostrarles exactamente cuánto pueden ahorrar al mes.
 
+💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
+
 Saludos,
 Eduardo Aizprua
 TechZone Panamá
@@ -52,6 +54,8 @@ Lo que TechZone ofrece para clínicas como {nombre}:
 ✓ Integración con WhatsApp para confirmaciones automáticas
 
 Estaré encantado de presentarles una propuesta personalizada sin ningún compromiso.
+
+📱 Si prefiere una respuesta más rápida, puede contactarnos por WhatsApp al +507 6016-4559 — atendemos de lunes a sábado.
 
 Atentamente,
 Eduardo Aizprua
@@ -84,6 +88,8 @@ En TechZone hemos construido tiendas online para negocios en Panamá que duplica
 
 ¿Conversamos esta semana?
 
+💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
+
 Saludos,
 Eduardo Aizprua
 TechZone Panamá
@@ -112,6 +118,8 @@ TechZone diseña landing pages profesionales para abogados, contadores y consult
 
 Le propongo una reunión breve para presentarle opciones concretas adaptadas a su perfil profesional.
 
+📱 Si prefiere una respuesta más rápida, puede contactarnos por WhatsApp al +507 6016-4559 — atendemos de lunes a sábado.
+
 Atentamente,
 Eduardo Aizprua
 TechZone Panamá
@@ -134,6 +142,8 @@ Me gustaría mucho que {nombre} fuera el próximo caso de éxito. ¿Pudieron rev
 
 Quedo atento a su respuesta.
 
+💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
+
 Saludos,
 Eduardo Aizprua
 TechZone Panamá
@@ -152,7 +162,7 @@ Te escribo brevemente porque entiendo que tu agenda debe estar a tope.
 
 Sigo muy interesado en que trabajemos juntos para optimizar los procesos digitales de tu negocio. He reservado un espacio en mi agenda para mañana por si prefieres que te explique los beneficios de TechZone de forma más directa.
 
-Si te resulta más cómodo, puedes escribirme o enviarme un audio por WhatsApp al +507-6423-0862 y lo coordinamos por allá en un momento.
+Si te resulta más cómodo, puedes escribirme o enviarme un audio por WhatsApp al +507 6016-4559 y lo coordinamos de inmediato.
 
 Quedo a la espera de tus noticias para dar el siguiente paso.
 
@@ -184,6 +194,8 @@ TechZone construye sitios web profesionales para negocios como el suyo:
 ✓ Precio accesible, sin mensualidades
 
 ¿Les interesa saber más? Una llamada de 15 minutos es suficiente para contarles todo.
+
+💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
 
 Saludos,
 Eduardo Aizprua
