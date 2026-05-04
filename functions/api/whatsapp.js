@@ -486,7 +486,7 @@ REGLAS DE ORO
     });
 
     const groqData = await groqRes.json();
-    const respuesta = groqData.choices?.[0]?.message?.content || "Un momento, estoy procesando tu consulta.";
+    let respuesta = groqData.choices?.[0]?.message?.content || "Un momento, estoy procesando tu consulta.";
 
     // ─── OVERRIDE DE SEGURIDAD — RECHAZO DIRECTO ─────────────
     // Fuerza despedida en código, independiente de lo que Groq genere
