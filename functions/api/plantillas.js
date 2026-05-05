@@ -3,8 +3,50 @@
 
 const PLANTILLAS = {
 
+  // ─── 0. JOYERÍA / LUJO / MODA PREMIUM ───────────────────────
+  joyeria: {
+    key: 'joyeria',
+    rubro: 'Joyería y Lujo',
+    tono: 'premium',
+    icono: '💎',
+    asunto: '{nombre} — sus piezas merecen una vitrina digital a su altura',
+    cuerpo: `Estimado equipo de {nombre},
+
+Me comunico de parte de TechZone Panamá.
+
+Una joya de $900 no se vende en una página genérica. Sus clientes evalúan la confianza antes de comprar — y esa confianza empieza en el primer segundo que ven su presencia digital.
+
+Lo que TechZone construye para negocios de joyería y lujo:
+✓ Tienda online con fotografía de alta resolución y detalles del producto
+✓ Panel de ventas en tiempo real con métricas de ingresos y pedidos
+✓ Carga en menos de 1 segundo — infraestructura Cloudflare de nivel corporativo
+✓ Integración con Yappy y ACH para pagos locales
+✓ Panel de control exclusivo para gestionar pedidos y entregas
+
+Le invito a ver una demostración real de cómo funciona:
+🔗 https://kairos-demo.pages.dev/
+
+Es una simulación interactiva — en 60 segundos entenderá exactamente lo que estamos ofreciendo.
+
+📱 Si prefiere hablar directamente, escríbanos por WhatsApp al +507 6016-4559.
+
+Atentamente,
+Eduardo Aizprua
+TechZone Panamá
+📧 eduardo.aizpruap@gmail.com`,
+    whatsapp: `Hola equipo de {nombre} 👋
+
+Soy Eduardo de TechZone Panamá. Vi su negocio y creo que sus piezas merecen una vitrina digital a su altura.
+
+Construimos tiendas online premium con panel de ventas en tiempo real para joyerías en Panamá. Le preparé una demo interactiva:
+🔗 https://kairos-demo.pages.dev/
+
+¿Tienen 2 minutos para verla?`
+  },
+
   // ─── 1. RESTAURANTES / COMIDA ────────────────────────────────
   restaurante: {
+    key: 'restaurante',
     rubro: 'Restaurante',
     tono: 'conversacional',
     icono: '🍕',
@@ -30,11 +72,17 @@ En TechZone construimos tiendas web con pedidos directos para restaurantes panam
 Saludos,
 Eduardo Aizprua
 TechZone Panamá
-📧 eduardo.aizpruap@gmail.com`
+📧 eduardo.aizpruap@gmail.com`,
+    whatsapp: `Hola equipo de {nombre} 👋
+
+Soy Eduardo de TechZone Panamá. ¿Sabían que PedidosYa y Uber Eats cobran hasta 35% de comisión por pedido?
+
+Construimos sistemas de pedidos directos para restaurantes — sin comisiones, todo para ustedes. ¿Les interesa saber cómo funciona?`
   },
 
   // ─── 2. CLÍNICAS / ODONTOLOGÍA ───────────────────────────────
   odontologia: {
+    key: 'odontologia',
     rubro: 'Odontología',
     tono: 'formal',
     icono: '🦷',
@@ -60,11 +108,17 @@ Estaré encantado de presentarles una propuesta personalizada sin ningún compro
 Atentamente,
 Eduardo Aizprua
 TechZone Panamá
-📧 eduardo.aizpruap@gmail.com`
+📧 eduardo.aizpruap@gmail.com`,
+    whatsapp: `Hola equipo de {nombre} 👋
+
+Soy Eduardo de TechZone Panamá. Trabajamos con clínicas en Panamá para que los pacientes puedan agendar citas online 24/7, sin llamadas perdidas.
+
+¿Les interesa una demo rápida de cómo funciona?`
   },
 
   // ─── 3. TIENDAS / RETAIL ─────────────────────────────────────
   retail: {
+    key: 'retail',
     rubro: 'Retail',
     tono: 'conversacional',
     icono: '🛍️',
@@ -93,11 +147,17 @@ En TechZone hemos construido tiendas online para negocios en Panamá que duplica
 Saludos,
 Eduardo Aizprua
 TechZone Panamá
-📧 eduardo.aizpruap@gmail.com`
+📧 eduardo.aizpruap@gmail.com`,
+    whatsapp: `Hola equipo de {nombre} 👋
+
+Soy Eduardo de TechZone Panamá. ¿Cuántos mensajes de "¿precio?" responden al día por WhatsApp?
+
+Una tienda online resuelve eso y libera ese tiempo para vender más. ¿Le muestro cómo?`
   },
 
   // ─── 4. SERVICIOS PROFESIONALES ──────────────────────────────
   servicios_profesionales: {
+    key: 'servicios_profesionales',
     rubro: 'Servicios Profesionales',
     tono: 'formal',
     icono: '⚖️',
@@ -123,11 +183,17 @@ Le propongo una reunión breve para presentarle opciones concretas adaptadas a s
 Atentamente,
 Eduardo Aizprua
 TechZone Panamá
-📧 eduardo.aizpruap@gmail.com`
+📧 eduardo.aizpruap@gmail.com`,
+    whatsapp: `Hola {nombre} 👋
+
+Soy Eduardo de TechZone. En Panamá, los profesionales que tienen presencia digital bien hecha reciben 3x más consultas que los que dependen solo del boca a boca.
+
+¿Le interesa ver opciones concretas para su perfil?`
   },
 
   // ─── 6. SEGUIMIENTO — VALOR Y PRUEBA SOCIAL ──────────────────
   seguimiento_valor: {
+    key: 'seguimiento_valor',
     rubro: 'Seguimiento',
     tono: 'conversacional',
     icono: '🔁',
@@ -147,11 +213,17 @@ Quedo atento a su respuesta.
 Saludos,
 Eduardo Aizprua
 TechZone Panamá
-📧 eduardo.aizpruap@gmail.com`
+📧 eduardo.aizpruap@gmail.com`,
+    whatsapp: `Hola de nuevo equipo de {nombre} 👋
+
+Solo para comentarles: los negocios en Panamá que implementan pedidos directos mejoran su margen entre 15-25% desde el primer mes, sin comisiones de terceros.
+
+Pudieron revisar la propuesta? Tienen alguna duda que pueda resolver?`
   },
 
   // ─── 7. SEGUIMIENTO — PEZ GORDO (DIRECTO A WHATSAPP) ─────────
   seguimiento_pez_gordo: {
+    key: 'seguimiento_pez_gordo',
     rubro: 'Seguimiento Ejecutivo',
     tono: 'directo',
     icono: '🐋',
@@ -169,11 +241,17 @@ Quedo a la espera de tus noticias para dar el siguiente paso.
 Saludos,
 Eduardo Aizprua
 TechZone Panamá
-📧 eduardo.aizpruap@gmail.com`
+📧 eduardo.aizpruap@gmail.com`,
+    whatsapp: `Hola {nombre} 👋
+
+Te escribo brevemente, entiendo que tienes la agenda ocupada.
+
+Tienes 5 minutos esta semana para una llamada rapida? Creo que puedo aportarle valor real a tu negocio. También puedes responderme por aquí. 📲`
   },
 
   // ─── 5. MULTISERVICIOS / OTROS ───────────────────────────────
   multiservicios: {
+    key: 'multiservicios',
     rubro: 'Multiservicios',
     tono: 'conversacional',
     icono: '✨',
@@ -200,7 +278,12 @@ TechZone construye sitios web profesionales para negocios como el suyo:
 Saludos,
 Eduardo Aizprua
 TechZone Panamá
-📧 eduardo.aizpruap@gmail.com`
+📧 eduardo.aizpruap@gmail.com`,
+    whatsapp: `Hola equipo de {nombre} 👋
+
+Soy Eduardo de TechZone Panamá. Vi su negocio en Google Maps y creo que hay clientes buscándoles ahora mismo que no los están encontrando.
+
+¿Tiene 2 minutos para ver cómo lo resolvemos?`
   }
 };
 
@@ -216,7 +299,10 @@ function detectarPlantilla(rubro) {
   if (/dental|odontologo|clinica|medico|salud|farmacia|doctor|hospital|consulta|ortodoncia/.test(r))
     return PLANTILLAS.odontologia;
 
-  if (/tienda|retail|ropa|joyeria|electronica|moda|boutique|ferreteria|supermercado|shop/.test(r))
+  if (/joyeria|joya|diamante|oro|plata|bisuteria|lujo|luxury|reloj|accesorio/.test(r))
+    return PLANTILLAS.joyeria;
+
+  if (/tienda|retail|ropa|electronica|moda|boutique|ferreteria|supermercado|shop/.test(r))
     return PLANTILLAS.retail;
 
   if (/abogado|contador|consultor|juridico|legal|contabilidad|auditoria|notaria|arquitecto|ingeniero/.test(r))
@@ -253,22 +339,39 @@ export async function onRequestPost(context) {
     const nombreFinal = nombre || 'su negocio';
     const rubroFinal = rubro || plantilla.rubro;
 
-    const asunto = plantilla.asunto
+    // Falla 1 — fallback para asunto/cuerpo si una plantilla futura los omite
+    const asuntoRaw = plantilla.asunto || 'Propuesta Digital para {nombre} — TechZone Panamá';
+    const cuerpoRaw = plantilla.cuerpo || 'Hola equipo de {nombre}, soy Eduardo de TechZone Panamá. Me gustaría presentarles una propuesta digital para su negocio. Escríbanos al +507 6016-4559.';
+    const whatsappRaw = plantilla.whatsapp || 'Hola equipo de {nombre} 👋\n\nSoy Eduardo de TechZone Panamá. ¿Tienen 2 minutos para ver cómo podemos llevar su negocio al siguiente nivel digital?\n\n🔗 https://kairos-demo.pages.dev/';
+
+    // Falla 5 — sanitizar nombre para que caracteres especiales no rompan links de WhatsApp
+    const nombreSeguro = nombreFinal.replace(/[&<>"'#%+]/g, (c) => encodeURIComponent(c));
+
+    const asunto = asuntoRaw
       .replace(/\{nombre\}/g, nombreFinal)
       .replace(/\{rubro\}/g, rubroFinal);
 
-    const cuerpo = plantilla.cuerpo
+    const cuerpo = cuerpoRaw
       .replace(/\{nombre\}/g, nombreFinal)
       .replace(/\{rubro\}/g, rubroFinal);
+
+    const whatsapp = whatsappRaw
+      .replace(/\{nombre\}/g, nombreFinal)
+      .replace(/\{rubro\}/g, rubroFinal);
+
+    // Link de WhatsApp seguro con nombre codificado
+    const whatsappLink = `https://wa.me/50760164559?text=${encodeURIComponent(`Hola Eduardo, soy ${nombreSeguro} y me interesa saber más sobre TechZone.`)}`;
 
     return Response.json({
       success: true,
-      plantilla: plantilla.key,
-      rubro: plantilla.rubro,
-      tono: plantilla.tono,
-      icono: plantilla.icono,
+      plantilla: plantilla.key || key || 'multiservicios',
+      rubro: plantilla.rubro || 'General',
+      tono: plantilla.tono || 'conversacional',
+      icono: plantilla.icono || '✨',
       asunto,
-      cuerpo
+      cuerpo,
+      whatsapp,
+      whatsappLink
     });
 
   } catch (error) {
