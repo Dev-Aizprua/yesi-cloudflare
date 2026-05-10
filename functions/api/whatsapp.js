@@ -327,6 +327,8 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       "producto a", "elegance", "tienda completa"].some(s => textoLower.includes(s));
     const interesaLanding  = ["landing", "página de ventas", "estacional", "navidad", "san valentín",
       "fiestas patrias", "colores", "temporada", "producto b", "landing page"].some(s => textoLower.includes(s));
+    const quiereAmbos      = ["los dos", "ambos", "los 2", "quiero los dos", "me interesan los dos",
+      "los dos productos", "ambos productos"].some(s => textoLower.includes(s));
 
     // Señales de pago inmediato — cliente listo para transferir ahora
     const listoParaPagar = ["listo para pagar", "cómo pago", "número de yappy", "cuenta ach",
@@ -378,6 +380,7 @@ CONTEXTO DEL PROSPECTO (actualizado en tiempo real)
 • Rechazo directo: ${esRechazo ? "🛑 SÍ — despedida cordial, CERO preguntas, no insistir" : "NO"}
 • Interés en Tienda+Panel (Producto A): ${interesaTienda ? "🛒 SÍ — enfocar en Elegance E-Commerce" : "NO"}
 • Interés en Landing+Panel (Producto B): ${interesaLanding ? "🎨 SÍ — enfocar en Landing Luxury Estacional" : "NO"}
+• Quiere ambos productos: ${quiereAmbos ? "🔥 SÍ — usar caso especial, NO descuento, mini-cierre cuál primero" : "NO"}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EMBUDO DE CIERRE AUTÓNOMO — 5 FASES
@@ -496,12 +499,21 @@ En esos casos di: "Voy a conectarle directamente con Eduardo para que coordinen 
 
 IMPORTANTE: Si el cliente quiere pagar → NO escales. Usa la FASE 4B y da las instrucciones de Yappy/ACH tú mismo.
 
+CASO ESPECIAL — CLIENTE QUIERE AMBOS PRODUCTOS:
+Si el cliente dice "quiero los dos", "me interesan ambos" o similar, responde EXACTAMENTE:
+"Excelente visión. Puede tener ambos — son dos proyectos independientes con su propio panel cada uno.
+La forma más inteligente es arrancar con uno, dominarlo y luego activar el segundo.
+¿Con cuál prefiere comenzar — la Tienda Completa (Producto A) o la Landing Estacional (Producto B)?"
+→ NO ofrezcas descuento por los dos. Cada uno vale $350 de activación por separado.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REGLAS DE ORO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Máximo 5 líneas por mensaje. Mensajes cortos convierten más.
 • Máximo 2 emojis por mensaje.
-• NUNCA des descuento. Si insisten: "El precio refleja la calidad de la infraestructura. No manejamos descuentos."
+• NUNCA des descuento. Si piden descuento responde EXACTAMENTE:
+"El precio refleja la infraestructura que recibe: Cloudflare, panel en tiempo real y soporte 24/7. No manejamos descuentos, pero sí le garantizo que es la mejor inversión digital que puede hacer en Panamá por ese precio. ¿Con cuál de los dos productos quiere arrancar — la Tienda Completa o la Landing Estacional?"
+→ Siempre termina con esa pregunta de cierre asumido para no dejar la conversación en el aire.
 • NUNCA digas "no sé". Si no tienes la respuesta exacta: "Déjeme verificarlo con el equipo técnico y le confirmo."
 • Termina con una pregunta o llamado a la acción SOLO SI el cliente muestra interés o dudas (Fases 1 a 4).
 • Si el cliente expresa rechazo directo ("no me interesa", "no gracias", "no quiero"), responde ÚNICAMENTE con una despedida cordial y NO hagas más preguntas. Ejemplo: "Entendido, sin problema. Quedo a su disposición si en algún momento cambia de opinión. ¡Que le vaya muy bien! 😊"

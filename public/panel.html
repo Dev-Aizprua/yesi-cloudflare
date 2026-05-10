@@ -470,6 +470,11 @@ Atentamente,
 Eduardo Aizprua
 TechZone Panama</textarea>
       </div>
+      <!-- Preview versión WhatsApp de la plantilla -->
+      <div class="wa-preview-box" style="display:none;margin-top:12px;background:rgba(37,211,102,0.06);border:1px solid rgba(37,211,102,0.25);border-radius:4px;padding:12px;">
+        <div style="font-size:9px;color:#25D366;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">📱 Versión WhatsApp de esta plantilla</div>
+        <pre id="campana-whatsapp-preview" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);white-space:pre-wrap;line-height:1.5;"></pre>
+      </div>
       <div style="font-size:9px;color:var(--accent3);margin-top:8px;">
         ⚡ Anti-Spam Throttling activo: delay de 2-3s entre correos · El Worker procesa todo en una sola petición
       </div>
@@ -492,6 +497,20 @@ TechZone Panama</textarea>
       <div class="field"><label>Para (correo)</label><input type="email" id="correo-para" placeholder="cliente@empresa.com" /></div>
       <div class="field"><label>Nombre</label><input type="text" id="correo-nombre" /></div>
       <div class="field"><label>Empresa</label><input type="text" id="correo-empresa" /></div>
+      <div class="field">
+        <label>Plantilla rápida</label>
+        <select id="correo-plantilla" onchange="cargarPlantillaCorreo()">
+          <option value="">✍️ Manual</option>
+          <option value="joyeria">💎 Joyería / Lujo</option>
+          <option value="restaurante">🍕 Restaurante</option>
+          <option value="odontologia">🦷 Clínica / Odontología</option>
+          <option value="retail">🛍️ Retail / Tienda</option>
+          <option value="servicios_profesionales">⚖️ Servicios Profesionales</option>
+          <option value="multiservicios">✨ Multiservicios</option>
+          <option value="seguimiento_valor">🔁 Seguimiento — Valor</option>
+          <option value="seguimiento_pez_gordo">🐋 Seguimiento — Pez Gordo</option>
+        </select>
+      </div>
       <div class="field"><label>Asunto</label><input type="text" id="correo-asunto" /></div>
       <div class="field"><label>Cuerpo</label><textarea id="correo-cuerpo"></textarea></div>
     </div>
@@ -511,7 +530,7 @@ TechZone Panama</textarea>
     </div>
     <div class="modal-body">
       <div class="field"><label>Correo electrónico</label><input type="email" id="edit-correo" /></div>
-      <div class="field"><label>WhatsApp (ej: +50764230862)</label><input type="text" id="edit-whatsapp" placeholder="+507..." /></div>
+      <div class="field"><label>WhatsApp (ej: +50760164559)</label><input type="text" id="edit-whatsapp" placeholder="+507..." /></div>
       <input type="hidden" id="edit-id" />
     </div>
     <div class="modal-footer">
@@ -936,9 +955,14 @@ async function enviarCorreo() {
       }
       const pWhatsApp = todosProspectos.find(x => x.correo === para);
       const numeroWA = pWhatsApp?.whatsapp ? pWhatsApp.whatsapp.replace(/\D/g,'') : '50760164559';
-      const textoWA = pWhatsApp?.whatsapp
-        ? encodeURIComponent('Buenas, equipo de '+(pWhatsApp.nombre||'su negocio')+'. Los felicito por sus reseñas en Google, se nota que son referentes en su zona. Noté que podrían estar perdiendo ventas sin un catálogo digital. ¿Me permite enviarles una demo de cómo se vería su tienda automatizada, sin compromiso? (Si no desea más info, responda NO)')
-        : encodeURIComponent('Hola, soy Kairós de TechZone Panamá.');
+      // Usar plantilla WhatsApp si fue cargada, si no usar texto del prospecto, si no fallback genérico
+      const plantillaWA = document.getElementById('campana-plantilla')?.dataset?.whatsapp || '';
+      const textoWABase = plantillaWA
+        ? plantillaWA.replace(/\{nombre\}/g, pWhatsApp?.nombre || 'su negocio').replace(/\{rubro\}/g, pWhatsApp?.rubro || 'su sector')
+        : (pWhatsApp?.whatsapp
+            ? 'Buenas, equipo de '+(pWhatsApp.nombre||'su negocio')+'. Soy Eduardo de TechZone Panamá. ¿Tienen 2 minutos para ver cómo podemos llevar su negocio al siguiente nivel digital? 🔗 https://kairos-demo.pages.dev/'
+            : 'Hola, soy Kairós de TechZone Panamá.');
+      const textoWA = pWhatsApp?.whatsapp ? encodeURIComponent(textoWABase) : encodeURIComponent(textoWABase);
       const waLink = `\n📱 <a href="https://wa.me/${numeroWA}?text=${textoWA}">Abrir WhatsApp</a>`;
       fetch('/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mensaje: `📧 <b>Propuesta enviada</b>\n\nPara: ${para}\nEmpresa: ${empresa}${waLink}` }) });
       showToast('✅ Correo enviado a ' + para);
@@ -1078,6 +1102,29 @@ function showToast(msg) {
   setTimeout(() => toast.remove(), 3500);
 }
 
+// ─── CARGAR PLANTILLA EN MODAL CORREO INDIVIDUAL ────────────────
+async function cargarPlantillaCorreo() {
+  const key = document.getElementById('correo-plantilla').value;
+  if (!key) return;
+  const nombre = document.getElementById('correo-nombre').value || '{nombre}';
+  const empresa = document.getElementById('correo-empresa').value || '{nombre}';
+  try {
+    const res = await fetch('/api/plantillas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, nombre: nombre || empresa, rubro: '{rubro}' })
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('correo-asunto').value = data.asunto;
+      document.getElementById('correo-cuerpo').value = data.cuerpo;
+      // Guardar versión WA para uso posterior
+      document.getElementById('correo-plantilla').dataset.whatsapp = data.whatsapp || '';
+      showToast(data.icono + ' ' + data.rubro + ' cargada');
+    }
+  } catch(e) { showToast('Error cargando plantilla'); }
+}
+
 // ─── PLANTILLAS ──────────────────────────────────────────────────
 async function cargarPlantilla() {
   const key = document.getElementById('campana-plantilla').value;
@@ -1090,9 +1137,21 @@ async function cargarPlantilla() {
     });
     const data = await res.json();
     if (data.success) {
+      // Correo
       document.getElementById('campana-asunto').value = data.asunto;
       document.getElementById('campana-cuerpo').value = data.cuerpo;
-      showToast(data.icono + ' Plantilla ' + data.rubro + ' cargada');
+
+      // Versión WhatsApp — mostrar en preview si existe el elemento
+      const waPreview = document.getElementById('campana-whatsapp-preview');
+      if (waPreview && data.whatsapp) {
+        waPreview.textContent = data.whatsapp;
+        waPreview.closest('.wa-preview-box').style.display = 'block';
+      }
+
+      // Guardar versión WA en dataset para usarla al enviar por WA
+      document.getElementById('campana-plantilla').dataset.whatsapp = data.whatsapp || '';
+
+      showToast(data.icono + ' Plantilla ' + data.rubro + ' cargada — correo y WhatsApp');
     }
   } catch(e) {
     showToast('Error cargando plantilla');

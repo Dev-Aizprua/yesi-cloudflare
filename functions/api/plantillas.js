@@ -65,7 +65,10 @@ En TechZone construimos tiendas web con pedidos directos para restaurantes panam
 ✓ Sistema de reservaciones online 24/7
 ✓ Cero comisiones — los pedidos llegan directo a ustedes
 
-¿Tienen 15 minutos esta semana para una llamada rápida? Puedo mostrarles exactamente cuánto pueden ahorrar al mes.
+Antes de cualquier llamada, le invito a ver cómo funciona en 60 segundos:
+🔗 https://kairos-demo.pages.dev/
+
+¿Tienen 15 minutos esta semana para conversar sobre cómo adaptamos esto a su restaurante?
 
 💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
 
@@ -100,6 +103,9 @@ Lo que TechZone ofrece para clínicas como {nombre}:
 ✓ Sistema de citas online disponible 24/7
 ✓ Ficha de cada doctor con especialidad y experiencia
 ✓ Integración con WhatsApp para confirmaciones automáticas
+
+Le invito primero a ver una demostración real de lo que construimos:
+🔗 https://kairos-demo.pages.dev/
 
 Estaré encantado de presentarles una propuesta personalizada sin ningún compromiso.
 
@@ -140,6 +146,9 @@ Una tienda online profesional resuelve esto de una vez:
 
 En TechZone hemos construido tiendas online para negocios en Panamá que duplicaron sus ventas en los primeros 3 meses.
 
+Vea cómo funciona en 60 segundos:
+🔗 https://kairos-demo.pages.dev/
+
 ¿Conversamos esta semana?
 
 💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
@@ -176,7 +185,10 @@ TechZone diseña landing pages profesionales para abogados, contadores y consult
 ✓ Incluyen formulario de contacto y consulta inicial
 ✓ Generan confianza desde el primer clic
 
-Le propongo una reunión breve para presentarle opciones concretas adaptadas a su perfil profesional.
+Le invito a ver una demo real antes de cualquier reunión:
+🔗 https://kairos-demo.pages.dev/
+
+Le propongo luego una conversación breve para presentarle opciones concretas adaptadas a su perfil.
 
 📱 Si prefiere una respuesta más rápida, puede contactarnos por WhatsApp al +507 6016-4559 — atendemos de lunes a sábado.
 
@@ -204,7 +216,10 @@ Espero que estén teniendo una excelente semana.
 
 Solo pasaba por aquí para compartirles un dato que olvidé mencionar en mi correo anterior sobre {rubro}: Los negocios en Panamá que implementan un sistema de pedidos directos logran aumentar su margen de ganancia neta entre un 15% y un 25% desde el primer mes, simplemente eliminando las comisiones de terceros.
 
-Me gustaría mucho que {nombre} fuera el próximo caso de éxito. ¿Pudieron revisar la propuesta que les envié o tienen alguna duda técnica que podamos resolver en una llamada de 5 minutos?
+Me gustaría mucho que {nombre} fuera el próximo caso de éxito. Si no han tenido tiempo de revisar, aquí les dejo la propuesta técnica completa con precios y detalles:
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
+
+¿Tienen alguna duda que pueda resolver en una llamada de 5 minutos?
 
 Quedo atento a su respuesta.
 
@@ -234,7 +249,10 @@ Te escribo brevemente porque entiendo que tu agenda debe estar a tope.
 
 Sigo muy interesado en que trabajemos juntos para optimizar los procesos digitales de tu negocio. He reservado un espacio en mi agenda para mañana por si prefieres que te explique los beneficios de TechZone de forma más directa.
 
-Si te resulta más cómodo, puedes escribirme o enviarme un audio por WhatsApp al +507 6016-4559 y lo coordinamos de inmediato.
+Si quieres revisar los detalles técnicos y precios antes de hablar:
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
+
+O si prefieres, escríbeme por WhatsApp al +507 6016-4559 y lo coordinamos de inmediato.
 
 Quedo a la espera de tus noticias para dar el siguiente paso.
 
@@ -270,6 +288,9 @@ TechZone construye sitios web profesionales para negocios como el suyo:
 ✓ Galería de trabajos o servicios
 ✓ Botón directo de WhatsApp para consultas
 ✓ Precio accesible, sin mensualidades
+
+Vea cómo funciona en 60 segundos:
+🔗 https://kairos-demo.pages.dev/
 
 ¿Les interesa saber más? Una llamada de 15 minutos es suficiente para contarles todo.
 
