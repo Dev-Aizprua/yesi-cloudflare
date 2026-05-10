@@ -267,6 +267,7 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     // Consolidar todos los mensajes en uno
     const textoConsolidado = mensajesBuffer.map(m => m.contenido).join(" ");
     const idsBuffer = mensajesBuffer.map(m => m.id);
+    const msgId = idsBuffer[idsBuffer.length - 1] || null; // último mensaje para doble check azul
 
     // Marcar como procesados ANTES de responder — evita duplicados
     try {
@@ -321,6 +322,12 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       "cuántos días", "qué incluye", "adelante", "hagámoslo", "vamos", "perfecto", "excelente",
       "me convence", "lo quiero", "cuándo pueden", "disponible"].some(s => textoLower.includes(s));
 
+    // Interés específico en cada producto
+    const interesaTienda   = ["tienda", "ecommerce", "e-commerce", "catálogo", "carrito", "inventario",
+      "producto a", "elegance", "tienda completa"].some(s => textoLower.includes(s));
+    const interesaLanding  = ["landing", "página de ventas", "estacional", "navidad", "san valentín",
+      "fiestas patrias", "colores", "temporada", "producto b", "landing page"].some(s => textoLower.includes(s));
+
     // Señales de pago inmediato — cliente listo para transferir ahora
     const listoParaPagar = ["listo para pagar", "cómo pago", "número de yappy", "cuenta ach",
       "qué cuenta", "a dónde transfiero", "cómo hago el pago", "pago ahora",
@@ -369,6 +376,8 @@ CONTEXTO DEL PROSPECTO (actualizado en tiempo real)
 • Objeción de confianza: ${objecionConfianza ? "⚠️ SÍ — usar prueba social" : "NO"}
 • Quiere llamada: ${quiereLlamar ? "✅ SÍ — agendar con Eduardo" : "NO"}
 • Rechazo directo: ${esRechazo ? "🛑 SÍ — despedida cordial, CERO preguntas, no insistir" : "NO"}
+• Interés en Tienda+Panel (Producto A): ${interesaTienda ? "🛒 SÍ — enfocar en Elegance E-Commerce" : "NO"}
+• Interés en Landing+Panel (Producto B): ${interesaLanding ? "🎨 SÍ — enfocar en Landing Luxury Estacional" : "NO"}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EMBUDO DE CIERRE AUTÓNOMO — 5 FASES
@@ -380,23 +389,44 @@ FASE 1 — CALIFICACIÓN (primer mensaje o cliente sin contexto)
 → NO envíes links todavía. Escucha primero.
 
 FASE 2 — DEMOSTRACIÓN (cliente calificado, aún no vio demo)
-→ Envía EXACTAMENTE esto:
-"Entiendo perfectamente. Hoy un negocio necesita más que una web: necesita una herramienta que genere confianza y cierre ventas sola.
+→ Primero pregunta qué tipo de negocio tiene si no lo sabes aún.
+→ Según su respuesta, ofrece el producto más adecuado:
 
-En lugar de explicárselo, prefiero que lo viva usted mismo:
+SI necesita vender productos con catálogo, inventario y carrito → Producto A (Tienda + Panel)
+SI necesita presencia visual impactante, captación de leads o es negocio de servicios → Producto B (Landing + Panel)
+SI no está seguro → presenta ambos brevemente y deja que elija.
+
+MENSAJE DEMO PRODUCTO A (Tienda + Panel):
+"Entiendo perfectamente. Le muestro algo que vale más que mil palabras:
 🔗 https://kairos-demo.pages.dev/
 
-En su celular deslice hacia abajo, vea el panel de control y presione SIMULAR COMPRA. Va a entender todo en 60 segundos."
+Deslice hacia abajo, vea el panel de control y presione SIMULAR COMPRA. En 60 segundos va a entender todo."
+
+MENSAJE DEMO PRODUCTO B (Landing + Panel):
+"Perfecto para su tipo de negocio tenemos algo especial. Una Landing Page de lujo que cambia de tema automáticamente según la temporada — Navidad, San Valentín, Fiestas Patrias — sin que usted tenga que hacer nada.
+
+Puede verla aquí:
+🔗 https://kairos-demo.pages.dev/
+
+Y desde el panel de control usted mismo cambia colores, anuncios y temas en segundos."
+
+MENSAJE SI PRESENTA AMBOS:
+"TechZone tiene dos soluciones según lo que necesite:
+
+🛒 Producto A — Tienda + Panel: Catálogo completo, carrito de compras, inventario y métricas de ventas en tiempo real.
+🎨 Producto B — Landing + Panel: Página de lujo con inteligencia estacional automática — cambia de tema en Navidad, San Valentín y Fiestas Patrias sola.
+
+Los dos incluyen el mismo panel de control y el mismo precio. ¿Cuál se adapta mejor a su negocio?"
 
 FASE 3 — CIERRE DE PRECIO (cliente vio demo o pregunta cuánto cuesta)
 → Envía EXACTAMENTE esto:
-"La inversión es clara y sin sorpresas:
+"La inversión es igual para ambos productos, clara y sin sorpresas:
 • Activación: $350.00 (único pago)
 • Mantenimiento: $15.00/mes
 • Dominio: $20.00/año
 Pagos por Yappy o ACH. Entregamos en 5 a 7 días hábiles.
 
-Aquí tiene la propuesta completa con todos los detalles técnicos:
+Aquí tiene la propuesta completa con los detalles de ambas soluciones:
 📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
 ¿Qué pregunta le surge al ver esto?"
@@ -414,19 +444,31 @@ ${mensajePago}
 
 FASE 5 — CONFIRMACIÓN Y ARRANQUE (cliente dice sí)
 → Si el cliente confirma que quiere proceder:
-"Excelente decisión. Para arrancar necesito tres datos: 1) Nombre exacto del negocio, 2) Tipo de productos o servicios, 3) ¿Tiene logo o preferencia de colores?
+"Excelente decisión. Para arrancar necesito tres datos:
+1) Nombre exacto del negocio
+2) ¿Prefiere la Tienda Completa (Producto A) o la Landing Estacional (Producto B)?
+3) ¿Tiene logo o preferencia de colores?
 Tan pronto los tenga, Eduardo inicia el diseño de inmediato. 🤝"
 → Notifica internamente que se cerró la venta (esto lo hace el sistema automáticamente).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ARGUMENTOS CLAVE — ÚSALOS CON PRECISIÓN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VELOCIDAD: "Menos de 1 segundo de carga gracias a Cloudflare Edge. WordPress promedia 4-6 segundos. Cada segundo extra cuesta ventas."
-CONTABILIDAD: "El sistema calcula ITBMS (7%), ticket promedio y ventas brutas en tiempo real. Sin hojas de cálculo, sin errores."
-CAPACIDAD: "200 fotos de productos, panel de KPIs, seguridad por Token. Todo incluido en los $15/mes."
+— PRODUCTO A (Tienda + Panel) —
+VELOCIDAD: "Menos de 2 segundos de carga. Cloudflare Edge + PWA instalable como app en el celular sin ocupar espacio."
+INVENTARIO: "Hasta 200 fotos de productos, optimización automática con Cloudinary, panel de KPIs con ventas brutas, ticket promedio e ITBMS en tiempo real."
+CONTABILIDAD: "El sistema calcula ITBMS (7%), ticket promedio y ventas brutas automáticamente. Sin hojas de cálculo, sin errores."
+
+— PRODUCTO B (Landing + Panel) —
+ESTACIONAL: "La página cambia de tema sola — Navidad, San Valentín, Fiestas Patrias — sin que usted toque nada. Sus clientes siempre ven algo fresco y relevante."
+PANEL LANDING: "Desde el panel usted controla: colores del tema, barras de anuncios flash, mensajes de temporada. Todo en tiempo real sin saber programar."
+WHATSAPP INTELIGENTE: "El botón de WhatsApp detecta qué está viendo el cliente y personaliza el mensaje automáticamente."
+
+— AMBOS PRODUCTOS —
+PRECIO: "$350.00 de activación (único pago) + $15.00/mes + $20.00/año de dominio. Mismo precio, dos soluciones diferentes."
 SOPORTE: "Kairós responde 24/7. Yesi atiende consultas técnicas. Eduardo supervisa todo."
-LOCAL: "100% panameño. Yappy, ACH, dominio .com o .pa. Sin dólares a servidores extranjeros."
-VS COMPETENCIA: "Otros cobran $800-$2,000 por sitios sin panel de ventas. Nosotros entregamos infraestructura de nivel corporativo por $350."
+LOCAL: "100% panameño. Yappy, ACH, dominio .com o .pa."
+VS COMPETENCIA: "Otros cobran $800-$2,000 por sitios estáticos sin panel. Nosotros entregamos infraestructura con inteligencia estacional por $350."
 
 LENGUAJE PARA DUEÑOS Y DECISORES (activar si esDueno = true):
 → NO digas "precio", di "inversión inicial".
@@ -516,8 +558,20 @@ REGLAS DE ORO
       await registrarSeguimiento(env, from, nombreLead);
     }
 
-    // ─── SIMULAR ESCRIBIENDO (3 segundos) ────────────────────
-    await new Promise(r => setTimeout(r, 2000));
+    // ─── TYPING HUMANO INTELIGENTE ───────────────────────────
+    // 1. Marcar mensaje del cliente como leído (doble check azul)
+    await marcarLeido(env, msgId);
+
+    // 2. Calcular delay según longitud de respuesta (simula velocidad humana)
+    //    ~45 palabras por minuto = ~750ms por palabra, mínimo 1.5s máximo 5s
+    const palabras = respuesta.split(' ').length;
+    const delayMs = Math.min(Math.max(palabras * 80, 1500), 5000);
+
+    // 3. Activar indicador "escribiendo..." en WhatsApp
+    await enviarTyping(env, from);
+
+    // 4. Esperar el tiempo calculado (el cliente ve los puntitos)
+    await new Promise(r => setTimeout(r, delayMs));
 
     // ─── ENVIAR RESPUESTA ─────────────────────────────────────
     await enviarMensaje(env, from, respuesta);
@@ -568,6 +622,64 @@ async function registrarSeguimiento(env, numero, nombre) {
     ).bind(numero, nombre || "Prospecto", fechaFollowUp).run();
   } catch(e) {
     console.log("Seguimiento no registrado (tabla puede no existir):", e.message);
+  }
+}
+
+// ─── MARCAR MENSAJE COMO LEÍDO (doble check azul) ───────────────
+async function marcarLeido(env, messageId) {
+  if (!messageId) return;
+  try {
+    await fetch(`https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: messageId
+      })
+    });
+  } catch(e) {
+    console.log("Error marcarLeido:", e.message);
+  }
+}
+
+// ─── ENVIAR INDICADOR "ESCRIBIENDO..." ───────────────────────────
+async function enviarTyping(env, to) {
+  try {
+    // La API de WhatsApp Business usa el action "typing" vía presencia
+    await fetch(`https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "reaction",  // workaround — el typing oficial requiere presencia habilitada
+      })
+    });
+    // Typing real vía presencia (si está habilitado en la cuenta)
+    await fetch(`https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "interactive",
+        typing: { action: "typing_on" }
+      })
+    });
+  } catch(e) {
+    // No crítico — si falla el typing, el mensaje igual se envía
+    console.log("Typing no disponible:", e.message);
   }
 }
 
