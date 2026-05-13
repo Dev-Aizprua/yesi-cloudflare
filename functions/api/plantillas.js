@@ -23,8 +23,8 @@ Lo que TechZone construye para negocios de joyería y lujo:
 ✓ Integración con Yappy y ACH para pagos locales
 ✓ Panel de control exclusivo para gestionar pedidos y entregas
 
-Le invito a ver una demostración real de cómo funciona:
-🔗 https://kairos-demo.pages.dev/
+Le adjunto la propuesta técnica completa:
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
 Es una simulación interactiva — en 60 segundos entenderá exactamente lo que estamos ofreciendo.
 
@@ -39,9 +39,9 @@ TechZone Panamá
 Soy Eduardo de TechZone Panamá. Vi su negocio y creo que sus piezas merecen una vitrina digital a su altura.
 
 Construimos tiendas online premium con panel de ventas en tiempo real para joyerías en Panamá. Le preparé una demo interactiva:
-🔗 https://kairos-demo.pages.dev/
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
-¿Tienen 2 minutos para verla?`
+¿Tienen 2 minutos para revisarla?`
   },
 
   // ─── 1. RESTAURANTES / COMIDA ────────────────────────────────
@@ -65,10 +65,10 @@ En TechZone construimos tiendas web con pedidos directos para restaurantes panam
 ✓ Sistema de reservaciones online 24/7
 ✓ Cero comisiones — los pedidos llegan directo a ustedes
 
-Antes de cualquier llamada, le invito a ver cómo funciona en 60 segundos:
-🔗 https://kairos-demo.pages.dev/
+Le adjunto la propuesta completa con todos los detalles del sistema:
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
-¿Tienen 15 minutos esta semana para conversar sobre cómo adaptamos esto a su restaurante?
+¿Tienen 15 minutos esta semana para conversar sobre cómo lo adaptamos a su restaurante?
 
 💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
 
@@ -104,8 +104,8 @@ Lo que TechZone ofrece para clínicas como {nombre}:
 ✓ Ficha de cada doctor con especialidad y experiencia
 ✓ Integración con WhatsApp para confirmaciones automáticas
 
-Le invito primero a ver una demostración real de lo que construimos:
-🔗 https://kairos-demo.pages.dev/
+Le adjunto la propuesta completa con imágenes reales del sistema:
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
 Estaré encantado de presentarles una propuesta personalizada sin ningún compromiso.
 
@@ -146,8 +146,8 @@ Una tienda online profesional resuelve esto de una vez:
 
 En TechZone hemos construido tiendas online para negocios en Panamá que duplicaron sus ventas en los primeros 3 meses.
 
-Vea cómo funciona en 60 segundos:
-🔗 https://kairos-demo.pages.dev/
+Aquí la propuesta técnica completa con precios:
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
 ¿Conversamos esta semana?
 
@@ -185,10 +185,10 @@ TechZone diseña landing pages profesionales para abogados, contadores y consult
 ✓ Incluyen formulario de contacto y consulta inicial
 ✓ Generan confianza desde el primer clic
 
-Le invito a ver una demo real antes de cualquier reunión:
-🔗 https://kairos-demo.pages.dev/
+Le adjunto la propuesta completa para que la revise con calma:
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
-Le propongo luego una conversación breve para presentarle opciones concretas adaptadas a su perfil.
+Le propongo luego una conversación breve para presentarle opciones adaptadas a su perfil.
 
 📱 Si prefiere una respuesta más rápida, puede contactarnos por WhatsApp al +507 6016-4559 — atendemos de lunes a sábado.
 
@@ -289,8 +289,8 @@ TechZone construye sitios web profesionales para negocios como el suyo:
 ✓ Botón directo de WhatsApp para consultas
 ✓ Precio accesible, sin mensualidades
 
-Vea cómo funciona en 60 segundos:
-🔗 https://kairos-demo.pages.dev/
+Aquí la propuesta completa con todos los detalles:
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
 ¿Les interesa saber más? Una llamada de 15 minutos es suficiente para contarles todo.
 
@@ -363,7 +363,7 @@ export async function onRequestPost(context) {
     // Falla 1 — fallback para asunto/cuerpo si una plantilla futura los omite
     const asuntoRaw = plantilla.asunto || 'Propuesta Digital para {nombre} — TechZone Panamá';
     const cuerpoRaw = plantilla.cuerpo || 'Hola equipo de {nombre}, soy Eduardo de TechZone Panamá. Me gustaría presentarles una propuesta digital para su negocio. Escríbanos al +507 6016-4559.';
-    const whatsappRaw = plantilla.whatsapp || 'Hola equipo de {nombre} 👋\n\nSoy Eduardo de TechZone Panamá. ¿Tienen 2 minutos para ver cómo podemos llevar su negocio al siguiente nivel digital?\n\n🔗 https://kairos-demo.pages.dev/';
+    const whatsappRaw = plantilla.whatsapp || 'Hola equipo de {nombre} 👋\n\nSoy Eduardo de TechZone Panamá. ¿Tienen 2 minutos para ver cómo podemos llevar su negocio al siguiente nivel digital?\n\n📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf';
 
     // Falla 5 — sanitizar nombre para que caracteres especiales no rompan links de WhatsApp
     const nombreSeguro = nombreFinal.replace(/[&<>"'#%+]/g, (c) => encodeURIComponent(c));
