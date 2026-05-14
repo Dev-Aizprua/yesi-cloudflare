@@ -3,6 +3,77 @@
 
 const PLANTILLAS = {
 
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PLANTILLAS APROBADAS POR META — WhatsApp Business API
+  // Usar SOLO para primer contacto saliente (outbound)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+  // ─── META 2: CATÁLOGO JOYERÍA (prospeccion_catalogo) ─────────
+  // Botones: "Sí, envíame el catálogo" / "En otro momento"
+  prospeccion_catalogo: {
+    key: 'prospeccion_catalogo',
+    rubro: 'Joyería Catálogo — Plantilla Meta',
+    tono: 'premium',
+    icono: '📦',
+    tipo: 'meta_template',
+    nombre_meta: 'prospeccion_catalogo',
+    asunto: 'Sistema digital para {nombre} — TechZone Panamá',
+    cuerpo: `Hola {nombre}, un gusto saludarte. Tenemos un sistema digital para negocios de Joyería en Panamá enfocado en automatizar tu inventario, organizar tu catálogo de fotos y activar un carrito directo a tu WhatsApp. ¿Te gustaría ver cómo funciona para tu marca?`,
+    whatsapp: `Hola {nombre}, un gusto saludarte. Tenemos un sistema digital para negocios de Joyería en Panamá enfocado en automatizar tu inventario, organizar tu catálogo de fotos y activar un carrito directo a tu WhatsApp. ¿Te gustaría ver cómo funciona para tu marca?`,
+    botones: ['Sí, envíame el catálogo', 'En otro momento'],
+    nota: 'Aprobada por Meta ✅ — Producto A (Tienda Completa)'
+  },
+
+  // ─── META 3: SERVICIOS/TEMPORADA (prospeccion_servic) ────────
+  // Botones: "Ver web de temporada" / "No, gracias"
+  prospeccion_servic: {
+    key: 'prospeccion_servic',
+    rubro: 'Servicios Estacional — Plantilla Meta',
+    tono: 'formal',
+    icono: '🎨',
+    tipo: 'meta_template',
+    nombre_meta: 'prospeccion_servic',
+    asunto: 'Web estacional para {nombre} — TechZone Panamá',
+    cuerpo: `Hola {nombre}, buen día. Creamos una solución web para comercios de {rubro} que cambia visualmente de forma automática en cada temporada del año (Navidad, Fiestas Patrias, etc.) para que nunca dejes de vender. ¿Te interesa conocer los detalles?`,
+    whatsapp: `Hola {nombre}, buen día. Creamos una solución web para comercios de {rubro} que cambia visualmente de forma automática en cada temporada del año (Navidad, Fiestas Patrias, etc.) para que nunca dejes de vender. ¿Te interesa conocer los detalles?`,
+    botones: ['Ver web de temporada', 'No, gracias'],
+    nota: 'Aprobada por Meta ✅ — Producto B (Landing Estacional)'
+  },
+
+  // ─── META 4: RESTAURANTE (prospeccion_restau) ─────────────────
+  // Botones: "Sí, me interesa" / "No, gracias"
+  prospeccion_restau: {
+    key: 'prospeccion_restau',
+    rubro: 'Restaurante — Plantilla Meta',
+    tono: 'conversacional',
+    icono: '🍕',
+    tipo: 'meta_template',
+    nombre_meta: 'prospeccion_restau',
+    asunto: 'Ventas directas para {nombre} — TechZone Panamá',
+    cuerpo: `Hola {nombre}, vi su menú en PedidosYa. ¿Sabía que las plataformas le quitan hasta el 30% de cada plato? Tenemos un sistema para que venda directo sin comisiones. ¿Le interesa ver cómo funciona?`,
+    whatsapp: `Hola {nombre}, vi su menú en PedidosYa. ¿Sabía que las plataformas le quitan hasta el 30% de cada plato? Tenemos un sistema para que venda directo sin comisiones. ¿Le interesa ver cómo funciona?`,
+    botones: ['Sí, me interesa', 'No, gracias'],
+    nota: 'Aprobada por Meta ✅ — Producto A (Tienda Completa)'
+  },
+
+  // ─── META 5: TEMPORADA GENÉRICO (prospeccion_tempu) ──────────
+  // Botones: según aprobación Meta
+  prospeccion_tempu: {
+    key: 'prospeccion_tempu',
+    rubro: 'Temporada Genérico — Plantilla Meta',
+    tono: 'conversacional',
+    icono: '🎄',
+    tipo: 'meta_template',
+    nombre_meta: 'prospeccion_tempu',
+    asunto: 'Solución web estacional para {nombre} — TechZone Panamá',
+    cuerpo: `Hola {nombre}, buen día. Creamos una solución web que cambia visualmente de forma automática en cada temporada del año (Navidad, Fiestas Patrias, etc.) para que nunca dejes de vender. ¿Te interesa conocer los detalles?`,
+    whatsapp: `Hola {nombre}, buen día. Creamos una solución web que cambia visualmente de forma automática en cada temporada del año (Navidad, Fiestas Patrias, etc.) para que nunca dejes de vender. ¿Te interesa conocer los detalles?`,
+    botones: ['Ver web de temporada', 'No, gracias'],
+    nota: 'Aprobada por Meta ✅ — Producto B (Landing Estacional)'
+  },
+
   // ─── 0. JOYERÍA / LUJO / MODA PREMIUM ───────────────────────
   joyeria: {
     key: 'joyeria',
@@ -328,6 +399,11 @@ function detectarPlantilla(rubro) {
 
   if (/abogado|contador|consultor|juridico|legal|contabilidad|auditoria|notaria|arquitecto|ingeniero/.test(r))
     return PLANTILLAS.servicios_profesionales;
+
+  // Plantillas Meta por nombre exacto
+  if (/prospeccion_catalogo/.test(r)) return PLANTILLAS.prospeccion_catalogo;
+  if (/prospeccion_servic|prospeccion_tempu/.test(r))     return PLANTILLAS.prospeccion_servic;
+  if (/prospeccion_restau/.test(r))                       return PLANTILLAS.prospeccion_restau;
 
   return PLANTILLAS.multiservicios;
 }
