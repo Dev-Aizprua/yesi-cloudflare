@@ -357,7 +357,9 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       : `Hola, un gusto saludarle. Soy Kairós, asesor digital de TechZone Panamá. ¿En qué tipo de negocio está usted?`;
 
     // ─── MENSAJE DE PAGO (construido con env antes del prompt) ─
-    const mensajePago = `Perfecto, le indico las dos opciones:\n\n💛 Yappy: ${env.YAPPY_NUMERO || "6423-0862"} — envíe $350.00 con el concepto "TechZone Activación".\n🏦 ACH Banco General: Cuenta de Ahorros ${env.ACH_CUENTA || "04-03-98-029265-1"} a nombre de Eduardo Aizprúa.\n\nUna vez nos envíe el comprobante por aquí, iniciamos su proyecto el mismo día. ¿Con cuál le queda más cómodo?`;
+    // Mensaje de pago en DOS partes — primero explicación, luego número solo para copiar
+    const mensajePago = `Perfecto. Le indico las dos opciones:\n\n💛 *Yappy:* Búsquenos por el nombre *Eduardo Aizprúa* (director de operaciones de TechZone). El número de Yappy es diferente al de este chat — es el número personal del director para pagos.\nEnvíe *$350.00* con el concepto: TechZone Activación\n\n🏦 *ACH Banco General:*\nCuenta de Ahorros: ${env.ACH_CUENTA || "04-03-98-029265-1"}\nA nombre de: Eduardo Aizprúa\n\nUna vez envíe el comprobante, iniciamos su proyecto el mismo día.\n\n📱 Número Yappy para copiar fácil:`;
+    const mensajePagoNumero = env.YAPPY_NUMERO || "6423-0862"; // Solo el número — para copiar con un toque
 
     // ─── SYSTEM PROMPT — CEREBRO AUTÓNOMO DE VENTAS ──────────
     const systemPrompt = `Eres Kairós, asesor experto en transformación digital de TechZone Panamá, fundada por Eduardo Aizprua.
@@ -391,10 +393,22 @@ FASE 1 — CALIFICACIÓN (primer mensaje o cliente sin contexto)
 → Si es primer mensaje: usa el saludo personalizado ya preparado.
 → Pregunta UNA sola cosa: "¿Qué tipo de negocio tiene y cuenta con sitio web actualmente?"
 → NO envíes links todavía. Escucha primero.
-→ Si el cliente responde "Sí, muéstrame", "Sí, envíame el catálogo" o "Ver web de temporada" (botones de plantilla Meta):
-   Envía el PDF DE INMEDIATO: "¡Perfecto! Aquí tiene la propuesta completa con los dos productos y precios:
+→ Si el cliente responde botones de plantilla Meta, actúa según el botón:
+   • "Sí, envíame" / "Sí, envíame el catálogo" / "Sí, muéstrame" / "Sí, me interesa" (plantilla joyería/catálogo):
+     → El cliente tiene negocio de PRODUCTOS. Envía PDF y recomienda Producto A directamente:
+     "Veo que le interesa nuestro catálogo digital. Para negocios que venden productos, el Producto A — Tienda Completa — es exactamente lo que necesita.
 📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
-¿Qué tipo de negocio tiene para orientarle mejor?"
+¿Arrancamos con la Tienda Completa o prefiere ver primero la propuesta?"
+   • "Ver web de temporada" / "Ver propuesta" (plantilla servicios/temporada):
+     → El cliente tiene negocio de SERVICIOS. Envía PDF y recomienda Producto B directamente:
+     "Veo que le interesa la web estacional. Para negocios de servicios, el Producto B — Landing Estacional — es perfecto: cambia de tema sola en Navidad, San Valentín y Fiestas Patrias sin que usted toque nada.
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
+¿Arrancamos con la Landing Estacional o prefiere ver primero la propuesta?"
+   • "Sí, me interesa" (plantilla restaurante):
+     → El cliente tiene restaurante. Envía PDF y recomienda Producto A:
+     "Veo que le interesa vender directo sin comisiones. La Tienda Completa le permite recibir pedidos por WhatsApp sin pagar comisiones a terceros.
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
+¿Arrancamos con eso o tiene alguna pregunta primero?"
 
 FASE 2 — PRESENTACIÓN DE PRODUCTOS (cliente calificado)
 → Primero pregunta qué tipo de negocio tiene si no lo sabes aún.
@@ -476,7 +490,7 @@ CONTABILIDAD: "El sistema calcula el impuesto automáticamente y le muestra sus 
 PANEL: "Desde su celular ve cuánto vendió hoy, cuál es su producto más vendido y cuánto debe de impuesto. Todo en tiempo real."
 
 — PRODUCTO B (Landing + Panel) —
-ESTACIONAL: "La página cambia de tema sola en Navidad, San Valentín y Fiestas Patrias — sus clientes siempre ven algo fresco sin que usted haga nada."
+ESTACIONAL: "El sistema detecta automáticamente las festividades en Panamá — Navidad, Fiestas Patrias, San Valentín — y cambia el diseño solo. Usted no tiene que mover un solo dedo. Mientras su competencia sigue con la misma página todo el año, su negocio se ve fresco y relevante en cada temporada."
 PANEL LANDING: "Desde su celular usted cambia colores, pone anuncios de oferta y actualiza mensajes en segundos. Sin saber programar, sin llamar a nadie."
 WHATSAPP: "El botón de WhatsApp de la página detecta qué está viendo el cliente y personaliza el mensaje automáticamente."
 
@@ -539,7 +553,11 @@ REGLAS DE ORO
 • NUNCA digas "no sé". Si no tienes la respuesta exacta: "Déjeme verificarlo con el equipo técnico y le confirmo."
 • NUNCA menciones: Cloudflare, PWA, Cloudinary, algoritmo, infraestructura, ITBMS, API. Usa siempre el beneficio en lenguaje simple.
 • NUNCA digas que tienes una "demo interactiva" — no existe para el cliente externo. Si preguntan por demo o prueba, ofrece el PDF.
-• Termina con una pregunta o llamado a la acción SOLO SI el cliente muestra interés o dudas (Fases 1 a 4).
+• Termina SIEMPRE con una elección de DOBLE ALTERNATIVA, nunca con pregunta abierta:
+  ✅ CORRECTO: "¿Arrancamos con la Tienda Completa o con la Landing Estacional?"
+  ✅ CORRECTO: "¿Prefiere pagar por Yappy o por ACH?"
+  ✅ CORRECTO: "¿Prefiere dominio .com o .pa?"
+  ❌ INCORRECTO: "¿Qué opina?", "¿Tiene alguna duda?", "¿Qué le parece?", "¿Le gustaría saber más?"
 • Si el cliente expresa rechazo directo ("no me interesa", "no gracias", "no quiero"), responde ÚNICAMENTE con una despedida cordial y NO hagas más preguntas. Ejemplo: "Entendido, sin problema. Quedo a su disposición si en algún momento cambia de opinión. ¡Que le vaya muy bien! 😊"
 • Si preguntan si eres IA: "Soy Kairós, el asistente digital de TechZone Panamá."
 • Idioma: siempre español. Tono: profesional pero cercano, como un buen vendedor panameño.` + contextoVisual;
@@ -623,6 +641,14 @@ REGLAS DE ORO
 
     // ─── ENVIAR RESPUESTA ─────────────────────────────────────
     await enviarMensaje(env, from, respuesta);
+
+    // Si es mensaje de pago, enviar número Yappy solo en segundo mensaje (1.5s después)
+    if (listoParaPagar && typeof mensajePagoNumero !== "undefined") {
+      await new Promise(r => setTimeout(r, 1500));
+      await enviarTyping(env, from);
+      await new Promise(r => setTimeout(r, 800));
+      await enviarMensaje(env, from, mensajePagoNumero);
+    }
 
     // ─── DETECTAR CIERRE Y NOTIFICAR TELEGRAM ────────────────
     try {
