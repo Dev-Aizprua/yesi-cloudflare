@@ -347,8 +347,9 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     const quiereLlamar    = ["llamada", "llamar", "hablar", "teléfono", "reunión", "zoom", "meet"].some(s => textoLower.includes(s));
 
     // Señales de rechazo — despedida cordial sin más preguntas
+    // esRechazo solo aplica al mensaje ACTUAL — no al historial
     const esRechazo = ["no me interesa", "no gracias", "no quiero", "no estoy interesado",
-      "no estoy interesada", "no por ahora", "no gracias", "déjame tranquilo",
+      "no estoy interesada", "no por ahora", "déjame tranquilo",
       "no molestes", "retírese", "no contactar", "quíteme", "borre mi número"].some(s => textoLower.includes(s));
 
     const saludo = nombreLead
@@ -429,8 +430,7 @@ Aquí tiene todos los detalles:
 ¿Qué pregunta le surge?"
 
 MENSAJE SI NO SABE QUÉ NECESITA:
-"Entiendo, déjeme orientarle. ¿Su negocio vende productos físicos o ofrece servicios?
-Con esa respuesta puedo decirle exactamente cuál de los dos le conviene más."
+"Con gusto. Para darle la recomendación exacta necesito saber una sola cosa: ¿su negocio vende productos físicos (ropa, joyería, comida, electrónica) o ofrece servicios (clínica, barbería, consultoría)? Con eso le digo cuál es el ideal para usted."
 
 FASE 3 — CIERRE DE PRECIO (cliente vio demo o pregunta cuánto cuesta)
 → Envía EXACTAMENTE esto:
@@ -534,7 +534,7 @@ REGLAS DE ORO
 • Máximo 5 líneas por mensaje. Mensajes cortos convierten más.
 • Máximo 2 emojis por mensaje.
 • NUNCA des descuento. Si piden descuento responde EXACTAMENTE:
-"El precio refleja la infraestructura que recibe: Cloudflare, panel en tiempo real y soporte 24/7. No manejamos descuentos, pero sí le garantizo que es la mejor inversión digital que puede hacer en Panamá por ese precio. ¿Con cuál de los dos productos quiere arrancar — la Tienda Completa o la Landing Estacional?"
+"El precio refleja lo que recibe: panel de ventas en tiempo real, soporte 24/7 y tecnología que trabaja por usted mientras duerme. No manejamos descuentos, pero sí le garantizo que es la mejor inversión digital que puede hacer en Panamá por ese precio. ¿Con cuál de los dos productos quiere arrancar — la Tienda Completa o la Landing Estacional?"
 → Siempre termina con esa pregunta de cierre asumido para no dejar la conversación en el aire.
 • NUNCA digas "no sé". Si no tienes la respuesta exacta: "Déjeme verificarlo con el equipo técnico y le confirmo."
 • NUNCA menciones: Cloudflare, PWA, Cloudinary, algoritmo, infraestructura, ITBMS, API. Usa siempre el beneficio en lenguaje simple.
@@ -568,8 +568,14 @@ REGLAS DE ORO
 
     // ─── OVERRIDE DE SEGURIDAD — RECHAZO DIRECTO ─────────────
     // Fuerza despedida en código, independiente de lo que Groq genere
-    if (esRechazo) {
-      // Detectar si viene de botón "No" de plantilla Meta (trae nombre y rubro en contexto)
+    // Override de rechazo SOLO si el último mensaje es el rechazo
+    // Si el cliente volvió después del No con un mensaje positivo, NO aplicar override
+    const ultimoMensajeEsRechazo = esRechazo && [
+      "no por ahora", "no gracias", "no me interesa", "no quiero", "no estoy interesado",
+      "no estoy interesada", "en otro momento", "no, gracias"
+    ].some(s => textoLower.trim() === s || textoLower.trim().startsWith(s));
+
+    if (ultimoMensajeEsRechazo) {
       const tieneNombre = nombreLead && nombreLead !== "No identificado aún";
       if (tieneNombre) {
         respuesta = `Entendido, ${nombreLead}, ¡sin ningún problema! Te agradezco mucho el tiempo de responder. Quedo a tu total disposición en este chat si en el futuro buscas automatizar la web de tu negocio. ¡Que tengas un excelente día! 😊`;
