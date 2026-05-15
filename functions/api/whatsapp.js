@@ -42,7 +42,7 @@ export async function onRequestPost(context) {
 
       // Audio largo (>20s) — Eduardo toma el control
       if (duracion > 20) {
-        await enviarMensaje(env, from, "Don, recibí su audio. Lo escucharé personalmente para no perder detalles y le escribo en breve. 🎧");
+        await enviarMensaje(env, from, "¡Uy! Disculpa, mi sistema solo logra procesar audios cortitos de hasta 20 segundos para poder mantener la velocidad de la cotización. ⚡\n\n¿Podrías resumirme tu idea en un audio más corto o escribírmela por aquí de forma rápida?");
         try {
           await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
             method: "POST",
@@ -357,9 +357,21 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       : `Hola, un gusto saludarle. Soy Kairós, asesor digital de TechZone Panamá. ¿En qué tipo de negocio está usted?`;
 
     // ─── MENSAJE DE PAGO (construido con env antes del prompt) ─
-    // Mensaje de pago en DOS partes — primero explicación, luego número solo para copiar
-    const mensajePago = `Perfecto. Le indico las dos opciones:\n\n💛 *Yappy:* Búsquenos por el nombre *Eduardo Aizprúa* (director de operaciones de TechZone). El número de Yappy es diferente al de este chat — es el número personal del director para pagos.\nEnvíe *$350.00* con el concepto: TechZone Activación\n\n🏦 *ACH Banco General:*\nCuenta de Ahorros: ${env.ACH_CUENTA || "04-03-98-029265-1"}\nA nombre de: Eduardo Aizprúa\n\nUna vez envíe el comprobante, iniciamos su proyecto el mismo día.\n\n📱 Número Yappy para copiar fácil:`;
-    const mensajePagoNumero = env.YAPPY_NUMERO || "6423-0862"; // Solo el número — para copiar con un toque
+    // Mensajes de pago SEPARADOS según lo que el cliente eligió (Yappy o ACH)
+    const textoLowerPago = textoLower;
+    const eligioYappy = ["yappy", "por yappy", "con yappy"].some(s => textoLowerPago.includes(s));
+    const eligioAch   = ["ach", "transferencia", "banco", "cuenta"].some(s => textoLowerPago.includes(s));
+
+    // Mensaje Yappy — solo datos de Yappy, sin cuenta bancaria
+    const mensajePagoYappy = `Perfecto. Realiza el pago de $175.00 (anticipo 50%) por Yappy buscando el nombre *Eduardo Aizprúa* — nuestro director de operaciones.\n\nConcepto: TechZone Activación\n\nEl número de Yappy es diferente a este chat — es el número personal del director para pagos.\n\n¿Me avisas apenas lo envíes para que nuestro equipo inicie de inmediato?`;
+    const mensajePagoNumero = env.YAPPY_NUMERO || "6423-0862";
+
+    // Mensaje ACH — solo datos bancarios, sin Yappy
+    const mensajePagoAch = `Perfecto. Realiza la transferencia del anticipo de $175.00 a:\n\n🏦 Banco General — Cuenta de Ahorros\nNúmero: ${env.ACH_CUENTA || "04-03-98-029265-1"}\nA nombre de: Eduardo Aizprúa\n\nUna vez nos envíes el comprobante por aquí, nuestro equipo inicia el diseño de inmediato. ¿Me avisas cuando lo envíes?`;
+
+    // Mensaje genérico si no especificó método aún
+    const mensajePago = `Perfecto. Para iniciar hoy mismo, ¿te queda más cómodo el anticipo de $175.00 por Yappy o por transferencia ACH de Banco General?`;
+    const mensajePagoNumero2 = mensajePagoNumero; // alias para compatibilidad
 
     // ─── SYSTEM PROMPT — CEREBRO AUTÓNOMO DE VENTAS ──────────
     const systemPrompt = `Eres Kairós, asesor experto en transformación digital de TechZone Panamá, fundada por Eduardo Aizprua.
@@ -446,18 +458,26 @@ Aquí tiene todos los detalles:
 MENSAJE SI NO SABE QUÉ NECESITA:
 "Con gusto. Para darle la recomendación exacta necesito saber una sola cosa: ¿su negocio vende productos físicos (ropa, joyería, comida, electrónica) o ofrece servicios (clínica, barbería, consultoría)? Con eso le digo cuál es el ideal para usted."
 
-FASE 3 — CIERRE DE PRECIO (cliente vio demo o pregunta cuánto cuesta)
-→ Envía EXACTAMENTE esto:
-"La inversión es igual para ambos productos, clara y sin sorpresas:
-• Activación: $350.00 (único pago)
+FASE 3 — CIERRE DE PRODUCTO (cliente muestra interés — ANTES de mencionar precio)
+→ REGLA CRÍTICA: Nunca menciones el precio antes de que el cliente elija el producto.
+→ Si el cliente no ha elegido aún, cierra con doble alternativa:
+"Para avanzar, ¿arrancamos con la Tienda Completa (catálogo de productos + carrito) o con la Landing Estacional (página que cambia sola en temporadas)?"
+
+FASE 3B — PRECIO (solo después de que el cliente eligió el producto)
+→ Una vez que el cliente dice "Tienda Completa" o "Landing Estacional", envía EXACTAMENTE:
+"¡Gran decisión! La inversión para tu [PRODUCTO ELEGIDO] es:
+• Anticipo: $175.00 (50% para iniciar el diseño hoy)
+• Saldo: $175.00 al aprobar y verificar tu página lista para vender
 • Mantenimiento: $15.00/mes
 • Dominio: $20.00/año
-Pagos por Yappy o ACH. Entregamos en 5 a 7 días hábiles.
+Entregamos en 5 a 7 días hábiles.
 
-Aquí tiene la propuesta completa con los detalles de ambas soluciones:
-📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
+¿Te queda más cómodo el anticipo por Yappy o por transferencia ACH?"
 
-¿Qué pregunta le surge al ver esto?"
+→ REGLA CRÍTICA DE PRECIO: Siempre presenta el precio como anticipo:
+  "La inversión es $350 en total. Para iniciar hoy, solo necesitas el anticipo de $175 (50%). El saldo de $175 lo pagas cuando verificas que tu página quedó exactamente como acordamos."
+  NUNCA presentes $350 como pago único desde el inicio — usa siempre el anticipo primero.
+→ REGLA DE PAGO: Pregunta Yappy o ACH — nunca des ambos números de golpe. Espera la respuesta.
 
 FASE 4 — MANEJO DE OBJECIONES Y CIERRE DEFINITIVO
 → Si detectas señal de compra: "¿Arrancamos esta semana? Solo necesito confirmar su nombre de negocio y el tipo de productos para iniciar el diseño."
@@ -492,6 +512,9 @@ PANEL: "Desde su celular ve cuánto vendió hoy, cuál es su producto más vendi
 — PRODUCTO B (Landing + Panel) —
 ESTACIONAL: "El sistema detecta automáticamente las festividades en Panamá — Navidad, Fiestas Patrias, San Valentín — y cambia el diseño solo. Usted no tiene que mover un solo dedo. Mientras su competencia sigue con la misma página todo el año, su negocio se ve fresco y relevante en cada temporada."
 PANEL LANDING: "Desde su celular usted cambia colores, pone anuncios de oferta y actualiza mensajes en segundos. Sin saber programar, sin llamar a nadie."
+REGLA DE CIERRE EN EXPLICACIONES: Después de explicar cómo funciona algo, SIEMPRE cerrar con doble alternativa:
+  ❌ "¿Quiere ver cómo se ve en la propuesta?" / "¿Le interesa?" / "¿Tiene alguna duda?"
+  ✅ "¿Arrancamos con la Landing Estacional o prefiere la Tienda Completa?"
 WHATSAPP: "El botón de WhatsApp de la página detecta qué está viendo el cliente y personaliza el mensaje automáticamente."
 
 — AMBOS PRODUCTOS —
@@ -515,7 +538,10 @@ TÉCNICAS DE CIERRE CONSULTIVO
 • PREGUNTA DE CIERRE ASUMIDO: "¿Prefiere que el dominio sea .com o .pa?"
 • URGENCIA REAL: "Tenemos capacidad para 2 proyectos esta semana. ¿Le interesa asegurar el suyo?"
 • REFLEXIÓN: "Si su competencia lanza su tienda digital antes que usted, ¿qué impacto tendría eso en sus ventas?"
-• RECOMENDACIÓN CON CRITERIO: Si el cliente dice "no sé cuál", "recomiéndame tú" o "no tengo preferencia", Kairós NUNCA dice "no tengo preferencias". Responde: "Mi recomendación para un negocio de [tipo] es el Producto [A/B] porque [razón de 1 línea]. ¿Arrancamos con ese?"
+• RECOMENDACIÓN CON CRITERIO: Si el cliente dice "no sé cuál", "recomiéndame tú", "¿qué opinas?" o "no tengo preferencia":
+  NUNCA digas "depende del tipo de negocio" — eso es evasión.
+  Si no sabes el rubro → recomienda el Producto B por defecto con este argumento:
+  "Mi recomendación es la Landing Estacional — es la opción más versátil: funciona para cualquier negocio, cambia de tema sola en cada temporada y tiene el panel más intuitivo para manejar desde el celular. ¿Arrancamos con esa o prefiere la Tienda Completa si vende productos físicos?"
 • MINI-CIERRE: Antes del precio grande, cierra compromisos pequeños. "¿Le parece clara la propuesta?" o "¿Cuál de los dos productos le encaja mejor?"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -548,7 +574,7 @@ REGLAS DE ORO
 • Máximo 5 líneas por mensaje. Mensajes cortos convierten más.
 • Máximo 2 emojis por mensaje.
 • NUNCA des descuento. Si piden descuento responde EXACTAMENTE:
-"El precio refleja lo que recibe: panel de ventas en tiempo real, soporte 24/7 y tecnología que trabaja por usted mientras duerme. No manejamos descuentos, pero sí le garantizo que es la mejor inversión digital que puede hacer en Panamá por ese precio. ¿Con cuál de los dos productos quiere arrancar — la Tienda Completa o la Landing Estacional?"
+"Para tu total tranquilidad, iniciamos con un anticipo del 50% ($175) y el saldo lo pagas solo cuando verificas que tu página quedó exactamente como acordamos y lista para vender. No manejamos descuentos, pero sí te garantizo que es la mejor inversión digital que puedes hacer en Panamá por ese precio. ¿Con cuál arrancamos — Tienda Completa o Landing Estacional?"
 → Siempre termina con esa pregunta de cierre asumido para no dejar la conversación en el aire.
 • NUNCA digas "no sé". Si no tienes la respuesta exacta: "Déjeme verificarlo con el equipo técnico y le confirmo."
 • NUNCA menciones: Cloudflare, PWA, Cloudinary, algoritmo, infraestructura, ITBMS, API. Usa siempre el beneficio en lenguaje simple.
@@ -601,6 +627,17 @@ REGLAS DE ORO
         respuesta = "Entendido, ¡sin ningún problema! Te agradezco mucho el tiempo de responder. Quedo a tu total disposición si en el futuro buscas automatizar la web de tu negocio. ¡Que tengas un excelente día! 😊";
       }
     }
+    // ─── OVERRIDE DE PAGO — método específico según lo que eligió ──
+    if (listoParaPagar) {
+      if (eligioYappy) {
+        respuesta = mensajePagoYappy;
+      } else if (eligioAch) {
+        respuesta = mensajePagoAch;
+      } else {
+        respuesta = mensajePago;
+      }
+    }
+
     console.log(`Kairós responde: ${respuesta}`);
 
     // ─── GUARDAR EN D1 ────────────────────────────────────────
@@ -642,8 +679,8 @@ REGLAS DE ORO
     // ─── ENVIAR RESPUESTA ─────────────────────────────────────
     await enviarMensaje(env, from, respuesta);
 
-    // Si es mensaje de pago, enviar número Yappy solo en segundo mensaje (1.5s después)
-    if (listoParaPagar && typeof mensajePagoNumero !== "undefined") {
+    // Segundo mensaje: número solo para copiar — SOLO si eligió Yappy
+    if (listoParaPagar && eligioYappy) {
       await new Promise(r => setTimeout(r, 1500));
       await enviarTyping(env, from);
       await new Promise(r => setTimeout(r, 800));
