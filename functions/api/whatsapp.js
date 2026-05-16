@@ -40,8 +40,12 @@ export async function onRequestPost(context) {
       const audioId = message.audio?.id;
       const duracion = message.audio?.duration || 0;
 
-      // Audio largo (>20s) — Eduardo toma el control
-      if (duracion > 20) {
+      // Tamaño del archivo como respaldo si duration no viene
+      const fileSize = message.audio?.file_size || 0;
+      const esLargo = duracion > 20 || (duracion === 0 && fileSize > 160000);
+
+      // Audio largo (>20s o >160KB) — redirigir amigablemente
+      if (esLargo) {
         await enviarMensaje(env, from, "¡Uy! Disculpa, mi sistema solo logra procesar audios cortitos de hasta 20 segundos para poder mantener la velocidad de la cotización. ⚡\n\n¿Podrías resumirme tu idea en un audio más corto o escribírmela por aquí de forma rápida?");
         try {
           await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
@@ -333,7 +337,9 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     // Señales de pago inmediato — cliente listo para transferir ahora
     const listoParaPagar = ["listo para pagar", "cómo pago", "número de yappy", "cuenta ach",
       "qué cuenta", "a dónde transfiero", "cómo hago el pago", "pago ahora",
-      "cuándo pago", "acepta yappy", "mandarle el pago"].some(s => textoLower.includes(s));
+      "cuándo pago", "acepta yappy", "mandarle el pago",
+      "por yappy", "con yappy", "por ach", "por transferencia",
+      "yappy", "transferencia ach"].some(s => textoLower.includes(s));
 
     // Señales de decisor/dueño — eleva el lenguaje a ROI e inversión
     const esDueno = ["mi negocio", "yo manejo", "soy el dueño", "soy la dueña", "yo decido",
@@ -417,10 +423,10 @@ FASE 1 — CALIFICACIÓN (primer mensaje o cliente sin contexto)
 📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 ¿Arrancamos con la Landing Estacional o prefiere ver primero la propuesta?"
    • "Sí, me interesa" (plantilla restaurante):
-     → El cliente tiene restaurante. Envía PDF y recomienda Producto A:
-     "Veo que le interesa vender directo sin comisiones. La Tienda Completa le permite recibir pedidos por WhatsApp sin pagar comisiones a terceros.
+     → El cliente tiene restaurante. Envía PDF y recomienda Producto A DIRECTO sin preguntar rubro:
+     "¡Excelente! Para su restaurante, el Producto A — Tienda Completa — le permite recibir pedidos directo por WhatsApp sin pagar comisiones a PedidosYa o Uber Eats.
 📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
-¿Arrancamos con eso o tiene alguna pregunta primero?"
+¿Arrancamos con la Tienda Completa o prefiere ver primero la propuesta?"
 
 FASE 2 — PRESENTACIÓN DE PRODUCTOS (cliente calificado)
 → Primero pregunta qué tipo de negocio tiene si no lo sabes aún.
@@ -460,6 +466,9 @@ MENSAJE SI NO SABE QUÉ NECESITA:
 
 FASE 3 — CIERRE DE PRODUCTO (cliente muestra interés — ANTES de mencionar precio)
 → REGLA CRÍTICA: Nunca menciones el precio antes de que el cliente elija el producto.
+→ EXCEPCIÓN: Si el cliente pregunta DIRECTAMENTE "¿cuánto cuesta?", "¿cuál es el precio?", "¿qué valor tiene?" — da el precio CON ANTICIPO de inmediato y termina con doble alternativa:
+  "La inversión total es $350. Para iniciar, solo necesitas el anticipo de $175 (50%). El saldo de $175 lo pagas cuando verificas que tu página quedó lista.
+  ¿Arrancamos con la Tienda Completa o con la Landing Estacional?"
 → Si el cliente no ha elegido aún, cierra con doble alternativa:
 "Para avanzar, ¿arrancamos con la Tienda Completa (catálogo de productos + carrito) o con la Landing Estacional (página que cambia sola en temporadas)?"
 
