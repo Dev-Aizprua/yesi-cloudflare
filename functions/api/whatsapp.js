@@ -477,6 +477,24 @@ REGLAS DE ORO:
     });
 
     const groqData = await groqRes.json();
+
+    // ─── LOG DE ERROR GROQ ────────────────────────────────────
+    if (!groqData.choices?.[0]?.message?.content) {
+      console.error("Groq error response:", JSON.stringify(groqData));
+      // Notificar a Telegram con el error real
+      try {
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: env.TELEGRAM_CHAT_ID,
+            text: `⚠️ <b>Error Groq</b>\n\nDe: +${from}\nError: ${JSON.stringify(groqData).substring(0, 300)}`,
+            parse_mode: "HTML"
+          })
+        });
+      } catch(e) {}
+    }
+
     let respuesta = groqData.choices?.[0]?.message?.content || "Un momento, estoy procesando tu consulta.";
 
     // ─── OVERRIDE DE SEGURIDAD — RECHAZO DIRECTO ─────────────
