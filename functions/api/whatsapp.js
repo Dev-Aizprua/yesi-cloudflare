@@ -40,11 +40,14 @@ export async function onRequestPost(context) {
       const audioId = message.audio?.id;
       const duracion = message.audio?.duration || 0;
 
-      // Tamaño del archivo como respaldo si duration no viene
-      const fileSize = message.audio?.file_size || 0;
-      const esLargo = duracion > 20 || (duracion === 0 && fileSize > 160000);
+      // Duración desde múltiples fuentes — WhatsApp no es consistente
+      const fileSize = message.audio?.file_size || message.voice?.file_size || 0;
+      const duracionVoice = message.voice?.duration || 0;
+      const duracionReal = Math.max(duracion, duracionVoice);
+      // Considerar largo si: duración > 20s O archivo > 120KB (más conservador)
+      const esLargo = duracionReal > 20 || fileSize > 120000;
 
-      // Audio largo (>20s o >160KB) — redirigir amigablemente
+      // Audio largo — redirigir amigablemente sin transcribir
       if (esLargo) {
         await enviarMensaje(env, from, "¡Uy! Disculpa, mi sistema solo logra procesar audios cortitos de hasta 20 segundos para poder mantener la velocidad de la cotización. ⚡\n\n¿Podrías resumirme tu idea en un audio más corto o escribírmela por aquí de forma rápida?");
         try {
@@ -412,11 +415,17 @@ FASE 1 — CALIFICACIÓN (primer mensaje o cliente sin contexto)
 → Pregunta UNA sola cosa: "¿Qué tipo de negocio tiene y cuenta con sitio web actualmente?"
 → NO envíes links todavía. Escucha primero.
 → Si el cliente responde botones de plantilla Meta, actúa según el botón:
-   • "Sí, envíame" / "Sí, envíame el catálogo" / "Sí, muéstrame" / "Sí, me interesa" (plantilla joyería/catálogo):
+   • "Sí, envíame" / "Sí, envíame el catálogo" / "Sí, me interesa" (plantilla joyería/catálogo/restaurante):
      → El cliente tiene negocio de PRODUCTOS. Envía PDF y recomienda Producto A directamente:
      "Veo que le interesa nuestro catálogo digital. Para negocios que venden productos, el Producto A — Tienda Completa — es exactamente lo que necesita.
 📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 ¿Arrancamos con la Tienda Completa o prefiere ver primero la propuesta?"
+
+   • "Sí, muéstrame" (plantilla servicios v1 — Landing Estacional):
+     → El cliente tiene negocio de SERVICIOS. Envía PDF y recomienda Producto B directamente:
+     "Veo que le interesa la web estacional. Para negocios de servicios, el Producto B — Landing Estacional — es perfecto: cambia de tema sola en Navidad, San Valentín y Fiestas Patrias sin que usted toque nada.
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
+¿Arrancamos con la Landing Estacional o prefiere ver primero la propuesta?"
    • "Ver web de temporada" / "Ver propuesta" (plantilla servicios/temporada):
      → El cliente tiene negocio de SERVICIOS. Envía PDF y recomienda Producto B directamente:
      "Veo que le interesa la web estacional. Para negocios de servicios, el Producto B — Landing Estacional — es perfecto: cambia de tema sola en Navidad, San Valentín y Fiestas Patrias sin que usted toque nada.
@@ -521,9 +530,17 @@ PANEL: "Desde su celular ve cuánto vendió hoy, cuál es su producto más vendi
 — PRODUCTO B (Landing + Panel) —
 ESTACIONAL: "El sistema detecta automáticamente las festividades en Panamá — Navidad, Fiestas Patrias, San Valentín — y cambia el diseño solo. Usted no tiene que mover un solo dedo. Mientras su competencia sigue con la misma página todo el año, su negocio se ve fresco y relevante en cada temporada."
 PANEL LANDING: "Desde su celular usted cambia colores, pone anuncios de oferta y actualiza mensajes en segundos. Sin saber programar, sin llamar a nadie."
-REGLA DE CIERRE EN EXPLICACIONES: Después de explicar cómo funciona algo, SIEMPRE cerrar con doble alternativa:
-  ❌ "¿Quiere ver cómo se ve en la propuesta?" / "¿Le interesa?" / "¿Tiene alguna duda?"
+REGLA DE CIERRE EN EXPLICACIONES — OBLIGATORIO:
+Después de cualquier explicación técnica o de producto, la última línea SIEMPRE debe ser una doble alternativa.
+PROHIBIDO terminar con:
+  ❌ "¿Le gustaría ver cómo se ve en la propuesta?"
+  ❌ "¿Le interesa saber más?"
+  ❌ "¿Tiene alguna duda?"
+  ❌ "¿Quiere que le cuente más?"
+OBLIGATORIO terminar con:
   ✅ "¿Arrancamos con la Landing Estacional o prefiere la Tienda Completa?"
+  ✅ "¿Arrancamos esta semana o prefiere revisar primero la propuesta?"
+Esta regla no tiene excepciones.
 WHATSAPP: "El botón de WhatsApp de la página detecta qué está viendo el cliente y personaliza el mensaje automáticamente."
 
 — AMBOS PRODUCTOS —
