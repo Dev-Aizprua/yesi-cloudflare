@@ -122,7 +122,8 @@ export async function onRequestPost(context) {
         } catch(e) {}
 
         // CHECK REAL por byteLength
-        if (audioBytes > 155000) {
+        // Calibrado: 35s = 82KB → ~2.3KB/s → 20s ≈ 46KB → límite en 50KB
+        if (audioBytes > 50000) {
           await enviarMensaje(env, from, "¡Uy! Disculpa, mi sistema solo logra procesar audios cortitos de hasta 20 segundos para poder mantener la velocidad de la cotización. ⚡\n\n¿Podrías resumirme tu idea en un audio más corto o escribírmela por aquí de forma rápida?");
           return new Response("EVENT_RECEIVED", { status: 200 });
         }
