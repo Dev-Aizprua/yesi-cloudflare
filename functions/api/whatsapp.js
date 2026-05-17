@@ -44,7 +44,25 @@ export async function onRequestPost(context) {
       const fileSize = message.audio?.file_size || message.voice?.file_size || 0;
       const duracionVoice = message.voice?.duration || 0;
       const duracionReal = Math.max(duracion, duracionVoice);
-      // Considerar largo si: duración > 20s O archivo > 120KB (más conservador)
+
+      // Log para calibrar el límite de tamaño
+      console.log(`Audio recibido — duration: ${duracion}s, voice_duration: ${duracionVoice}s, file_size: ${fileSize} bytes, type: ${message.type}`);
+      console.log(`Objeto audio completo: ${JSON.stringify(message.audio || message.voice)}`);
+
+      // Notificar a Telegram con datos del audio para calibración
+      try {
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: env.TELEGRAM_CHAT_ID,
+            text: `🎙️ <b>Audio recibido</b>\n\nDe: +${from}\nDuración campo: ${duracion}s\nDuración voice: ${duracionVoice}s\nTamaño: ${fileSize} bytes\nTipo: ${message.type}\nObjeto: ${JSON.stringify(message.audio || message.voice).substring(0,200)}`,
+            parse_mode: "HTML"
+          })
+        });
+      } catch(e) {}
+
+      // Considerar largo si: duración > 20s O archivo > 120KB
       const esLargo = duracionReal > 20 || fileSize > 120000;
 
       // Audio largo — redirigir amigablemente sin transcribir
