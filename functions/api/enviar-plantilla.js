@@ -1,4 +1,3 @@
- 
 // ─── /api/enviar-plantilla ────────────────────────────────────────
 // Dispara una plantilla aprobada por Meta a un número de WhatsApp
 // usando la API oficial de Cloud API de Meta.
@@ -59,7 +58,7 @@ export async function onRequestPost(context) {
 
   try {
     const body = await request.json();
-    const { numero, nombre_meta, variables = [], prospecto_id, prospecto_nombre } = body;
+    const { numero, nombre_meta, variables = [], prospecto_id, prospecto_nombre, lang_override } = body;
 
     // ── Validaciones básicas ──────────────────────────────────
     if (!numero) {
@@ -105,7 +104,7 @@ export async function onRequestPost(context) {
       type: "template",
       template: {
         name: nombre_meta,
-        language: { code: "es_PA" },
+        language: { code: lang_override || "es" },
         components: components.length > 0 ? components : undefined
       }
     };

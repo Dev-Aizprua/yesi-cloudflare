@@ -407,7 +407,7 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     // Señales de rechazo — despedida cordial sin más preguntas
     // esRechazo solo aplica al mensaje ACTUAL — no al historial
     const esRechazo = ["no me interesa", "no gracias", "no quiero", "no estoy interesado",
-      "no estoy interesada", "no por ahora", "déjame tranquilo",
+      "no estoy interesada", "no por ahora", "déjame tranquilo", "en otro momento",
       "no molestes", "retírese", "no contactar", "quíteme", "borre mi número"].some(s => textoLower.includes(s));
 
     const saludo = nombreLead
@@ -452,7 +452,7 @@ EMBUDO — 5 FASES:
 FASE 1 — CALIFICACIÓN:
 • Primer mensaje: saludar y preguntar tipo de negocio.
 • Botones Meta → producto directo SIN preguntar rubro:
-  - "Sí, envíame" / "Sí, envíame el catálogo" / "Sí, me interesa" → Producto A: "Para negocios de productos, el Producto A — Tienda Completa — es perfecto.
+  - "Sí, envíame" / "Sí, envíame el catálogo" / "Sí, me interesa" / "En otro momento" (si viene seguido de interés) → Producto A: "Para negocios de productos, el Producto A — Tienda Completa — es perfecto.
 📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 ¿Arrancamos con la Tienda Completa o prefiere ver la propuesta?"
   - "Sí, muéstrame" / "Ver web de temporada" → Producto B: "Para negocios de servicios, el Producto B — Landing Estacional — es perfecto: cambia sola en Navidad, San Valentín y Fiestas Patrias.

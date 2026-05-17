@@ -74,6 +74,25 @@ const PLANTILLAS = {
     nota: 'Aprobada por Meta ✅ — Producto B (Landing Estacional)'
   },
 
+
+  // ─── META: JOYERÍA V1 (prospeccion_joyeria_v1) ───────────────
+  // Texto aprobado: "Hola Joyas Modernas, vi su negocio de Joyería
+  //  y tenemos una propuesta digital que encaja con su marca. ¿Le envío los detalles?"
+  // Botones: "Sí, envíame" / "No, gracias"
+  prospeccion_joyeria_v1: {
+    key: 'prospeccion_joyeria_v1',
+    rubro: 'Joyería v1 — Plantilla Meta',
+    tono: 'premium',
+    icono: '💎',
+    tipo: 'meta_template',
+    nombre_meta: 'prospeccion_joyeria_v1',
+    asunto: 'Propuesta digital para {nombre} — TechZone Panamá',
+    cuerpo: `Hola {nombre}, vi su negocio de Joyería y tenemos una propuesta digital que encaja con su marca. ¿Le envío los detalles?`,
+    whatsapp: `Hola {nombre}, vi su negocio de Joyería y tenemos una propuesta digital que encaja con su marca. ¿Le envío los detalles?`,
+    botones: ['Sí, envíame el catálogo', 'En otro momento'],
+    nota: 'Aprobada por Meta ✅ — Producto A (Tienda Completa)'
+  },
+
   // ─── 0. JOYERÍA / LUJO / MODA PREMIUM ───────────────────────
   joyeria: {
     key: 'joyeria',
@@ -401,7 +420,8 @@ function detectarPlantilla(rubro) {
     return PLANTILLAS.servicios_profesionales;
 
   // Plantillas Meta por nombre exacto
-  if (/prospeccion_catalogo/.test(r)) return PLANTILLAS.prospeccion_catalogo;
+  if (/prospeccion_joyeria_v1/.test(r))  return PLANTILLAS.prospeccion_joyeria_v1;
+  if (/prospeccion_catalogo/.test(r))     return PLANTILLAS.prospeccion_catalogo;
   if (/prospeccion_servic|prospeccion_tempu/.test(r))     return PLANTILLAS.prospeccion_servic;
   if (/prospeccion_restau/.test(r))                       return PLANTILLAS.prospeccion_restau;
 
