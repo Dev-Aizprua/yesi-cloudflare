@@ -86,16 +86,46 @@ export async function onRequestPost(context) {
       try {
         // 1. Obtener URL del audio desde Meta
         const mediaRes = await fetch(`https://graph.facebook.com/v21.0/${audioId}`, {
-          headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
+          headers: { "Authorization": `Bearer ${env.WHATSAPP_ACCESS_TOKEN || env.WHATSAPP_TOKEN}` }
         });
         const mediaData = await mediaRes.json();
         const audioUrl = mediaData.url;
 
         // 2. Descargar el audio
         const audioRes = await fetch(audioUrl, {
-          headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
+          headers: { "Authorization": `Bearer ${env.WHATSAPP_ACCESS_TOKEN || env.WHATSAPP_TOKEN}` }
         });
+
+        // Verificar si la descarga fue exitosa
+        if (!audioRes.ok) {
+          console.error(`Error descargando audio: ${audioRes.status}`);
+          await enviarMensaje(env, from, "No pude procesar el audio. ¿Puede escribirme su consulta?");
+          return new Response("EVENT_RECEIVED", { status: 200 });
+        }
+
         const audioBlob = await audioRes.arrayBuffer();
+        const audioBytes = audioBlob.byteLength;
+
+        console.log(`Audio descargado: ${audioBytes} bytes`);
+
+        // Notificar bytes reales a Telegram
+        try {
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: env.TELEGRAM_CHAT_ID,
+              text: `📊 Audio descargado: ${audioBytes} bytes (${Math.round(audioBytes/1024)}KB)`,
+              parse_mode: "HTML"
+            })
+          });
+        } catch(e) {}
+
+        // CHECK REAL por byteLength
+        if (audioBytes > 155000) {
+          await enviarMensaje(env, from, "¡Uy! Disculpa, mi sistema solo logra procesar audios cortitos de hasta 20 segundos para poder mantener la velocidad de la cotización. ⚡\n\n¿Podrías resumirme tu idea en un audio más corto o escribírmela por aquí de forma rápida?");
+          return new Response("EVENT_RECEIVED", { status: 200 });
+        }
 
         // 3. Enviar a Groq Whisper para transcripción
         const formData = new FormData();
@@ -153,7 +183,7 @@ export async function onRequestPost(context) {
       try {
         // 1. Obtener URL de la imagen desde Meta
         const mediaRes = await fetch(`https://graph.facebook.com/v21.0/${imageId}`, {
-          headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
+          headers: { "Authorization": `Bearer ${env.WHATSAPP_ACCESS_TOKEN || env.WHATSAPP_TOKEN}` }
         });
         const mediaData = await mediaRes.json();
         const imageUrl = mediaData.url;
