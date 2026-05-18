@@ -35,6 +35,12 @@ export async function onRequestPost(context) {
     const from = message.from;
     const tipo = message.type;
 
+    // ─── EXTRAER NOMBRE DEL CLIENTE DESDE WEBHOOK META ──────
+    // Meta envía el nombre del perfil de WhatsApp en contacts[]
+    const contacto = value?.contacts?.[0];
+    const nombrePerfil = contacto?.profile?.name || null;
+    if (nombrePerfil) console.log(`Nombre perfil WhatsApp: ${nombrePerfil}`);
+
     // ─── MANEJO DE AUDIO CON GROQ WHISPER ────────────────────
     if (tipo === "audio") {
       const audioId = message.audio?.id;
@@ -266,8 +272,25 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       }
     }
 
+    // ─── MENSAJES INTERACTIVOS (botones de plantilla Meta) ──────
+    if (tipo === "interactive") {
+      const buttonReply = message.interactive?.button_reply;
+      const listReply   = message.interactive?.list_reply;
+      const textoBoton  = buttonReply?.title || listReply?.title || "";
+      console.log(`Botón Meta presionado: "${textoBoton}"`);
+      if (textoBoton) {
+        // Convertir botón en texto plano para que Kairós lo procese normalmente
+        message.text = { body: textoBoton };
+        message.type = "text";
+        // Continuar flujo normal — no hacer return
+      } else {
+        await enviarMensaje(env, from, "Recibí tu selección. ¿En qué puedo ayudarte?");
+        return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+    }
+
     // ─── OTROS TIPOS (video, documento, etc.) ────────────────
-    if (tipo !== "text" && tipo !== "audio" && tipo !== "image") {
+    if (tipo !== "text" && tipo !== "audio" && tipo !== "image" && tipo !== "interactive") {
       await enviarMensaje(env, from, "Recibí tu mensaje. Por ahora proceso texto, audios e imágenes. ¿En qué puedo ayudarte?");
       return new Response("EVENT_RECEIVED", { status: 200 });
     }
@@ -282,6 +305,15 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     // ─── DEBOUNCE — AGRUPAR MENSAJES MÚLTIPLES ───────────────
     // Guardar mensaje en buffer D1
     const fechaBuffer = new Date().toISOString();
+    // ─── GUARDAR NOMBRE PERFIL EN D1 AUTOMÁTICAMENTE ──────
+    if (nombrePerfil) {
+      try {
+        await env.kairos_db.prepare(
+          `UPDATE Prospectos_WA SET nombre = ? WHERE numero = ? AND (nombre IS NULL OR nombre = "")`
+        ).bind(nombrePerfil, from).run();
+      } catch(e) { console.log("Error guardando nombre perfil:", e.message); }
+    }
+
     let miId = null;
     try {
       const insertResult = await env.kairos_db.prepare(
@@ -338,7 +370,7 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
 
     // ─── CARGAR HISTORIAL Y NOMBRE DEL LEAD ──────────────────
     let historial = [];
-    let nombreLead = null;
+    let nombreLead = nombrePerfil || null; // Inicializar con nombre del perfil WA si existe
     try {
       const result = await env.kairos_db.prepare(
         "SELECT rol, contenido FROM Conversaciones_WA WHERE numero = ? ORDER BY id DESC LIMIT 20"
