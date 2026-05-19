@@ -1178,11 +1178,12 @@ async function seleccionarYEnviarMeta(nombreMeta, prospectoId) {
   const p = todosProspectos.find(x => x.id === prospectoId);
   if (!p) return;
 
-  // Forzar la plantilla seleccionada
+  // Forzar la plantilla seleccionada en el selector
   const select = document.getElementById('campana-plantilla');
   if (select) select.value = nombreMeta;
 
-  const ok = await enviarPlantillaMeta(p);
+  // Pasar nombreMeta directamente para evitar que lea el selector incorrecto
+  const ok = await enviarPlantillaMeta(p, nombreMeta);
   if (ok) {
     // Actualizar estado en D1
     fetch(`/api/prospectos?id=${p.id}`, {
@@ -1197,9 +1198,9 @@ async function seleccionarYEnviarMeta(nombreMeta, prospectoId) {
 
 // ─── ENVIAR PLANTILLA META POR API OFICIAL ──────────────────────
 // Llama a /api/enviar-plantilla en lugar de abrir WhatsApp Web
-async function enviarPlantillaMeta(prospecto) {
+async function enviarPlantillaMeta(prospecto, keyOverride) {
   const plantillaSelect = document.getElementById('campana-plantilla');
-  const key = plantillaSelect?.value;
+  const key = keyOverride || plantillaSelect?.value;
 
   // Solo aplica para plantillas Meta (tienen nombre_meta)
   const PLANTILLAS_META_KEYS = [
@@ -1223,8 +1224,12 @@ async function enviarPlantillaMeta(prospecto) {
   const rubro  = prospecto?.rubro || prospecto?.categoria || 'su sector';
   let variables = [];
 
+  // Obtener ubicación del prospecto — varios campos posibles
+  const ubicacion = prospecto?.zona || prospecto?.ciudad || prospecto?.direccion ||
+    prospecto?.ubicacion || prospecto?.localidad || 'Panamá';
+
   if (key === 'prospeccion_temporada_panama')  variables = [nombre, rubro];
-  else if (key === 'prospeccion_servicios_v1') variables = [nombre, prospecto?.zona || 'Panamá'];
+  else if (key === 'prospeccion_servicios_v1') variables = [nombre, ubicacion];
   else                                          variables = [nombre];
 
   try {
