@@ -35,6 +35,21 @@ export async function onRequestPost(context) {
     const from = message.from;
     const tipo = message.type;
 
+    // ─── IGNORAR MENSAJES QUE SON CITAS DE PLANTILLAS ───────
+    // Cuando el cliente presiona un botón, Meta a veces envía
+    // también el texto completo de la plantilla como mensaje de contexto
+    // Filtramos mensajes de texto que contienen toda la plantilla
+    console.log(`Webhook recibido — tipo: ${tipo}, from: ${from}`);
+    if (tipo === "text" && message.context?.id) {
+      // Mensaje que es respuesta a otro mensaje — puede ser botón mal parseado
+      // Si el texto es muy largo (>200 chars) probablemente es la plantilla completa
+      const textoMensaje = message.text?.body || "";
+      if (textoMensaje.length > 200) {
+        console.log("Ignorando texto largo con contexto — probable plantilla completa");
+        return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+    }
+
     // ─── EXTRAER NOMBRE DEL CLIENTE DESDE WEBHOOK META ──────
     // Meta envía el nombre del perfil de WhatsApp en contacts[]
     const contacto = value?.contacts?.[0];
