@@ -35,19 +35,28 @@ export async function onRequestPost(context) {
     const from = message.from;
     const tipo = message.type;
 
-    // ─── IGNORAR MENSAJES QUE SON CITAS DE PLANTILLAS ───────
-    // Cuando el cliente presiona un botón, Meta a veces envía
-    // también el texto completo de la plantilla como mensaje de contexto
-    // Filtramos mensajes de texto que contienen toda la plantilla
+    // ─── IGNORAR NOTIFICACIONES DE STATUS (no son mensajes) ──
     console.log(`Webhook recibido — tipo: ${tipo}, from: ${from}`);
+
+    // ─── IGNORAR CITAS DE PLANTILLAS SALIENTES ────────────────
+    // Meta envía el texto de la plantilla como "text" con context.id
+    // cuando el cliente la recibe. Lo ignoramos SI el texto contiene
+    // el saludo de la plantilla (indica que es la plantilla, no el botón)
     if (tipo === "text" && message.context?.id) {
-      // Mensaje que es respuesta a otro mensaje — puede ser botón mal parseado
-      // Si el texto es muy largo (>200 chars) probablemente es la plantilla completa
       const textoMensaje = message.text?.body || "";
-      if (textoMensaje.length > 200) {
-        console.log("Ignorando texto largo con contexto — probable plantilla completa");
+      // Detectar si es la plantilla completa por palabras clave del saludo
+      const esPlantillaCompleta = (
+        textoMensaje.includes("TechZone") ||
+        textoMensaje.includes("Landing Pages") ||
+        textoMensaje.includes("PedidosYa") ||
+        textoMensaje.includes("catálogo de fotos") ||
+        textoMensaje.includes("temporada del año")
+      ) && textoMensaje.length > 100;
+      if (esPlantillaCompleta) {
+        console.log("Ignorando cita de plantilla saliente");
         return new Response("EVENT_RECEIVED", { status: 200 });
       }
+      // Si es texto corto con contexto = respuesta del cliente, procesarlo normal
     }
 
     // ─── EXTRAER NOMBRE DEL CLIENTE DESDE WEBHOOK META ──────
@@ -323,9 +332,16 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     // ─── GUARDAR NOMBRE PERFIL EN D1 AUTOMÁTICAMENTE ──────
     if (nombrePerfil) {
       try {
+        // Actualizar en tabla Prospectos (la que lee Kairós)
         await env.kairos_db.prepare(
-          `UPDATE Prospectos_WA SET nombre = ? WHERE numero = ? AND (nombre IS NULL OR nombre = "")`
-        ).bind(nombrePerfil, from).run();
+          `UPDATE Prospectos SET nombre = ? WHERE (whatsapp LIKE ? OR whatsapp LIKE ?) AND (nombre IS NULL OR nombre = "")`
+        ).bind(nombrePerfil, `%${from}%`, `+${from}`).run();
+        // También actualizar en Prospectos_WA si existe
+        try {
+          await env.kairos_db.prepare(
+            `UPDATE Prospectos_WA SET nombre = ? WHERE numero = ? AND (nombre IS NULL OR nombre = "")`
+          ).bind(nombrePerfil, from).run();
+        } catch(e) {}
       } catch(e) { console.log("Error guardando nombre perfil:", e.message); }
     }
 
