@@ -52,9 +52,25 @@ export async function onRequestPost(context) {
         textoMensaje.includes("catálogo de fotos") ||
         textoMensaje.includes("temporada del año")
       ) && textoMensaje.length > 100;
-      if (esPlantillaCompleta) {
-        console.log("Ignorando cita de plantilla saliente");
+
+      // EXCEPCIÓN CRÍTICA: si el texto contiene la respuesta de un botón,
+      // NO ignorar — Meta pega plantilla + botón juntos en la respuesta del cliente.
+      const textoMensajeLower = textoMensaje.toLowerCase();
+      const contieneBoton = (
+        textoMensajeLower.includes("muéstrame") ||
+        textoMensajeLower.includes("muestrame") ||
+        textoMensajeLower.includes("envíame") ||
+        textoMensajeLower.includes("enviame") ||
+        textoMensajeLower.includes("me interesa") ||
+        textoMensajeLower.includes("no por ahora")
+      );
+
+      if (esPlantillaCompleta && !contieneBoton) {
+        console.log("Ignorando cita de plantilla saliente (sin botón)");
         return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+      if (esPlantillaCompleta && contieneBoton) {
+        console.log("⚠️ Plantilla con botón detectada — procesando respuesta del cliente");
       }
       // Si es texto corto con contexto = respuesta del cliente, procesarlo normal
     }
@@ -436,27 +452,38 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     const textoLower       = textoConsolidado.toLowerCase();
 
     // ─── HARD OVERRIDE — BOTONES DE PLANTILLA META ───────────────
-    // Respuesta directa sin pasar por Groq — elimina dependencia del historial
-    let respuestaForzada = null;
-    const textoTrim = textoLower.trim();
+    // Usa includes() en lugar de === para capturar botones aunque Meta
+    // los envíe pegados al texto completo de la plantilla (comportamiento
+    // confirmado en producción — Meta no envía el texto limpio del botón).
+    // LOG de diagnóstico: imprime el JSON crudo del mensaje para verificar
+    // el campo "type" y la estructura exacta que envía Meta en cada caso.
+    console.log(`📦 RAW message JSON: ${JSON.stringify(message)}`);
 
-    if (textoTrim === "sí, muéstrame" || textoTrim === "ver web de temporada" ||
-        textoTrim === "si, muestrame" || textoTrim === "ver web de temporada") {
-      respuestaForzada = `Veo que le interesa la web estacional. Para negocios de servicios, el Producto B — Landing Estacional — es perfecto: cambia sola en Navidad, San Valentín y Fiestas Patrias sin que usted toque nada.
+    let respuestaForzada = null;
+
+    // ── Botón "Sí, muéstrame" / "Ver web de temporada" → Producto B (Landing Estacional)
+    if (textoLower.includes("muéstrame") || textoLower.includes("muestrame") ||
+        textoLower.includes("web de temporada")) {
+      console.log("🎯 Override botón: Landing Estacional");
+      respuestaForzada = `Para negocios de servicios, el Producto B — Landing Estacional — es perfecto: cambia sola en Navidad, San Valentín y Fiestas Patrias sin que usted toque nada.
 📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
 ¿Arrancamos con la Landing Estacional o prefiere ver primero la propuesta?`;
 
-    } else if (textoTrim === "sí, envíame" || textoTrim === "sí, envíame el catálogo" ||
-               textoTrim === "sí, me interesa" || textoTrim === "si, enviame" ||
-               textoTrim === "si, enviame el catalogo" || textoTrim === "si, me interesa") {
-      respuestaForzada = `Veo que le interesa nuestro catálogo digital. Para negocios que venden productos, el Producto A — Tienda Completa — es exactamente lo que necesita.
+    // ── Botón "Sí, envíame" / "Sí, me interesa" → Producto A (Tienda Completa)
+    } else if (textoLower.includes("envíame") || textoLower.includes("enviame") ||
+               textoLower.includes("catálogo") || textoLower.includes("catalogo") ||
+               (textoLower.includes("me interesa") && !textoLower.includes("landing"))) {
+      console.log("🎯 Override botón: Tienda Completa");
+      respuestaForzada = `Para negocios que venden productos, el Producto A — Tienda Completa — es exactamente lo que necesita.
 📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
 
 ¿Arrancamos con la Tienda Completa o prefiere ver primero la propuesta?`;
 
-    } else if (textoTrim === "no, gracias" || textoTrim === "no por ahora" ||
-               textoTrim === "en otro momento" || textoTrim === "no gracias") {
+    // ── Botón "No por ahora" → despedida cordial
+    } else if (textoLower.trim() === "no por ahora" || textoLower.trim() === "no, gracias" ||
+               textoLower.trim() === "no gracias" || textoLower.trim() === "en otro momento") {
+      console.log("🎯 Override botón: Rechazo cordial");
       const tieneNombreHO = nombreLead && nombreLead !== "No identificado aún";
       respuestaForzada = tieneNombreHO
         ? `Entendido, ${nombreLead}, ¡sin ningún problema! Te agradezco mucho el tiempo de responder. Quedo a tu total disposición si en el futuro buscas automatizar la web de tu negocio. ¡Que tengas un excelente día! 😊`
