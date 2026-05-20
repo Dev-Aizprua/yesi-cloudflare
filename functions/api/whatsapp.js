@@ -435,6 +435,34 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     const esPrimerMensaje  = historial.length === 0;
     const textoLower       = textoConsolidado.toLowerCase();
 
+    // ─── HARD OVERRIDE — BOTONES DE PLANTILLA META ───────────────
+    // Respuesta directa sin pasar por Groq — elimina dependencia del historial
+    let respuestaForzada = null;
+    const textoTrim = textoLower.trim();
+
+    if (textoTrim === "sí, muéstrame" || textoTrim === "ver web de temporada" ||
+        textoTrim === "si, muestrame" || textoTrim === "ver web de temporada") {
+      respuestaForzada = `Veo que le interesa la web estacional. Para negocios de servicios, el Producto B — Landing Estacional — es perfecto: cambia sola en Navidad, San Valentín y Fiestas Patrias sin que usted toque nada.
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
+
+¿Arrancamos con la Landing Estacional o prefiere ver primero la propuesta?`;
+
+    } else if (textoTrim === "sí, envíame" || textoTrim === "sí, envíame el catálogo" ||
+               textoTrim === "sí, me interesa" || textoTrim === "si, enviame" ||
+               textoTrim === "si, enviame el catalogo" || textoTrim === "si, me interesa") {
+      respuestaForzada = `Veo que le interesa nuestro catálogo digital. Para negocios que venden productos, el Producto A — Tienda Completa — es exactamente lo que necesita.
+📄 https://yesi-agente-ia.pages.dev/docs/propuesta_techzone.pdf
+
+¿Arrancamos con la Tienda Completa o prefiere ver primero la propuesta?`;
+
+    } else if (textoTrim === "no, gracias" || textoTrim === "no por ahora" ||
+               textoTrim === "en otro momento" || textoTrim === "no gracias") {
+      const tieneNombreHO = nombreLead && nombreLead !== "No identificado aún";
+      respuestaForzada = tieneNombreHO
+        ? `Entendido, ${nombreLead}, ¡sin ningún problema! Te agradezco mucho el tiempo de responder. Quedo a tu total disposición si en el futuro buscas automatizar la web de tu negocio. ¡Que tengas un excelente día! 😊`
+        : `Entendido, ¡sin ningún problema! Te agradezco mucho el tiempo de responder. Quedo a tu total disposición si en el futuro buscas automatizar la web de tu negocio. ¡Que tengas un excelente día! 😊`;
+    }
+
     // Señales de compra — palabras que indican intención real
     const senalesCompra = ["me interesa", "quiero", "cuándo empezamos", "cómo pago", "yappy", "ach",
       "cuánto cuesta", "precio", "costo", "inversión", "arrancar", "empezar", "contratar",
@@ -570,7 +598,7 @@ REGLAS DE ORO:
 • Si preguntan si eres IA: "Soy Kairós, el asistente digital de TechZone Panamá."` + contextoVisual;
 
     // ─── LLAMAR A GROQ ────────────────────────────────────────
-    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const groqRes = respuestaForzada ? null : await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${env.GROQ_API_KEY_PRO || env.GROQ_API_KEY}`,
@@ -588,7 +616,7 @@ REGLAS DE ORO:
       })
     });
 
-    const groqData = await groqRes.json();
+    const groqData = groqRes ? await groqRes.json() : { choices: [] };
 
     // ─── LOG DE ERROR GROQ ────────────────────────────────────
     if (!groqData.choices?.[0]?.message?.content) {
@@ -607,7 +635,7 @@ REGLAS DE ORO:
       } catch(e) {}
     }
 
-    let respuesta = groqData.choices?.[0]?.message?.content || "Un momento, estoy procesando tu consulta.";
+    let respuesta = respuestaForzada || groqData.choices?.[0]?.message?.content || "Un momento, estoy procesando tu consulta.";
 
     // ─── OVERRIDE DE SEGURIDAD — RECHAZO DIRECTO ─────────────
     // Fuerza despedida en código, independiente de lo que Groq genere
