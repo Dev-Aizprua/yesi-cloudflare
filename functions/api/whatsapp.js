@@ -36,7 +36,6 @@ export async function onRequestPost(context) {
     const tipo = message.type;
 
     // ─── IGNORAR NOTIFICACIONES DE STATUS (no son mensajes) ──
-    console.log(`Webhook recibido — tipo: ${tipo}, from: ${from}`);
 
     // ─── IGNORAR CITAS DE PLANTILLAS SALIENTES ────────────────
     // Meta envía el texto de la plantilla como "text" con context.id
@@ -278,6 +277,32 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
         const analisis = visionData.choices?.[0]?.message?.content || '';
 
         if (analisis) {
+          // ── DETECTAR SI ES COMPROBANTE DE PAGO ────────────────────────
+          const analisisLower = analisis.toLowerCase();
+          const esComprobante = ["transacción", "transaccion", "yappy", "transferencia",
+            "banco general", "bancogeneral", "ach", "comprobante", "recibo",
+            "pago realizado", "pago exitoso", "eduardo aizp"].some(s => analisisLower.includes(s));
+
+          if (esComprobante) {
+            // Alerta especial a Eduardo — comprobante recibido
+            try {
+              await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: env.TELEGRAM_CHAT_ID,
+                  text: `🏆 <b>COMPROBANTE DE PAGO RECIBIDO</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📋 Análisis: ${analisis}\n\n▶️ Confirma con:\n<code>/pago_confirmado ${from}</code>`,
+                  parse_mode: "HTML"
+                })
+              });
+            } catch(e) {}
+
+            // Kairós acusa recibo sin repetir instrucciones de pago
+            await enviarMensaje(env, from, "¡Perfecto, recibí tu comprobante! ✅ Eduardo lo está verificando en este momento. En cuanto lo confirme te escribimos para arrancar con tu proyecto. ¡Gracias por confiar en TechZone!");
+            return new Response("EVENT_RECEIVED", { status: 200 });
+          }
+
+          // Imagen normal — contexto visual para Groq
           contextoVisual = `\n\n📸 CONTEXTO VISUAL (análisis de imagen enviada por el cliente):\n${analisis}\nUSA este contexto para personalizar tu respuesta de ventas.`;
 
           // Notificar Telegram con el análisis
@@ -312,17 +337,33 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       }
     }
 
-    // ─── MENSAJES INTERACTIVOS (botones de plantilla Meta) ──────
+    // ─── MENSAJES INTERACTIVOS (botones enviados por el agente) ──
     if (tipo === "interactive") {
       const buttonReply = message.interactive?.button_reply;
       const listReply   = message.interactive?.list_reply;
       const textoBoton  = buttonReply?.title || listReply?.title || "";
-      console.log(`Botón Meta presionado: "${textoBoton}"`);
+      console.log(`Botón interactive presionado: "${textoBoton}"`);
       if (textoBoton) {
-        // Convertir botón en texto plano para que Kairós lo procese normalmente
         message.text = { body: textoBoton };
         message.type = "text";
-        // Continuar flujo normal — no hacer return
+      } else {
+        await enviarMensaje(env, from, "Recibí tu selección. ¿En qué puedo ayudarte?");
+        return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+    }
+
+    // ─── TIPO "button" — RESPUESTA A PLANTILLA CON BOTONES ──────
+    // Meta envía type:"button" cuando el cliente pulsa un botón
+    // de una plantilla de mensaje (quick reply). Es DIFERENTE a interactive.
+    if (tipo === "button") {
+      const textoBoton = message.button?.text || "";
+      const payload    = message.button?.payload || "";
+      const textoFinal = textoBoton || payload;
+      console.log(`🔘 Botón plantilla (type:button): "${textoFinal}"`);
+      if (textoFinal) {
+        message.text = { body: textoFinal };
+        message.type = "text";
+        // Continuar flujo — el override de includes() lo captura abajo
       } else {
         await enviarMensaje(env, from, "Recibí tu selección. ¿En qué puedo ayudarte?");
         return new Response("EVENT_RECEIVED", { status: 200 });
@@ -330,7 +371,7 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     }
 
     // ─── OTROS TIPOS (video, documento, etc.) ────────────────
-    if (tipo !== "text" && tipo !== "audio" && tipo !== "image" && tipo !== "interactive") {
+    if (tipo !== "text" && tipo !== "audio" && tipo !== "image" && tipo !== "interactive" && tipo !== "button") {
       await enviarMensaje(env, from, "Recibí tu mensaje. Por ahora proceso texto, audios e imágenes. ¿En qué puedo ayudarte?");
       return new Response("EVENT_RECEIVED", { status: 200 });
     }
@@ -455,9 +496,7 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     // Usa includes() en lugar de === para capturar botones aunque Meta
     // los envíe pegados al texto completo de la plantilla (comportamiento
     // confirmado en producción — Meta no envía el texto limpio del botón).
-    // LOG de diagnóstico: imprime el JSON crudo del mensaje para verificar
-    // el campo "type" y la estructura exacta que envía Meta en cada caso.
-    console.log(`📦 RAW message JSON: ${JSON.stringify(message)}`);
+    // LOG de diagnóstico removido — producción estable
 
     let respuestaForzada = null;
 
