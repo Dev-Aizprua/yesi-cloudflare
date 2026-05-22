@@ -305,27 +305,26 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
           // Imagen normal — contexto visual para Groq
           contextoVisual = `\n\n📸 CONTEXTO VISUAL (análisis de imagen enviada por el cliente):\n${analisis}\nUSA este contexto para personalizar tu respuesta de ventas.`;
 
-          // Reenviar imagen real a Telegram como foto
+          // Reenviar imagen real a Telegram usando multipart/form-data
           try {
+            const captionTelegram = `📸 Imagen de +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📝 ${analisis}`;
+            const formTelegram = new FormData();
+            formTelegram.append("chat_id", env.TELEGRAM_CHAT_ID);
+            formTelegram.append("caption", captionTelegram);
+            formTelegram.append("photo", new Blob([imageBuffer], { type: mimeType }), "imagen.jpg");
             await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendPhoto`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: env.TELEGRAM_CHAT_ID,
-                photo: imageUrl,
-                caption: `📸 <b>Imagen de WhatsApp</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📝 ${analisis}`,
-                parse_mode: "HTML"
-              })
+              body: formTelegram
             });
           } catch(e) {
-            // Si sendPhoto falla (URL expirada) — mandar solo el análisis de texto
+            // Fallback — solo texto si falla el envío de foto
             try {
               await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   chat_id: env.TELEGRAM_CHAT_ID,
-                  text: `👁️ <b>Imagen analizada — WhatsApp</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n📝 Análisis: ${analisis}`,
+                  text: `👁️ <b>Imagen analizada — WhatsApp</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n📝 ${analisis}`,
                   parse_mode: "HTML"
                 })
               });
