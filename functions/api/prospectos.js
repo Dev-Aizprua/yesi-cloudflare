@@ -15,7 +15,7 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   const { request, env } = context;
   try {
-    const { nombre, empresa, rubro, sitio_web, correo, whatsapp, telefono, fuente, scoring, score } = await request.json();
+    const { nombre, empresa, rubro, sitio_web, correo, whatsapp, telefono, fuente, scoring, score, ciudad } = await request.json();
 
     const fecha = new Intl.DateTimeFormat('es-PA', {
       timeZone: 'America/Panama',
@@ -23,7 +23,7 @@ export async function onRequestPost(context) {
     }).format(new Date());
 
     const result = await env.kairos_db.prepare(
-      "INSERT INTO Prospectos (nombre, empresa, rubro, sitio_web, correo, whatsapp, telefono, fuente, fecha, scoring, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO Prospectos (nombre, empresa, rubro, sitio_web, correo, whatsapp, telefono, fuente, fecha, scoring, score, ciudad) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).bind(
       nombre || '',
       empresa || '',
@@ -35,7 +35,8 @@ export async function onRequestPost(context) {
       fuente || 'manual',
       fecha,
       scoring || '',
-      score || 0
+      score || 0,
+      ciudad || ''
     ).run();
 
     return Response.json({ success: true, id: result.meta?.last_row_id });

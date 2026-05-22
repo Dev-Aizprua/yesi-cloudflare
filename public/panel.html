@@ -409,6 +409,7 @@
             <th>Prioridad</th>
             <th>Nombre</th>
             <th>Rubro</th>
+            <th>Ciudad</th>
             <th>Correo</th>
             <th>Sitio Web</th>
             <th>Estado</th>
@@ -417,7 +418,7 @@
           </tr>
         </thead>
         <tbody id="prospectosTbody">
-          <tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-muted);font-size:10px;">⏳ Cargando...</td></tr>
+          <tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text-muted);font-size:10px;">⏳ Cargando...</td></tr>
         </tbody>
       </table>
     </div>
@@ -637,7 +638,7 @@ async function cargarProspectos() {
     poblarFiltros();
     filtrar();
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--danger);font-size:10px;">❌ Error: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--danger);font-size:10px;">❌ Error: ${e.message}</td></tr>`;
   }
 }
 
@@ -687,7 +688,7 @@ function renderTabla() {
   const tbody = document.getElementById('prospectosTbody');
 
   if (prospectosFiltrados.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">No hay prospectos</div></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">No hay prospectos</div></div></td></tr>`;
     return;
   }
 
@@ -715,6 +716,7 @@ function renderTabla() {
         <td>${scoreHtml}</td>
         <td class="td-nombre" title="${escHtml(p.nombre)}">${escHtml(p.nombre||'—')}</td>
         <td class="td-rubro">${escHtml(p.rubro||'—')}</td>
+        <td style="font-size:10px;color:var(--text-dim);">${escHtml(p.ciudad||'—')}</td>
         <td class="td-correo">${correo ? escHtml(correo.length>22?correo.substring(0,22)+'…':correo) : '<span style="color:var(--text-muted);font-size:10px;">sin correo</span>'}${p.whatsapp ? ' <a href="https://wa.me/'+escHtml(p.whatsapp.replace(/\D/g,''))+'" target="_blank" title="Abrir WhatsApp con '+escHtml(p.whatsapp)+'" style="text-decoration:none;">📱</a> <span title="Enviar plantilla Meta aprobada" style="cursor:pointer;" onclick="enviarPlantillaDesdeTabla('+p.id+')">📡</span>' : ''}</td>
         <td class="td-web">${webHtml}</td>
         <td><span class="badge ${badges[estado]||'badge-nuevo'}">● ${estado}</span></td>
@@ -1107,7 +1109,7 @@ function abrirModalNuevo() {
 async function crearProspecto() {
   const nombre = document.getElementById('nuevo-nombre').value.trim();
   if (!nombre) { showToast('⚠ El nombre es requerido'); return; }
-  const datos = { nombre, empresa: document.getElementById('nuevo-empresa').value.trim() || nombre, rubro: document.getElementById('nuevo-rubro').value.trim(), correo: document.getElementById('nuevo-correo').value.trim(), sitio_web: document.getElementById('nuevo-web').value.trim(), fuente: 'panel' };
+  const datos = { nombre, empresa: document.getElementById('nuevo-empresa').value.trim() || nombre, rubro: document.getElementById('nuevo-rubro').value.trim(), correo: document.getElementById('nuevo-correo').value.trim(), sitio_web: document.getElementById('nuevo-web').value.trim(), fuente: 'panel', ciudad: '' };
   try {
     const res = await fetch('/api/prospectos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos) });
     const data = await res.json();

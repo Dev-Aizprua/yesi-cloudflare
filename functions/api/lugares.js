@@ -95,9 +95,27 @@ export async function onRequestPost(context) {
         const score = calcularScore(p);
         const clasificacion = clasificar(score);
 
+        // Extraer ciudad desde los campos disponibles de Apify
+        const ciudadRaw = p.city || p.neighborhood || p.district || '';
+        let ciudad = ciudadRaw;
+        if (!ciudad && p.address) {
+          // Intentar extraer de la dirección: "Av. X, Ciudad, Panamá"
+          const partesDireccion = p.address.split(',').map(s => s.trim());
+          // La ciudad suele ser el penúltimo campo antes de "Panamá"
+          if (partesDireccion.length >= 2) {
+            const candidato = partesDireccion[partesDireccion.length - 2];
+            // Descartar si es solo "Panamá" o un número
+            if (candidato && !/^panam[aá]$/i.test(candidato) && !/^\d+$/.test(candidato)) {
+              ciudad = candidato;
+            }
+          }
+        }
+        if (!ciudad) ciudad = 'Panamá'; // fallback
+
         return {
           nombre: p.title || p.name || 'No disponible',
           direccion: p.address || p.street || 'No disponible',
+          ciudad,
           telefono: p.phone || p.phoneUnformatted || null,
           sitio_web: tiene_web ? p.website : null,
           correo: null,
