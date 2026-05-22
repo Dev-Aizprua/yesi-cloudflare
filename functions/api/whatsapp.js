@@ -35,6 +35,34 @@ export async function onRequestPost(context) {
     const from = message.from;
     const tipo = message.type;
 
+    // ─── MODO MANUAL — si Eduardo tomó control, Kairós no responde ──
+    try {
+      const modoManual = await env.kairos_db.prepare(
+        "SELECT 1 FROM Modos_Manual WHERE numero = ? LIMIT 1"
+      ).bind(from).first();
+      if (modoManual) {
+        // Solo reenviar el mensaje a Telegram para que Eduardo lo vea
+        const textoCliente = message.text?.body || message.button?.text || "[imagen/audio]";
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: env.TELEGRAM_CHAT_ID,
+            text: `🎮 <b>MODO MANUAL — Mensaje de cliente</b>
+
+De: +${from}
+💬 "${textoCliente}"
+
+<i>Kairós pausado. Responde con /decir ${from} [tu mensaje]</i>`,
+            parse_mode: "HTML"
+          })
+        });
+        return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+    } catch(e) {
+      // Si la tabla no existe todavía, continuar normal
+    }
+
     // ─── IGNORAR NOTIFICACIONES DE STATUS (no son mensajes) ──
 
     // ─── IGNORAR CITAS DE PLANTILLAS SALIENTES ────────────────
