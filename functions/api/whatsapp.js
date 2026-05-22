@@ -305,18 +305,32 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
           // Imagen normal — contexto visual para Groq
           contextoVisual = `\n\n📸 CONTEXTO VISUAL (análisis de imagen enviada por el cliente):\n${analisis}\nUSA este contexto para personalizar tu respuesta de ventas.`;
 
-          // Notificar Telegram con el análisis
+          // Reenviar imagen real a Telegram como foto
           try {
-            await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+            await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendPhoto`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 chat_id: env.TELEGRAM_CHAT_ID,
-                text: `👁️ <b>Imagen analizada — WhatsApp</b>\n\nDe: +${from}\n📝 Análisis: ${analisis}`,
+                photo: imageUrl,
+                caption: `📸 <b>Imagen de WhatsApp</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📝 ${analisis}`,
                 parse_mode: "HTML"
               })
             });
-          } catch(e) {}
+          } catch(e) {
+            // Si sendPhoto falla (URL expirada) — mandar solo el análisis de texto
+            try {
+              await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: env.TELEGRAM_CHAT_ID,
+                  text: `👁️ <b>Imagen analizada — WhatsApp</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n📝 Análisis: ${analisis}`,
+                  parse_mode: "HTML"
+                })
+              });
+            } catch(e2) {}
+          }
 
           // Guardar análisis en D1
           try {
