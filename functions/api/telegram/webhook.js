@@ -117,8 +117,7 @@ Primero pausa a un cliente:
 
       // Más de un cliente pausado — no enviar para evitar confusión
       if (clientesPausados.length > 1) {
-        const lista = clientesPausados.map(c => `• <code>+${c.numero}</code>`).join("
-");
+        const lista = clientesPausados.map(c => `• <code>+${c.numero}</code>`).join("\n");
         await responderTelegram(env, chatId,
           `⚠️ Hay ${clientesPausados.length} clientes pausados:
 
