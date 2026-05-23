@@ -1509,12 +1509,16 @@ async function detectarYGuardarProspecto(respuesta) {
       try { datos = JSON.parse(match); } catch(e) { continue; }
       if (!datos.nombre) continue;
 
-      // Asegurar campos requeridos
-      datos.fuente = datos.fuente || 'kairos';
-      datos.empresa = datos.empresa || datos.nombre;
-      datos.rubro = datos.rubro || '';
-      datos.sitio_web = datos.sitio_web || '';
-      datos.correo = datos.correo || '';
+      // Asegurar campos requeridos — limpiar valores "Sin X" que genera Groq
+      const sinValor = (v) => !v || /^sin\s/i.test(v.toString().trim()) || v === 'null' || v === 'undefined';
+      datos.fuente    = datos.fuente || 'kairos';
+      datos.empresa   = datos.empresa || datos.nombre;
+      datos.rubro     = sinValor(datos.rubro)     ? '' : datos.rubro;
+      datos.sitio_web = sinValor(datos.sitio_web) ? '' : datos.sitio_web;
+      datos.correo    = sinValor(datos.correo)    ? '' : datos.correo;
+      datos.whatsapp  = sinValor(datos.whatsapp)  ? '' : datos.whatsapp;
+      datos.telefono  = sinValor(datos.telefono)  ? '' : datos.telefono;
+      datos.ciudad    = sinValor(datos.ciudad)    ? '' : datos.ciudad;
 
       showToast('💾 Guardando: ' + datos.nombre + '...');
       const res = await fetch('/api/prospectos', {
