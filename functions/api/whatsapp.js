@@ -892,24 +892,10 @@ async function marcarLeido(env, messageId) {
 }
 
 // ─── ENVIAR INDICADOR "ESCRIBIENDO..." ───────────────────────────
+// NOTA: Meta Cloud API no soporta typing indicator (type:"typing" no es válido)
+// El delay calculado por longitud de respuesta simula el comportamiento humano
 async function enviarTyping(env, to) {
-  try {
-    await fetch(`https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        type: "typing"
-      })
-    });
-  } catch(e) {
-    // No crítico — si falla el typing, el mensaje igual se envía
-    console.log("Typing no disponible:", e.message);
-  }
+  // No operativo — Cloud API no soporta typing
 }
 
 // ─── ENVIAR MENSAJE A WHATSAPP ────────────────────────────────────
