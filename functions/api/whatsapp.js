@@ -513,13 +513,15 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     }
 
     // Consultar si el número está registrado como prospecto en D1
+    let clientePagado = false;
     try {
       const leadResult = await env.kairos_db.prepare(
-        "SELECT nombre FROM Prospectos WHERE whatsapp LIKE ? OR whatsapp LIKE ? LIMIT 1"
+        "SELECT nombre, estado FROM Prospectos WHERE whatsapp LIKE ? OR whatsapp LIKE ? LIMIT 1"
       ).bind(`%${from}%`, `+${from}`).all();
       if (leadResult.results?.length > 0) {
         nombreLead = leadResult.results[0].nombre;
-        console.log(`Lead identificado: ${nombreLead}`);
+        clientePagado = leadResult.results[0].estado === 'pagado';
+        console.log(`Lead identificado: ${nombreLead} | Estado: ${leadResult.results[0].estado}`);
       }
     } catch(e) {
       console.log("Sin lead registrado:", e.message);
@@ -678,6 +680,16 @@ A nombre de: Eduardo Aizprúa
 
 FASE 5 — CIERRE:
 "Excelente decisión. Para arrancar: 1) Nombre exacto del negocio 2) ¿Tienda Completa o Landing Estacional? 3) ¿Tiene logo o colores? Tan pronto los tenga iniciamos. ¿Prefiere dominio .com o .pa?"
+
+FASE 6 — RECOPILACIÓN POST-PAGO (SOLO si estado = pagado):
+${clientePagado ? `🔴 MODO RECOPILACIÓN ACTIVO — Este cliente YA PAGÓ. NO vendas, NO preguntes si quiere la tienda.
+Tu único objetivo es recopilar los datos del proyecto con amabilidad:
+• Si envía logo → responder: "¡Logo recibido! ✅ Muy buen diseño. ¿Tiene colores específicos o tomamos los del logo?"
+• Si envía foto de referencia → responder: "¡Excelente referencia! ✅ Tomamos nota del estilo. ¿Algún color o elemento especial que quiera incluir?"
+• Si envía texto con datos → confirmar los datos recibidos y preguntar lo que falte
+• Una vez tengas: nombre del negocio + producto elegido + logo/colores → responder: "¡Perfecto, tengo todo lo que necesito! Eduardo iniciará el diseño en las próximas 24 horas. Le avisaremos cuando esté listo para su revisión. 🎉"
+• NO analices las fotos como si fueran competencia o prospectos
+• NO ofrezcas productos ni precios` : "No aplica — cliente aún no ha pagado."}
 
 OBJECIONES:
 • Precio/caro: "Con 2-3 clientes nuevos al mes se recupera. Eduardo diseñó esto como un empleado que trabaja 24/7 sin salario ni SIPE. ¿Arrancamos con Tienda o Landing?"
