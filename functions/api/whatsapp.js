@@ -894,21 +894,6 @@ async function marcarLeido(env, messageId) {
 // ─── ENVIAR INDICADOR "ESCRIBIENDO..." ───────────────────────────
 async function enviarTyping(env, to) {
   try {
-    // La API de WhatsApp Business usa el action "typing" vía presencia
-    await fetch(`https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to,
-        type: "reaction",  // workaround — el typing oficial requiere presencia habilitada
-      })
-    });
-    // Typing real vía presencia (si está habilitado en la cuenta)
     await fetch(`https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`, {
       method: "POST",
       headers: {
@@ -918,8 +903,7 @@ async function enviarTyping(env, to) {
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to,
-        type: "interactive",
-        typing: { action: "typing_on" }
+        type: "typing"
       })
     });
   } catch(e) {
