@@ -207,15 +207,40 @@ Usa <code>/decir</code> para especificar a quién escribir.`
         return Response.json({ ok: true });
       }
 
-      // Actualizar D1
+      // Actualizar D1 — si el prospecto existe, actualizar estado
+      // Si no existe (cliente que llegó directo sin scraper), crearlo
       try {
-        await env.kairos_db.prepare(
-          "UPDATE Prospectos SET estado = 'pagado' WHERE whatsapp LIKE ? OR whatsapp LIKE ?"
-        ).bind(`%${numero}%`, `+${numero}`).run();
+        const existe = await env.kairos_db.prepare(
+          "SELECT id FROM Prospectos WHERE whatsapp LIKE ? OR whatsapp LIKE ? LIMIT 1"
+        ).bind(`%${numero}%`, `+${numero}`).first();
+
+        if (existe) {
+          await env.kairos_db.prepare(
+            "UPDATE Prospectos SET estado = 'pagado' WHERE whatsapp LIKE ? OR whatsapp LIKE ?"
+          ).bind(`%${numero}%`, `+${numero}`).run();
+        } else {
+          // Crear el prospecto con los datos disponibles
+          const fecha = new Intl.DateTimeFormat('es-PA', {
+            timeZone: 'America/Panama',
+            year: 'numeric', month: '2-digit', day: '2-digit'
+          }).format(new Date());
+          await env.kairos_db.prepare(
+            "INSERT INTO Prospectos (nombre, empresa, whatsapp, fuente, fecha, estado, scoring, score) VALUES (?, ?, ?, ?, ?, 'pagado', 'Cliente Directo', 100)"
+          ).bind(
+            nombreCliente || numero,
+            nombreCliente || numero,
+            numero,
+            'whatsapp_directo',
+            fecha
+          ).run();
+        }
+
         await env.kairos_db.prepare(
           "INSERT INTO Conversaciones_WA (numero, rol, contenido, fecha) VALUES (?, ?, ?, ?)"
         ).bind(numero, "assistant", MENSAJE_BIENVENIDA, new Date().toISOString()).run();
-      } catch(e) {}
+      } catch(e) {
+        console.log("Error actualizando D1:", e.message);
+      }
 
       const nombreDisplay = nombreCliente ? ` (${nombreCliente})` : "";
       await responderTelegram(env, chatId,
