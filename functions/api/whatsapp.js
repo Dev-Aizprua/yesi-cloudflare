@@ -107,6 +107,8 @@ De: +${from}
     const contacto = value?.contacts?.[0];
     const nombrePerfil = contacto?.profile?.name || null;
     if (nombrePerfil) console.log(`Nombre perfil WhatsApp: ${nombrePerfil}`);
+    // LOG DIAGNÓSTICO — tipo de mensaje recibido
+    console.log(`📨 Tipo mensaje: ${tipo} | Keys: ${Object.keys(message).join(",")}`);
 
     // ─── MANEJO DE AUDIO CON GROQ WHISPER ────────────────────
     if (tipo === "audio") {
