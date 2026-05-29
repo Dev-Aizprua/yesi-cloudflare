@@ -255,6 +255,7 @@ De: +${from}
     if (tipo === "image") {
       const imageId = message.image?.id;
       const caption = message.image?.caption || '';
+      console.log(`🖼️ Imagen recibida — id: ${imageId}`);
 
       try {
         // 1. Obtener URL de la imagen desde Meta
@@ -263,6 +264,7 @@ De: +${from}
         });
         const mediaData = await mediaRes.json();
         const imageUrl = mediaData.url;
+        console.log(`🖼️ URL obtenida: ${imageUrl ? "OK" : "FALLO"} | error: ${mediaData.error?.message || "ninguno"}`);
 
         // 2. Descargar la imagen
         const imageRes = await fetch(imageUrl, {
