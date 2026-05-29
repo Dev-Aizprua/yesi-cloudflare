@@ -268,9 +268,11 @@ De: +${from}
 
         // 2. Descargar la imagen
         const imageRes = await fetch(imageUrl, {
-          headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
+          headers: { "Authorization": `Bearer ${env.WHATSAPP_ACCESS_TOKEN || env.WHATSAPP_TOKEN}` }
         });
+        console.log(`🖼️ Descarga: status ${imageRes.status}`);
         const imageBuffer = await imageRes.arrayBuffer();
+        console.log(`🖼️ Buffer: ${imageBuffer.byteLength} bytes`);
         // Convertir a base64 de forma segura para imágenes grandes
         const uint8Array = new Uint8Array(imageBuffer);
         let base64Image = '';
@@ -280,6 +282,7 @@ De: +${from}
         }
         base64Image = btoa(base64Image);
         const mimeType = mediaData.mime_type || "image/jpeg";
+        console.log(`🖼️ Base64 listo: ${base64Image.length} chars | mimeType: ${mimeType}`);
 
         // 3. Analizar con LLaMA 4 Scout (visión)
         const visionRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
