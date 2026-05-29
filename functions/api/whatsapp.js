@@ -340,19 +340,37 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
           // Imagen normal — contexto visual para Groq
           contextoVisual = `\n\n📸 CONTEXTO VISUAL (análisis de imagen enviada por el cliente):\n${analisis}\nUSA este contexto para personalizar tu respuesta de ventas.`;
 
-          // Reenviar imagen real a Telegram usando multipart/form-data
+          // Reenviar imagen a Telegram usando la URL directa de Meta
+          // (Cloudflare Workers tiene limitaciones con FormData/Blob binario)
           try {
             const captionTelegram = `📸 Imagen de +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📝 ${analisis}`;
-            const formTelegram = new FormData();
-            formTelegram.append("chat_id", env.TELEGRAM_CHAT_ID);
-            formTelegram.append("caption", captionTelegram);
-            formTelegram.append("photo", new Blob([imageBuffer], { type: mimeType }), "imagen.jpg");
-            await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendPhoto`, {
+            // Telegram puede descargar desde la URL de Meta si tiene el token de autorización
+            // Como Meta requiere auth, usamos sendDocument con el buffer en base64 via URL de datos
+            // o enviamos el análisis como mensaje con la URL pública temporal
+            const telegramPhotoRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendPhoto`, {
               method: "POST",
-              body: formTelegram
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: env.TELEGRAM_CHAT_ID,
+                photo: imageUrl,
+                caption: captionTelegram
+              })
             });
+            const telegramPhotoData = await telegramPhotoRes.json();
+
+            // Si falla con URL directa, mandar solo el análisis como texto
+            if (!telegramPhotoData.ok) {
+              await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: env.TELEGRAM_CHAT_ID,
+                  text: `👁️ <b>Imagen analizada — WhatsApp</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n📝 ${analisis}`,
+                  parse_mode: "HTML"
+                })
+              });
+            }
           } catch(e) {
-            // Fallback — solo texto si falla el envío de foto
             try {
               await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
                 method: "POST",
