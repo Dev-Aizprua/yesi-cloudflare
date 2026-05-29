@@ -93,11 +93,9 @@ De: +${from}
       );
 
       if (esPlantillaCompleta && !contieneBoton) {
-        console.log("Ignorando cita de plantilla saliente (sin botón)");
         return new Response("EVENT_RECEIVED", { status: 200 });
       }
       if (esPlantillaCompleta && contieneBoton) {
-        console.log("⚠️ Plantilla con botón detectada — procesando respuesta del cliente");
       }
       // Si es texto corto con contexto = respuesta del cliente, procesarlo normal
     }
@@ -106,9 +104,6 @@ De: +${from}
     // Meta envía el nombre del perfil de WhatsApp en contacts[]
     const contacto = value?.contacts?.[0];
     const nombrePerfil = contacto?.profile?.name || null;
-    if (nombrePerfil) console.log(`Nombre perfil WhatsApp: ${nombrePerfil}`);
-    // LOG DIAGNÓSTICO — tipo de mensaje recibido
-    console.log(`📨 Tipo mensaje: ${tipo} | Keys: ${Object.keys(message).join(",")}`);
 
     // ─── MANEJO DE AUDIO CON GROQ WHISPER ────────────────────
     if (tipo === "audio") {
@@ -121,8 +116,6 @@ De: +${from}
       const duracionReal = Math.max(duracion, duracionVoice);
 
       // Log para calibrar el límite de tamaño
-      console.log(`Audio recibido — duration: ${duracion}s, voice_duration: ${duracionVoice}s, file_size: ${fileSize} bytes, type: ${message.type}`);
-      console.log(`Objeto audio completo: ${JSON.stringify(message.audio || message.voice)}`);
 
       // Notificar a Telegram con datos del audio para calibración
       try {
@@ -218,7 +211,6 @@ De: +${from}
         const whisperData = await whisperRes.json();
         const transcripcion = whisperData.text || "";
 
-        console.log(`Audio transcrito: ${transcripcion}`);
 
         if (!transcripcion) {
           await enviarMensaje(env, from, "No pude entender bien el audio. ¿Puede escribirme su consulta?");
@@ -255,7 +247,6 @@ De: +${from}
     if (tipo === "image") {
       const imageId = message.image?.id;
       const caption = message.image?.caption || '';
-      console.log(`🖼️ Imagen recibida — id: ${imageId}`);
 
       try {
         // 1. Obtener URL de la imagen desde Meta
@@ -264,15 +255,12 @@ De: +${from}
         });
         const mediaData = await mediaRes.json();
         const imageUrl = mediaData.url;
-        console.log(`🖼️ URL obtenida: ${imageUrl ? "OK" : "FALLO"} | error: ${mediaData.error?.message || "ninguno"}`);
 
         // 2. Descargar la imagen
         const imageRes = await fetch(imageUrl, {
           headers: { "Authorization": `Bearer ${env.WHATSAPP_ACCESS_TOKEN || env.WHATSAPP_TOKEN}` }
         });
-        console.log(`🖼️ Descarga: status ${imageRes.status}`);
         const imageBuffer = await imageRes.arrayBuffer();
-        console.log(`🖼️ Buffer: ${imageBuffer.byteLength} bytes`);
         // Convertir a base64 de forma segura para imágenes grandes
         const uint8Array = new Uint8Array(imageBuffer);
         let base64Image = '';
@@ -282,10 +270,8 @@ De: +${from}
         }
         base64Image = btoa(base64Image);
         const mimeType = mediaData.mime_type || "image/jpeg";
-        console.log(`🖼️ Base64 listo: ${base64Image.length} chars | mimeType: ${mimeType}`);
 
         // 3. Analizar con LLaMA 4 Scout (visión)
-        console.log(`🖼️ Llamando LLaMA 4 Scout...`);
         const visionRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -317,7 +303,6 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
         });
 
         const visionData = await visionRes.json();
-        console.log(`🖼️ LLaMA respondió: status ${visionRes.status} | choices: ${visionData.choices?.length || 0} | error: ${visionData.error?.message || "ninguno"}`);
         const analisis = visionData.choices?.[0]?.message?.content || '';
 
         if (analisis) {
@@ -423,13 +408,11 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
               body: bodyBuffer
             });
             const telegramData = await telegramRes.json();
-            console.log(`🖼️ Telegram sendPhoto: ${telegramData.ok ? "OK" : "FALLO"} | ${telegramData.description || ""}`);
 
             if (!telegramData.ok) {
               throw new Error(telegramData.description || "sendPhoto falló");
             }
           } catch(e) {
-            console.log(`🖼️ sendPhoto error: ${e.message} — usando fallback texto`);
             try {
               await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
                 method: "POST",
@@ -467,7 +450,6 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       const buttonReply = message.interactive?.button_reply;
       const listReply   = message.interactive?.list_reply;
       const textoBoton  = buttonReply?.title || listReply?.title || "";
-      console.log(`Botón interactive presionado: "${textoBoton}"`);
       if (textoBoton) {
         message.text = { body: textoBoton };
         message.type = "text";
@@ -484,7 +466,6 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       const textoBoton = message.button?.text || "";
       const payload    = message.button?.payload || "";
       const textoFinal = textoBoton || payload;
-      console.log(`🔘 Botón plantilla (type:button): "${textoFinal}"`);
       if (textoFinal) {
         message.text = { body: textoFinal };
         message.type = "text";
@@ -506,7 +487,6 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     const textoBuffer = contextoVisual
       ? `${textoRecibido} [Imagen analizada: ${contextoVisual.replace(/\n/g, ' ')}]`
       : textoRecibido;
-    console.log(`Mensaje de ${from}: ${textoBuffer}`);
 
     // ─── DEBOUNCE — AGRUPAR MENSAJES MÚLTIPLES ───────────────
     // Guardar mensaje en buffer D1
@@ -524,7 +504,6 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
             `UPDATE Prospectos_WA SET nombre = ? WHERE numero = ? AND (nombre IS NULL OR nombre = "")`
           ).bind(nombrePerfil, from).run();
         } catch(e) {}
-      } catch(e) { console.log("Error guardando nombre perfil:", e.message); }
     }
 
     let miId = null;
@@ -579,7 +558,6 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       console.log("Error marcando buffer:", e.message);
     }
 
-    console.log(`Texto consolidado (${mensajesBuffer.length} msgs): ${textoConsolidado}`);
 
     // ─── CARGAR HISTORIAL Y NOMBRE DEL LEAD ──────────────────
     let historial = [];
