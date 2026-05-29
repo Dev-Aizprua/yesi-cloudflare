@@ -504,6 +504,7 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
             `UPDATE Prospectos_WA SET nombre = ? WHERE numero = ? AND (nombre IS NULL OR nombre = "")`
           ).bind(nombrePerfil, from).run();
         } catch(e) {}
+      } catch(e) {}
     }
 
     let miId = null;
