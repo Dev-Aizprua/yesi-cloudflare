@@ -285,6 +285,7 @@ De: +${from}
         console.log(`🖼️ Base64 listo: ${base64Image.length} chars | mimeType: ${mimeType}`);
 
         // 3. Analizar con LLaMA 4 Scout (visión)
+        console.log(`🖼️ Llamando LLaMA 4 Scout...`);
         const visionRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -316,6 +317,7 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
         });
 
         const visionData = await visionRes.json();
+        console.log(`🖼️ LLaMA respondió: status ${visionRes.status} | choices: ${visionData.choices?.length || 0} | error: ${visionData.error?.message || "ninguno"}`);
         const analisis = visionData.choices?.[0]?.message?.content || '';
 
         if (analisis) {
@@ -326,18 +328,59 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
             "pago realizado", "pago exitoso", "eduardo aizp"].some(s => analisisLower.includes(s));
 
           if (esComprobante) {
-            // Alerta especial a Eduardo — comprobante recibido
+            // Alerta especial a Eduardo — comprobante recibido con foto
             try {
-              await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+              const captionComprobante = `🏆 <b>COMPROBANTE DE PAGO RECIBIDO</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📋 ${analisis}\n\n▶️ Confirma con:\n<code>/pago_confirmado ${from}</code>`;
+
+              // Intentar enviar la foto del comprobante
+              const boundary = "----TechZoneBoundary" + Date.now();
+              const encoder = new TextEncoder();
+              let parts = [];
+              parts.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${env.TELEGRAM_CHAT_ID}\r\n`));
+              parts.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${captionComprobante}\r\n`));
+              parts.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n`));
+              parts.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="comprobante.jpg"\r\nContent-Type: ${mimeType}\r\n\r\n`));
+              parts.push(new Uint8Array(imageBuffer));
+              parts.push(encoder.encode(`\r\n--${boundary}--\r\n`));
+
+              const totalLength = parts.reduce((sum, p) => sum + p.byteLength, 0);
+              const bodyBuffer = new Uint8Array(totalLength);
+              let offset = 0;
+              for (const part of parts) { bodyBuffer.set(part, offset); offset += part.byteLength; }
+
+              const photoRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendPhoto`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  chat_id: env.TELEGRAM_CHAT_ID,
-                  text: `🏆 <b>COMPROBANTE DE PAGO RECIBIDO</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📋 Análisis: ${analisis}\n\n▶️ Confirma con:\n<code>/pago_confirmado ${from}</code>`,
-                  parse_mode: "HTML"
-                })
+                headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+                body: bodyBuffer
               });
-            } catch(e) {}
+              const photoData = await photoRes.json();
+
+              // Si falla la foto, mandar solo texto
+              if (!photoData.ok) {
+                await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: env.TELEGRAM_CHAT_ID,
+                    text: captionComprobante,
+                    parse_mode: "HTML"
+                  })
+                });
+              }
+            } catch(e) {
+              // Fallback texto
+              try {
+                await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: env.TELEGRAM_CHAT_ID,
+                    text: `🏆 <b>COMPROBANTE DE PAGO RECIBIDO</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📋 ${analisis}\n\n▶️ Confirma con:\n<code>/pago_confirmado ${from}</code>`,
+                    parse_mode: "HTML"
+                  })
+                });
+              } catch(e2) {}
+            }
 
             // Kairós acusa recibo sin repetir instrucciones de pago
             await enviarMensaje(env, from, "¡Perfecto, recibí tu comprobante! ✅ Eduardo lo está verificando en este momento. En cuanto lo confirme te escribimos para arrancar con tu proyecto. ¡Gracias por confiar en TechZone!");
@@ -347,37 +390,46 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
           // Imagen normal — contexto visual para Groq
           contextoVisual = `\n\n📸 CONTEXTO VISUAL (análisis de imagen enviada por el cliente):\n${analisis}\nUSA este contexto para personalizar tu respuesta de ventas.`;
 
-          // Reenviar imagen a Telegram usando la URL directa de Meta
-          // (Cloudflare Workers tiene limitaciones con FormData/Blob binario)
+          // Reenviar imagen a Telegram usando multipart con el buffer en memoria
           try {
             const captionTelegram = `📸 Imagen de +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n\n📝 ${analisis}`;
-            // Telegram puede descargar desde la URL de Meta si tiene el token de autorización
-            // Como Meta requiere auth, usamos sendDocument con el buffer en base64 via URL de datos
-            // o enviamos el análisis como mensaje con la URL pública temporal
-            const telegramPhotoRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendPhoto`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: env.TELEGRAM_CHAT_ID,
-                photo: imageUrl,
-                caption: captionTelegram
-              })
-            });
-            const telegramPhotoData = await telegramPhotoRes.json();
 
-            // Si falla con URL directa, mandar solo el análisis como texto
-            if (!telegramPhotoData.ok) {
-              await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  chat_id: env.TELEGRAM_CHAT_ID,
-                  text: `👁️ <b>Imagen analizada — WhatsApp</b>\n\nDe: +${from}${nombrePerfil ? ` (${nombrePerfil})` : ""}\n📝 ${analisis}`,
-                  parse_mode: "HTML"
-                })
-              });
+            // Construir multipart/form-data manualmente
+            const boundary = "----TechZoneBoundary" + Date.now();
+            const encoder = new TextEncoder();
+
+            // Parte 1: chat_id
+            let parts = [];
+            parts.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${env.TELEGRAM_CHAT_ID}\r\n`));
+            // Parte 2: caption
+            parts.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${captionTelegram}\r\n`));
+            // Parte 3: foto binaria
+            parts.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="imagen.jpg"\r\nContent-Type: ${mimeType}\r\n\r\n`));
+            parts.push(new Uint8Array(imageBuffer));
+            parts.push(encoder.encode(`\r\n--${boundary}--\r\n`));
+
+            // Calcular tamaño total
+            const totalLength = parts.reduce((sum, p) => sum + p.byteLength, 0);
+            const bodyBuffer = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const part of parts) {
+              bodyBuffer.set(part, offset);
+              offset += part.byteLength;
+            }
+
+            const telegramRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendPhoto`, {
+              method: "POST",
+              headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+              body: bodyBuffer
+            });
+            const telegramData = await telegramRes.json();
+            console.log(`🖼️ Telegram sendPhoto: ${telegramData.ok ? "OK" : "FALLO"} | ${telegramData.description || ""}`);
+
+            if (!telegramData.ok) {
+              throw new Error(telegramData.description || "sendPhoto falló");
             }
           } catch(e) {
+            console.log(`🖼️ sendPhoto error: ${e.message} — usando fallback texto`);
             try {
               await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
                 method: "POST",
