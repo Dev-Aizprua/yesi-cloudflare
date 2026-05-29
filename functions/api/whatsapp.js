@@ -267,7 +267,14 @@ De: +${from}
           headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}` }
         });
         const imageBuffer = await imageRes.arrayBuffer();
-        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        // Convertir a base64 de forma segura para imágenes grandes
+        const uint8Array = new Uint8Array(imageBuffer);
+        let base64Image = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          base64Image += String.fromCharCode(...uint8Array.subarray(i, i + chunkSize));
+        }
+        base64Image = btoa(base64Image);
         const mimeType = mediaData.mime_type || "image/jpeg";
 
         // 3. Analizar con LLaMA 4 Scout (visión)
