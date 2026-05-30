@@ -608,21 +608,23 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
       dental:      "https://yesi-agente-ia.pages.dev/docs/mockup_dental.jpg"
     };
 
-    const esRestaurante = textoLower.includes("restaurante") || textoLower.includes("delivery") || textoLower.includes("comida");
-    const esJoyeria     = textoLower.includes("joyeria") || textoLower.includes("joyería") || textoLower.includes("moda") || textoLower.includes("ropa");
-    const esServicios   = textoLower.includes("servicios") || textoLower.includes("servicio");
-    const esDental      = textoLower.includes("dental") || textoLower.includes("clinica") || textoLower.includes("clínica") || textoLower.includes("salud");
-    const esPlanB       = textoLower.includes("hola_techzone") || textoLower.includes("hola techzone") &&
-                          (esRestaurante || esJoyeria || esServicios || esDental);
+    // Plan B — usar solo el mensaje actual (textoRecibido), NO el historial consolidado
+    const textoMensajeActual = textoRecibido.toLowerCase();
+    const esPlanB = textoMensajeActual.includes("hola_techzone") || textoMensajeActual.includes("hola techzone");
 
-    if (!clientePagado && (esPlanB || ((esRestaurante || esJoyeria || esServicios || esDental) &&
-        textoLower.includes("techzone")))) {
+    if (!clientePagado && esPlanB) {
       let nicho = "", mockupUrl = "", nombreNicho = "";
 
-      if (esRestaurante)      { nicho = "restaurante"; mockupUrl = MOCKUPS.restaurante; nombreNicho = "Restaurante / Delivery"; }
-      else if (esDental)      { nicho = "dental";      mockupUrl = MOCKUPS.dental;      nombreNicho = "Clínica / Dental";       }
-      else if (esJoyeria)     { nicho = "joyeria";     mockupUrl = MOCKUPS.joyeria;     nombreNicho = "Joyería / Moda";         }
-      else if (esServicios)   { nicho = "servicios";   mockupUrl = MOCKUPS.servicios;   nombreNicho = "Servicios Profesionales";}
+      if (textoMensajeActual.includes("restaurante") || textoMensajeActual.includes("delivery") || textoMensajeActual.includes("comida"))
+        { nicho = "restaurante"; mockupUrl = MOCKUPS.restaurante; nombreNicho = "Restaurante / Delivery"; }
+      else if (textoMensajeActual.includes("dental") || textoMensajeActual.includes("clinica") || textoMensajeActual.includes("salud"))
+        { nicho = "dental";      mockupUrl = MOCKUPS.dental;      nombreNicho = "Clínica / Dental";       }
+      else if (textoMensajeActual.includes("joyeria") || textoMensajeActual.includes("joyería") || textoMensajeActual.includes("moda") || textoMensajeActual.includes("ropa"))
+        { nicho = "joyeria";     mockupUrl = MOCKUPS.joyeria;     nombreNicho = "Joyería / Moda";         }
+      else if (textoMensajeActual.includes("servicios") || textoMensajeActual.includes("servicio"))
+        { nicho = "servicios";   mockupUrl = MOCKUPS.servicios;   nombreNicho = "Servicios Profesionales";}
+      else
+        { nicho = "general";     mockupUrl = MOCKUPS.servicios;   nombreNicho = "su negocio";             }
 
       if (mockupUrl) {
         console.log(`🎯 Plan B detectado — nicho: ${nicho}`);
