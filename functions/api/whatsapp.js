@@ -598,6 +598,88 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     const esPrimerMensaje  = historial.length === 0;
     const textoLower       = textoConsolidado.toLowerCase();
 
+    // ─── PLAN B — DETECCIÓN DE MOCKUP POR NICHO ────────────────────
+    // Cuando el prospecto toca el link wa.me con texto prellenado,
+    // Kairós detecta el nicho y envía el mockup correcto automáticamente
+    const MOCKUPS = {
+      restaurante: "https://yesi-agente-ia.pages.dev/docs/mockup_restaurante.jpg",
+      joyeria:     "https://yesi-agente-ia.pages.dev/docs/mockup_joyeria.jpg",
+      servicios:   "https://yesi-agente-ia.pages.dev/docs/mockup_servicios.jpg",
+      dental:      "https://yesi-agente-ia.pages.dev/docs/mockup_dental.jpg"
+    };
+
+    const esRestaurante = textoLower.includes("restaurante") || textoLower.includes("delivery") || textoLower.includes("comida");
+    const esJoyeria     = textoLower.includes("joyeria") || textoLower.includes("joyería") || textoLower.includes("moda") || textoLower.includes("ropa");
+    const esServicios   = textoLower.includes("servicios") || textoLower.includes("servicio");
+    const esDental      = textoLower.includes("dental") || textoLower.includes("clinica") || textoLower.includes("clínica") || textoLower.includes("salud");
+    const esPlanB       = textoLower.includes("hola_techzone") || textoLower.includes("hola techzone") &&
+                          (esRestaurante || esJoyeria || esServicios || esDental);
+
+    if (esPlanB || ((esRestaurante || esJoyeria || esServicios || esDental) &&
+        textoLower.includes("techzone"))) {
+      let nicho = "", mockupUrl = "", nombreNicho = "";
+
+      if (esRestaurante)      { nicho = "restaurante"; mockupUrl = MOCKUPS.restaurante; nombreNicho = "Restaurante / Delivery"; }
+      else if (esDental)      { nicho = "dental";      mockupUrl = MOCKUPS.dental;      nombreNicho = "Clínica / Dental";       }
+      else if (esJoyeria)     { nicho = "joyeria";     mockupUrl = MOCKUPS.joyeria;     nombreNicho = "Joyería / Moda";         }
+      else if (esServicios)   { nicho = "servicios";   mockupUrl = MOCKUPS.servicios;   nombreNicho = "Servicios Profesionales";}
+
+      if (mockupUrl) {
+        console.log(`🎯 Plan B detectado — nicho: ${nicho}`);
+
+        // 1. Enviar el mockup como imagen
+        await fetch(`https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: from,
+            type: "image",
+            image: {
+              link: mockupUrl,
+              caption: `🚀 Así se vería su negocio de ${nombreNicho} con TechZone Panamá.
+
+Listo en 5-7 días hábiles. ¿Le interesa saber más?`
+            }
+          })
+        });
+
+        // 2. Guardar en historial
+        const fechaPlanB = new Date().toISOString();
+        try {
+          await env.kairos_db.prepare(
+            "INSERT INTO Conversaciones_WA (numero, rol, contenido, fecha) VALUES (?, ?, ?, ?)"
+          ).bind(from, "user", textoConsolidado, fechaPlanB).run();
+          await env.kairos_db.prepare(
+            "INSERT INTO Conversaciones_WA (numero, rol, contenido, fecha) VALUES (?, ?, ?, ?)"
+          ).bind(from, "assistant", `[Mockup ${nombreNicho} enviado]`, fechaPlanB).run();
+        } catch(e) {}
+
+        // 3. Notificar a Eduardo en Telegram
+        try {
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: env.TELEGRAM_CHAT_ID,
+              text: `🎯 <b>Plan B — Prospecto llegó por wa.me</b>
+
+Nicho: <b>${nombreNicho}</b>
+Número: <code>+${from}</code>
+
+Kairós envió el mockup. Prospecto caliente 🔥`,
+              parse_mode: "HTML"
+            })
+          });
+        } catch(e) {}
+
+        return new Response("EVENT_RECEIVED", { status: 200 });
+      }
+    }
+
     // ─── HARD OVERRIDE — BOTONES DE PLANTILLA META ───────────────
     // Usa includes() en lugar de === para capturar botones aunque Meta
     // los envíe pegados al texto completo de la plantilla (comportamiento
