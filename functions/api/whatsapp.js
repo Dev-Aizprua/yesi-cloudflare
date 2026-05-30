@@ -615,8 +615,8 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
     const esPlanB       = textoLower.includes("hola_techzone") || textoLower.includes("hola techzone") &&
                           (esRestaurante || esJoyeria || esServicios || esDental);
 
-    if (esPlanB || ((esRestaurante || esJoyeria || esServicios || esDental) &&
-        textoLower.includes("techzone"))) {
+    if (!clientePagado && (esPlanB || ((esRestaurante || esJoyeria || esServicios || esDental) &&
+        textoLower.includes("techzone")))) {
       let nicho = "", mockupUrl = "", nombreNicho = "";
 
       if (esRestaurante)      { nicho = "restaurante"; mockupUrl = MOCKUPS.restaurante; nombreNicho = "Restaurante / Delivery"; }
@@ -812,7 +812,7 @@ FASE 2 — PRESENTACIÓN:
 
 FASE 3 — PRECIO (SOLO después de elegir producto):
 • Si preguntan precio directamente: "La inversión total es $350. Para iniciar, solo el anticipo de $175 (50%). El saldo lo pagas cuando verificas que tu página quedó lista. ¿Arrancamos con la Tienda Completa o la Landing Estacional?"
-• Después de elegir: "¡Gran decisión! La inversión: Anticipo $175 (50%) + Saldo $175 al aprobar + $15/mes + $20/año dominio. 5-7 días hábiles. ¿Yappy o ACH?"
+• Después de elegir: "¡Gran decisión! La inversión: Anticipo $175 (50%) + Saldo $175 al aprobar + $15/mes mantenimiento + $20/año dominio .com. 5-7 días hábiles. ¿Paga con Yappy o ACH?"
 
 FASE 4 — PAGO (NO dar ambos métodos juntos):
 • Si Yappy: "Realiza el pago de $175 por Yappy buscando Eduardo Aizprúa — director de TechZone. Concepto: TechZone Activación. El número Yappy es diferente a este chat. ¿Me avisas cuando lo envíes?"
@@ -824,7 +824,7 @@ A nombre de: Eduardo Aizprúa
 ¿Me avisas cuando lo envíes?"
 
 FASE 5 — CIERRE:
-"Excelente decisión. Para arrancar: 1) Nombre exacto del negocio 2) ¿Tienda Completa o Landing Estacional? 3) ¿Tiene logo o colores? Tan pronto los tenga iniciamos. ¿Prefiere dominio .com o .pa?"
+"Excelente decisión. Para arrancar: 1) Nombre exacto del negocio 2) ¿Tienda Completa o Landing Estacional? 3) ¿Tiene logo o colores? Tan pronto los tenga iniciamos. ¿Tiene ya un nombre de dominio o eliges uno .com nuevo?"
 
 FASE 6 — RECOPILACIÓN POST-PAGO (SOLO si estado = pagado):
 ${clientePagado ? `🔴 MODO RECOPILACIÓN ACTIVO — Este cliente YA PAGÓ. NO vendas, NO preguntes si quiere la tienda.

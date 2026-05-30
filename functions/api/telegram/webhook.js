@@ -5,15 +5,17 @@
 //   /reanudar 507XXXXXXXX          → Kairós retoma el control
 //   /decir 507XXXXXXXX [mensaje]   → Eduardo envía mensaje al cliente (modo manual)
 
-const MENSAJE_BIENVENIDA = `¡Bienvenido/a a TechZone! 🎉
+const MENSAJE_BIENVENIDA = `¡Bienvenido/a a TechZone! 🎉 Su pago fue confirmado.
 
-Su proyecto ha sido confirmado. Para iniciar el diseño necesito:
+Para iniciar el diseño necesito estos datos:
 
-1) ¿Prefiere la Tienda Completa o Landing Estacional?
-2) ¿Tiene logo? Si sí, por favor envíelo por aquí
-3) ¿Colores preferidos o referencia de diseño?
+1️⃣ *Nombre exacto de su negocio:*
+2️⃣ *Tipo de web:* Tienda Completa o Landing Estacional
+3️⃣ *Dominio .com preferido:* (ej: minegocio.com)
+4️⃣ *Colores preferidos:* o envíe una foto de referencia
+5️⃣ *Logo:* envíelo como foto en este chat (si lo tiene)
 
-Eduardo iniciará el diseño en las próximas 24 horas.`;
+Responda con sus datos y Eduardo iniciará el diseño en las próximas 24 horas. 🚀`;
 
 async function enviarMensajeWA(env, to, texto) {
   const res = await fetch(`https://graph.facebook.com/v21.0/${env.PHONE_NUMBER_ID}/messages`, {
