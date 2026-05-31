@@ -120,6 +120,12 @@ Es una simulación interactiva — en 60 segundos entenderá exactamente lo que 
 
 📱 Si prefiere hablar directamente, escríbanos por WhatsApp al +507 6016-4559.
 
+👇 O vea cómo se vería su tienda ahora mismo:
+https://wa.me/50760164559?text=Hola_TechZone_soy_de_Joyeria
+
+👇 O vea cómo se vería su negocio ahora mismo:
+https://wa.me/50760164559?text=Hola_TechZone_soy_de_Restaurante
+
 Atentamente,
 Eduardo Aizprua
 TechZone Panamá
@@ -161,6 +167,12 @@ Le adjunto la propuesta completa con todos los detalles del sistema:
 ¿Tienen 15 minutos esta semana para conversar sobre cómo lo adaptamos a su restaurante?
 
 💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
+
+👇 O vea cómo se vería su negocio ahora mismo:
+https://wa.me/50760164559?text=Hola_TechZone_soy_de_Joyeria
+
+👇 O vea cómo se vería su negocio ahora mismo:
+https://wa.me/50760164559?text=Hola_TechZone_soy_de_Dental
 
 Saludos,
 Eduardo Aizprua
@@ -242,6 +254,9 @@ Aquí la propuesta técnica completa con precios:
 ¿Conversamos esta semana?
 
 💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
+
+👇 O vea cómo se vería su negocio ahora mismo:
+https://wa.me/50760164559?text=Hola_TechZone_soy_de_Servicios
 
 Saludos,
 Eduardo Aizprua
@@ -385,6 +400,9 @@ Aquí la propuesta completa con todos los detalles:
 ¿Les interesa saber más? Una llamada de 15 minutos es suficiente para contarles todo.
 
 💬 ¿Prefiere hablar directamente? Escríbanos por WhatsApp al +507 6016-4559 y le respondemos de inmediato.
+
+👇 O vea cómo se vería su negocio ahora mismo:
+https://wa.me/50760164559?text=Hola_TechZone_soy_de_Servicios
 
 Saludos,
 Eduardo Aizprua
