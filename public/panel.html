@@ -358,7 +358,10 @@
   <button class="campaign-btn deselect" onclick="deseleccionarTodos()">✕ Deseleccionar</button>
   <div class="selected-count">Seleccionados: <span id="selectedCount">0</span></div>
   <button class="campaign-btn extract" id="btnExtraer" onclick="extraerContactosMasivo()" disabled>📥 Extraer Contactos</button>
+  <!-- 🚀 CAMPAÑA META DESACTIVADA TEMPORALMENTE — descomentar cuando se reactive
   <button class="campaign-btn launch" id="btnCampana" onclick="abrirModalCampana()" disabled>🚀 Ejecutar Campaña</button>
+  -->
+  <button class="campaign-btn" style="background:var(--accent);color:#000;opacity:0.5;cursor:not-allowed;" disabled title="Campaña Meta desactivada — usar número mártir">🚫 Campaña Meta (desactivada)</button>
 </div>
 
 <!-- PROGRESS -->
@@ -717,12 +720,15 @@ function renderTabla() {
         <td class="td-nombre" title="${escHtml(p.nombre)}">${escHtml(p.nombre||'—')}</td>
         <td class="td-rubro">${escHtml(p.rubro||'—')}</td>
         <td style="font-size:10px;color:var(--text-dim);">${escHtml(p.ciudad||'—')}</td>
-        <td class="td-correo">${correo ? escHtml(correo.length>22?correo.substring(0,22)+'…':correo) : '<span style="color:var(--text-muted);font-size:10px;">sin correo</span>'}${p.whatsapp ? ' <a href="https://wa.me/'+escHtml(p.whatsapp.replace(/\D/g,''))+'" target="_blank" title="Abrir WhatsApp con '+escHtml(p.whatsapp)+'" style="text-decoration:none;">📱</a> <span title="Enviar plantilla Meta aprobada" style="cursor:pointer;" onclick="enviarPlantillaDesdeTabla('+p.id+')">📡</span>' : ''}</td>
+        <td class="td-correo">${correo ? escHtml(correo.length>22?correo.substring(0,22)+'…':correo) : '<span style="color:var(--text-muted);font-size:10px;">sin correo</span>'}${p.whatsapp ? ' <a href="https://wa.me/'+escHtml(p.whatsapp.replace(/\D/g,''))+'" target="_blank" title="Abrir WhatsApp con '+escHtml(p.whatsapp)+'" style="text-decoration:none;">📱</a> <!-- 📡 PLANTILLAS META DESACTIVADAS TEMPORALMENTE — descomentar cuando se reactiven
+        <span title="Enviar plantilla Meta aprobada" style="cursor:pointer;" onclick="enviarPlantillaDesdeTabla('+p.id+')">📡</span>
+        -->' : ''}</td>
         <td class="td-web">${webHtml}</td>
         <td><span class="badge ${badges[estado]||'badge-nuevo'}">● ${estado}</span></td>
         <td class="td-fecha">${escHtml(p.fecha||'—')}</td>
         <td>
           <div class="actions">
+            <button class="action-btn" style="background:#25D366;color:#fff;" title="Copiar plantilla mártir" onclick="copiarPlantillaMartir(${p.id})">📋</button>
             <button class="action-btn enviar" onclick="abrirModalCorreo(${p.id})">📧</button>
             <button class="action-btn editar" onclick="abrirModalEditarCorreo(${p.id}, '${escHtml(correo)}')">✏️</button>
             <button class="action-btn estado" onclick="cambiarEstado(${p.id})">🔄</button>
@@ -1199,6 +1205,54 @@ async function seleccionarYEnviarMeta(nombreMeta, prospectoId) {
 }
 
 // ─── ENVIAR PLANTILLA META POR API OFICIAL ──────────────────────
+// ─── PLANTILLA MÁRTIR — copiar texto listo para el número mártir ────────────
+function copiarPlantillaMartir(prospectoId) {
+  const p = prospectos.find(x => x.id === prospectoId);
+  if (!p) { showToast('⚠ Prospecto no encontrado'); return; }
+
+  const nombre  = p.nombre || p.empresa || 'su negocio';
+  const rubro   = (p.rubro || '').toLowerCase();
+  const numero  = (p.whatsapp || p.telefono || '').replace(/\D/g, '');
+
+  // Detectar nicho por rubro
+  let nicho = 'Servicios';
+  let linkNicho = 'Hola_TechZone_soy_de_Servicios';
+  if (/restaurante|comida|pizza|sushi|delivery|parrilla|mariscos|cafeteria/i.test(rubro)) {
+    nicho = 'Restaurante'; linkNicho = 'Hola_TechZone_soy_de_Restaurante';
+  } else if (/joyeria|joyería|moda|ropa|boutique|accesorio|retail/i.test(rubro)) {
+    nicho = 'Joyeria'; linkNicho = 'Hola_TechZone_soy_de_Joyeria';
+  } else if (/dental|odontologo|clínica|clinica|medico|salud|ortodoncia/i.test(rubro)) {
+    nicho = 'Dental'; linkNicho = 'Hola_TechZone_soy_de_Dental';
+  }
+
+  const linkWA = `https://wa.me/50760164559?text=${linkNicho}`;
+
+  const texto = `Hola ${nombre} 👋
+
+Vi su negocio en Google Maps y me llamó la atención.
+
+Le preparé una muestra gratuita de cómo se vería su negocio con tecnología digital. Sin compromiso.
+
+👇 Tóquelo para verlo:
+${linkWA}
+
+— Eduardo, TechZone Panamá
+Responda STOP para no recibir más mensajes.`;
+
+  navigator.clipboard.writeText(texto).then(() => {
+    showToast(`✅ Plantilla copiada — ${nombre} (${nicho})`);
+  }).catch(() => {
+    // Fallback si clipboard falla
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast(`✅ Plantilla copiada — ${nombre} (${nicho})`);
+  });
+}
+
 // Llama a /api/enviar-plantilla en lugar de abrir WhatsApp Web
 async function enviarPlantillaMeta(prospecto, keyOverride) {
   const plantillaSelect = document.getElementById('campana-plantilla');
