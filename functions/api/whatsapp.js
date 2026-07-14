@@ -271,7 +271,11 @@ De: +${from}
         base64Image = btoa(base64Image);
         const mimeType = mediaData.mime_type || "image/jpeg";
 
-        // 3. Analizar con LLaMA 4 Scout (visión)
+        // 3. Analizar con Qwen 3.6 27B (visión)
+        // Migración por deprecación de Groq (17 julio 2026):
+        // meta-llama/llama-4-scout-17b-16e-instruct → qwen/qwen3.6-27b
+        // NOTA: Groq sirve este modelo como "preview" (evaluación, no
+        // garantizado 100% para producción) — vale la pena vigilarlo.
         const visionRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -279,7 +283,7 @@ De: +${from}
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            model: "meta-llama/llama-4-scout-17b-16e-instruct",
+            model: "qwen/qwen3.6-27b",
             messages: [{
               role: "user",
               content: [
@@ -298,7 +302,12 @@ Responde en español de forma concisa. Máximo 5 líneas. Contexto adicional del
               ]
             }],
             temperature: 0.1,
-            max_tokens: 400
+            max_tokens: 400,
+            // Qwen usa un parámetro de razonamiento distinto a GPT-OSS:
+            // "none" = modo rápido sin pensar de más (lo que queremos para
+            // un análisis corto de imagen), "default" = modo de razonamiento
+            // profundo (para matemáticas/código complejos, no aplica aquí)
+            reasoning_effort: "none"
           })
         });
 
@@ -864,6 +873,8 @@ REGLAS DE ORO:
 • Si preguntan si eres IA: "Soy Kairós, el asistente digital de TechZone Panamá."` + contextoVisual;
 
     // ─── LLAMAR A GROQ ────────────────────────────────────────
+    // Migración por deprecación de Groq (17 julio 2026):
+    // llama-3.3-70b-versatile → openai/gpt-oss-120b
     const groqRes = respuestaForzada ? null : await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -871,14 +882,21 @@ REGLAS DE ORO:
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "openai/gpt-oss-120b",
         messages: [
           { role: "system", content: systemPrompt },
           ...historial,
           { role: "user", content: textoConsolidado }
         ],
         temperature: 0.25,
-        max_tokens: 500
+        max_tokens: 700,
+        // Mismo fix que en Producto C: openai/gpt-oss-120b es un modelo de
+        // razonamiento que por defecto piensa con reasoning_effort "medium",
+        // y esos tokens de pensamiento interno se descuentan del mismo
+        // max_tokens que la respuesta visible — con max_tokens=500 el riesgo
+        // de respuesta vacía (finish_reason: length) era real. Bajamos el
+        // razonamiento y subimos el margen preventivamente.
+        reasoning_effort: "low"
       })
     });
 

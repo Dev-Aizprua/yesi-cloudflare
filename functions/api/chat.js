@@ -173,10 +173,12 @@ export async function onRequestPost(context) {
 
     const usarPro = requiereMotorPro(mensaje);
     const apiKey = usarPro && env.GROQ_API_KEY_PRO ? env.GROQ_API_KEY_PRO : env.GROQ_API_KEY;
-    const modelo = usarPro && env.GROQ_API_KEY_PRO ? 'llama-3.3-70b-versatile' : 'llama-3.1-8b-instant';
-    // SIEMPRE usar LLaMA 3.3 cuando hay búsqueda local o contacto — nunca degradar
+    // Migración por deprecación de Groq (anunciada 17 junio 2026, efectiva 17 julio 2026):
+    // llama-3.3-70b-versatile → openai/gpt-oss-120b | llama-3.1-8b-instant → openai/gpt-oss-20b
+    const modelo = usarPro && env.GROQ_API_KEY_PRO ? 'openai/gpt-oss-120b' : 'openai/gpt-oss-20b';
+    // SIEMPRE usar el modelo grande cuando hay búsqueda local o contacto — nunca degradar
     const apiKeyFinal = requiereBusquedaLocal(mensaje) || requiereContacto(mensaje) ? (env.GROQ_API_KEY_PRO || env.GROQ_API_KEY) : apiKey;
-    const modeloFinal = requiereBusquedaLocal(mensaje) || requiereContacto(mensaje) ? 'llama-3.3-70b-versatile' : modelo;
+    const modeloFinal = requiereBusquedaLocal(mensaje) || requiereContacto(mensaje) ? 'openai/gpt-oss-120b' : modelo;
 
     console.log(`Motor: ${modeloFinal} | Pro: ${usarPro} | Forzado: ${requiereBusquedaLocal(mensaje) || requiereContacto(mensaje)}`);
 
@@ -376,6 +378,12 @@ REGLA CRÍTICA: Usa SIEMPRE datos reales del negocio — nombre, número de rese
       temperature: (lugaresContext || contactoContext) ? 0.1 : (usarPro ? 0.3 : 0.7),
       max_tokens: usarPro ? 4096 : 2048,
       top_p: 0.95,
+      // openai/gpt-oss-120b y openai/gpt-oss-20b son modelos de razonamiento —
+      // por defecto piensan con reasoning_effort "medium" y esos tokens de
+      // pensamiento interno se descuentan del mismo max_tokens de la respuesta
+      // visible. En Producto C esto causó respuestas vacías (finish_reason:
+      // length) con prompts largos. Lo bajamos preventivamente aquí también.
+      reasoning_effort: "low",
     });
 
     const respuesta = completion.choices[0]?.message?.content || 'Sin respuesta';
