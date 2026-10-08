@@ -7,8 +7,16 @@
     "deploy": "wrangler pages deploy public"
   },
   "dependencies": {
+    "@cf-wasm/resvg": "^0.4.0",
+    "@cf-wasm/satori": "0.4.0",
+    "@tavily/core": "^0.7.2",
+    "docx": "^9.7.2",
+    "expr-eval": "^2.0.2",
+    "fuzzysort": "^4.0.2",
     "groq-sdk": "^1.1.1",
-    "@tavily/core": "^0.7.2"
+    "pdf-lib": "^1.17.1",
+    "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "wrangler": "^3.0.0"

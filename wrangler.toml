@@ -12,3 +12,8 @@ TELEGRAM_CHAT_ID = "8483416774"
 binding = "kairos_db"
 database_name = "kairos-db"
 database_id = "46849818-deed-4987-9a56-84bb2f753b4d"
+
+[[d1_databases]]
+binding = "oficina_ia_db"
+database_name = "oficina-ia-db"
+database_id = "bb6924ec-8998-420a-a579-91e4e52b7882"
