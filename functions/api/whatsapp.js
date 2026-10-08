@@ -31,7 +31,7 @@ import { parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDoc
   detectarConsultaDeudas, extraerPrestamosDeCuadros, agruparSaldosAFavor, armarReporteDeudas, unirCuadrosDePrestamo,
   normalizarTelefonoPanama, mensajeTelefonoInvalido, cuadroContieneTodos,
   esCampoDeAbono, esCuadroDePrestamo, tieneColumnaAbono, resolverClaveAbono, buscarPersonaEnPrestamos,
-  textoRechazoCorreccionAbono, textoVariosExactos, textoParecidos, textoNingunoEnPrestamos, textoConfirmarAbonoParecido } from '../lib/pagos.js';
+  textoRechazoCorreccionAbono, mencionaCuadro, textoVariosExactos, textoParecidos, textoNingunoEnPrestamos, textoConfirmarAbonoParecido } from '../lib/pagos.js';
 import { llamarGroqConReintento } from '../lib/groqReintento.js';
 
 // Todas las llamadas a Groq pasan por aquí: si Groq responde 429 (límite por minuto) se espera
@@ -241,7 +241,9 @@ export async function onRequestPost(context) {
     }
 
     // ── 4. Guardar el mensaje entrante en el historial ────────────
-    await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+    // Se guarda el id: si Groq falla, este mensaje se borra del historial (si no, el siguiente mensaje
+    // haría que Groq intente cumplir también el que falló).
+    const idMensajeUsuario = await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
 
     // ── 5. Cargar contexto mínimo para Groq (no todo, por tokens) ─
     const { results: historialReciente } = await env.oficina_ia_db.prepare(
@@ -274,25 +276,40 @@ export async function onRequestPost(context) {
 
     console.log('[WEBHOOK] Llamando a Groq con', mensajesGroq.length, 'mensajes...');
 
-    const respuestaGroq = await fetchGroq('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
-        messages: mensajesGroq,
-        tools: herramientasDisponibles,
-        tool_choice: 'auto',
-      }),
-    });
-
-    const dataGroq = await respuestaGroq.json();
+    let respuestaGroq;
+    let dataGroq;
+    try {
+      respuestaGroq = await fetchGroq('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-120b',
+          messages: mensajesGroq,
+          tools: herramientasDisponibles,
+          tool_choice: 'auto',
+        }),
+      });
+      dataGroq = await respuestaGroq.json();
+    } catch (e) {
+      // Red caída o respuesta que no es JSON: mismo trato que un error de Groq.
+      console.log('[WEBHOOK] Falló la llamada a Groq:', e.message);
+      await descartarMensajeFallido(env, negocio.id, idMensajeUsuario);
+      try {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
+          'Tuve un problema al procesar tu mensaje. Inténtalo de nuevo en unos segundos, por favor.');
+      } catch (e2) {
+        console.log('[WEBHOOK] No pude enviar el aviso de error de Groq:', e2.message);
+      }
+      return Response.json({ ok: false, error: e.message });
+    }
     console.log('[WEBHOOK] Respuesta de Groq (status ' + respuestaGroq.status + '):', JSON.stringify(dataGroq).slice(0, 1500));
 
     if (dataGroq.error) {
       console.log('[WEBHOOK] Error de Groq:', dataGroq.error.message);
+      await descartarMensajeFallido(env, negocio.id, idMensajeUsuario);
       // Antes el usuario se quedaba sin respuesta. Ahora se le avisa (ya se reintentó una vez si era un 429 corto).
       const textoAviso = respuestaGroq.status === 429
         ? 'Estoy con mucho trabajo en este momento 🙏 Repite tu mensaje en unos segundos, por favor.'
@@ -339,6 +356,8 @@ export async function onRequestPost(context) {
     const resultado = await aplicarAccion(env, negocio, corregida.nombre, { ...corregida.args, _mensajeId: mensajeEntrante.id || null, _texto: textoUsuario });
 
     await guardarMensaje(env, negocio.id, 'asistente', resultado.mensaje, 'texto');
+    // Un abono directo (o su rechazo) no deja nada pendiente: un "sí" suelto después no debe llegar a Groq.
+    if (resultado.cerrarFlujo) await marcarFlujoPagoCerrado(env, negocio.id);
 
     // Cotización armada por texto/voz: se guarda como importación PENDIENTE y
     // se muestra igual que una foto (imagen + texto para sí / no / corregir).
@@ -1570,7 +1589,7 @@ async function resolverAbonoPorPersona(env, negocio, cuadros, cuadroGroq, args) 
   if (prestamos.length === 0) return null;
   if (cuadroGroq && !esCuadroDePrestamo(cuadroGroq, normalizarClave) && tieneColumnaAbono(cuadroGroq, normalizarClave)) return null;
 
-  const aviso = mensaje => ({ tipo: 'aviso', mensaje });
+  const aviso = mensaje => ({ tipo: 'aviso', mensaje, cerrarFlujo: true });
   if (esCorreccionDeAbono(args._texto)) return aviso(textoRechazoCorreccionAbono(args.nombre));
 
   const hallazgo = buscarPersonaEnPrestamos(args.nombre, prestamos, normalizarClave, buscarFila, args._texto);
@@ -1590,7 +1609,12 @@ async function resolverAbonoPorPersona(env, negocio, cuadros, cuadroGroq, args) 
   const filasAntes = JSON.stringify(filas);
 
   if (hallazgo.tipo === 'exacto') {
-    return await abonarEnCuadro(env, cuadro, columnas, filas, reglas, { tipo: 'exacto', fila }, args, claveAbono, filasAntes);
+    // Si el usuario nombró un cuadro y la persona está en otro, se le avisa dónde quedó registrado.
+    const todosLosNombres = cuadros.map(c => c.nombre_cuadro);
+    const notaCuadro = cuadroGroq && cuadroGroq.id !== cuadro.id && mencionaCuadro(args._texto, cuadroGroq.nombre_cuadro, todosLosNombres)
+      ? `Ojo: dijiste "${cuadroGroq.nombre_cuadro}", pero ${fila.nombre} está en "${cuadro.nombre_cuadro}", así que lo registré ahí.`
+      : null;
+    return await abonarEnCuadro(env, cuadro, columnas, filas, reglas, { tipo: 'exacto', fila }, { ...args, _notaCuadro: notaCuadro }, claveAbono, filasAntes);
   }
 
   // Nombre solo PARECIDO: nunca se registra solo.
@@ -1663,11 +1687,12 @@ async function abonarEnCuadro(env, cuadro, columnas, filas, reglas, busqueda, ar
     return {
       tipo: 'aviso',
       mensaje: textoRechazoCorreccionAbono(busqueda.fila.nombre),
+      cerrarFlujo: true,
     };
   }
   const r = acumularAbono(busqueda.fila[claveAbono], args.valor);
   if (!r.ok) {
-    return { tipo: 'aviso', mensaje: 'No entendí el monto del abono. Dime cuánto abonó, por ejemplo: "Yisel abonó 10".' };
+    return { tipo: 'aviso', mensaje: 'No entendí el monto del abono. Dime cuánto abonó, por ejemplo: "Yisel abonó 10".', cerrarFlujo: true };
   }
 
   const filaActualizada = calcularFila({ ...busqueda.fila, [claveAbono]: r.nuevo }, reglas);
@@ -1685,14 +1710,15 @@ async function abonarEnCuadro(env, cuadro, columnas, filas, reglas, busqueda, ar
   } catch (e) {
     if (/UNIQUE constraint/i.test(String(e?.message))) {
       console.log('[WEBHOOK] Abono repetido (mismo mensaje de WhatsApp), no se suma otra vez.');
-      return { tipo: 'aviso', mensaje: 'Ese abono ya estaba registrado (el mensaje llegó repetido), así que no lo sumé otra vez.' };
+      return { tipo: 'aviso', mensaje: 'Ese abono ya estaba registrado (el mensaje llegó repetido), así que no lo sumé otra vez.', cerrarFlujo: true };
     }
     console.log('[WEBHOOK] Error registrando abono:', e?.message);
-    return { tipo: 'error', mensaje: 'No pude registrar el abono. No cambié nada; inténtalo de nuevo en un momento.' };
+    return { tipo: 'error', mensaje: 'No pude registrar el abono. No cambié nada; inténtalo de nuevo en un momento.', cerrarFlujo: true };
   }
 
   const aclaracion = busqueda.tipo === 'alto' ? ' (interpreté que te referías a esa persona)' : '';
-  const lineas = [`Listo ✅ Registré el abono de ${formatoMonto(r.monto)} de ${nombre ?? 'esa persona'}${aclaracion}.`];
+  const lineas = [`Listo ✅ Registré el abono de ${formatoMonto(r.monto)} de ${nombre ?? 'esa persona'} en "${cuadro.nombre_cuadro}"${aclaracion}.`];
+  if (args._notaCuadro) lineas.push(args._notaCuadro);
   lineas.push(`Lleva abonado ${formatoMonto(r.nuevo)} en total (antes ${formatoMonto(r.previo)}).`);
   const saldo = Number(filaActualizada.saldo);
   if (filaActualizada.saldo !== undefined && Number.isFinite(saldo)) {
@@ -1705,6 +1731,7 @@ async function abonarEnCuadro(env, cuadro, columnas, filas, reglas, busqueda, ar
     mensaje: lineas.join('\n'),
     fila: filaActualizada,
     historialId,
+    cerrarFlujo: true,
     generarImagen: true,
     datosCuadro: { nombreCuadro: cuadro.nombre_cuadro, columnas, filas: filasNuevas },
   };
@@ -3136,13 +3163,29 @@ async function interpretarCorreccion(textoUsuario, columnasDisponibles, groqApiK
   return JSON.parse(limpio);
 }
 
+// Devuelve el id de la fila guardada (o null si no se pudo guardar).
 async function guardarMensaje(env, negocioId, rol, mensaje, tipo) {
   try {
-    await env.oficina_ia_db.prepare(
+    const r = await env.oficina_ia_db.prepare(
       'INSERT INTO conversaciones (negocio_id, rol, mensaje, tipo) VALUES (?, ?, ?, ?)'
     ).bind(negocioId, rol, mensaje, tipo).run();
+    return r?.meta?.last_row_id ?? null;
   } catch (e) {
     console.log('[WEBHOOK] Error guardando mensaje:', e.message);
+    return null;
+  }
+}
+
+// Si Groq falla (429, 413, 400, red caída), el mensaje del usuario quedaría en el historial sin respuesta
+// y el SIGUIENTE mensaje haría que Groq intente cumplir también ese. Se borra solo esa fila (del usuario y del negocio).
+async function descartarMensajeFallido(env, negocioId, id) {
+  if (!id) return;
+  try {
+    await env.oficina_ia_db.prepare(
+      "DELETE FROM conversaciones WHERE id = ? AND negocio_id = ? AND rol = 'usuario'"
+    ).bind(id, negocioId).run();
+  } catch (e) {
+    console.log('[WEBHOOK] No pude descartar el mensaje fallido del historial:', e.message);
   }
 }
 

@@ -373,6 +373,8 @@ export function textoPrevioAplicarSaldo({ cliente, aplicaciones, documentos, dis
 const RE_VERBO_PAGO = /(^|[^a-záéíóúñ])(pagó|abonó|canceló|pagaron|abonaron|cancelaron)(?![a-záéíóúñ])/i;
 // Cualquier señal de querer deshacer algo: si aparece, NO se toca la decisión de Groq.
 const RE_INTENCION_ANULAR = /\b(anul\w*|deshac\w*|deshaz\w*|equivoq\w*|equivoc\w*|error|revert\w*|elimin\w*|borr\w*|quita\w*|corrig\w*)\b/;
+// Señales de que el usuario SÍ quiere agregar a alguien nuevo (no abonar): ahí no se reencamina.
+const RE_INTENCION_AGREGAR = /\b(agreg\w*|anad\w*|nuev[oa]s?|cre[ao]\w*|registr\w*|apunt\w*|inscrib\w*|prest\w*)\b/;
 const RE_NUMERO_DOC = /\b(?:factura(?:\s+proforma)?|proforma|cotizacion|nota\s+de\s+cobro)\s*(?:n(?:o|um(?:ero)?)?\.?\s*)?#?\s*(\d{1,6})\b/;
 
 /**
@@ -385,6 +387,22 @@ export function corregirLlamadaPago(texto, nombre, args) {
   const a = { ...(args || {}) };
   const original = String(texto ?? '');
   const plano = sinTildes(original);
+
+  // (0) "Zzz abonó 10" que Groq mandó como agregar_fila: un verbo de pago (con tilde o plural), sin intención
+  // de agregar ni de anular y con un valor de abono legible, es un ABONO a alguien que ya debería existir.
+  // Pasa por actualizar_fila → resolverAbonoPorPersona, que no registra nada si la persona no existe.
+  if (nombre === 'agregar_fila' && RE_VERBO_PAGO.test(original) && !RE_INTENCION_ANULAR.test(plano) && !RE_INTENCION_AGREGAR.test(plano)) {
+    const valores = a.valores && typeof a.valores === 'object' ? a.valores : {};
+    const claveAbono = Object.keys(valores).find(k => esCampoDeAbono(k));
+    if (String(a.nombre ?? '').trim() && claveAbono && parsearMonto(valores[claveAbono]) !== null) {
+      return {
+        nombre: 'actualizar_fila',
+        args: { nombre_cuadro: a.nombre_cuadro ?? null, nombre: a.nombre, campo: claveAbono, valor: String(valores[claveAbono]) },
+        corregida: 'agregar_fila→actualizar_fila (abono)',
+      };
+    }
+  }
+
   if (nombre !== 'ajustar_pago') return { nombre, args: a, corregida: null };
   const accion = String(a.accion ?? '').trim();
 
@@ -792,6 +810,21 @@ export function buscarPersonaEnPrestamos(nombre, cuadros, normalizar, buscarFila
 }
 
 const saldoLegible = f => (Number.isFinite(Number(f?.saldo)) && f?.saldo !== null ? formatoMonto(Number(f.saldo)) : 'sin saldo');
+
+/**
+ * ¿El usuario nombró ese cuadro en su mensaje? Si hay otro cuadro con un nombre más largo que lo contiene
+ * ("Prestamos 2" contiene a "Prestamos") y ese también está en el texto, se entiende que habló del más largo.
+ * @param {string[]} todosLosNombres nombres de todos los cuadros del negocio
+ */
+export function mencionaCuadro(texto, nombreCuadro, todosLosNombres = []) {
+  const t = sinTildes(texto);
+  const n = sinTildes(nombreCuadro);
+  if (!t || !n || !t.includes(n)) return false;
+  return !todosLosNombres.some(otro => {
+    const o = sinTildes(otro);
+    return o.length > n.length && o.includes(n) && t.includes(o);
+  });
+}
 
 export function textoRechazoCorreccionAbono(nombre) {
   return `Para corregir un abono hay que anular el anterior y registrar el correcto, y eso todavía no está listo. No cambié nada. Si quieres sumar un abono nuevo, dime por ejemplo: "${nombre || 'Yisel'} abonó 10".`;
