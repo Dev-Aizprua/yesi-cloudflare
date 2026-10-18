@@ -18,6 +18,7 @@ import { generarPdfCuadro } from '../lib/pdfCuadro.js';
 import { subirImagenCloudinary } from '../lib/cloudinary.js';
 import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro.js';
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
+import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
 import { camposFaltantes, generarDocxCarta, capitalizarInicio } from '../lib/motorCartas.js';
 import { validarReporteSecciones } from '../lib/reporteSecciones.js';
@@ -31,7 +32,7 @@ import { parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDoc
   detectarConsultaDeudas, extraerPrestamosDeCuadros, agruparSaldosAFavor, armarReporteDeudas, unirCuadrosDePrestamo,
   normalizarTelefonoPanama, mensajeTelefonoInvalido, cuadroContieneTodos,
   esCampoDeAbono, esCuadroDePrestamo, tieneColumnaAbono, resolverClaveAbono, buscarPersonaEnPrestamos,
-  textoRechazoCorreccionAbono, mencionaCuadro, textoVariosExactos, textoParecidos, textoNingunoEnPrestamos, textoConfirmarAbonoParecido } from '../lib/pagos.js';
+  textoRechazoCorreccionAbono, detectarAnularAbono, elegirAbonoAAnular, textoSinAbonosParaAnular, textoPedirNombreAnularAbono, textoNingunoAnularAbono, textoAmbiguoAnularAbono, textoMontoDistintoAnularAbono, textoPrevioAnularAbono, claveNombre, mencionaCuadro, textoVariosExactos, textoParecidos, textoNingunoEnPrestamos, textoConfirmarAbonoParecido } from '../lib/pagos.js';
 import { llamarGroqConReintento } from '../lib/groqReintento.js';
 
 // Todas las llamadas a Groq pasan por aquí: si Groq responde 429 (límite por minuto) se espera
@@ -237,6 +238,25 @@ export async function onRequestPost(context) {
         await guardarMensaje(env, negocio.id, 'asistente', reporte, 'texto');
         await marcarFlujoPagoCerrado(env, negocio.id);
         return Response.json({ ok: true, negocio: negocio.slug, consulta: 'deudas' });
+      }
+    }
+
+    // ── 3.9. "Anula el último abono de X": se detecta en código (0 tokens), con vista previa y "sí" ──
+    // Va antes de Groq para que ajustar_pago nunca toque un abono de préstamo sin revertir el cuadro.
+    const pedidoAnularAbono = detectarAnularAbono(textoUsuario);
+    if (pedidoAnularAbono) {
+      let respuestaAnular = null;
+      try {
+        respuestaAnular = await iniciarAnularAbono(env, negocio, pedidoAnularAbono);
+      } catch (e) {
+        console.log('[WEBHOOK] Error iniciando anular abono, se sigue con Groq:', e?.message);
+      }
+      if (respuestaAnular) {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, respuestaAnular.mensaje);
+        await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+        await guardarMensaje(env, negocio.id, 'asistente', respuestaAnular.mensaje, 'texto');
+        await marcarFlujoPagoCerrado(env, negocio.id);
+        return Response.json({ ok: true, negocio: negocio.slug, consulta: 'anular_abono' });
       }
     }
 
@@ -756,7 +776,11 @@ async function crearCuadro(env, negocio, args) {
     'INSERT INTO cuadros (negocio_id, nombre_cuadro, estructura, filas) VALUES (?, ?, ?, ?)'
   ).bind(negocio.id, args.nombre_cuadro, estructura, '[]').run();
 
-  return { tipo: 'ok', mensaje: `Listo, creé el cuadro "${args.nombre_cuadro}".` };
+  return {
+    tipo: 'ok',
+    mensaje: `Listo, creé el cuadro "${args.nombre_cuadro}", pero está VACÍO: no cargué ningún registro.\n` +
+      `Agrégalos diciéndome, por ejemplo, "agrega a Juan, monto 100", o mándame una foto de la tabla y la leo completa.`,
+  };
 }
 
 // Guarda/actualiza la carta pendiente de este negocio. "estado" es
@@ -1677,6 +1701,122 @@ async function procesarRespuestaAbono(env, negocio, numeroCliente, texto, datos)
   return Response.json({ ok: true, abono_confirmado: registrado });
 }
 
+// ── Anular el último abono de una persona ──────────────────────────────────────────────────────
+// Calcula (sin guardar) cómo queda el cuadro si se revierte este abono. Sirve para la vista previa y
+// se vuelve a ejecutar al confirmar, con los datos de ese momento.
+async function calcularReversoAbono(env, negocioId, pago) {
+  const falla = mensaje => ({ ok: false, mensaje });
+  const cuadro = pago.cuadro_id != null
+    ? await env.oficina_ia_db.prepare('SELECT * FROM cuadros WHERE id = ? AND negocio_id = ?').bind(pago.cuadro_id, negocioId).first()
+    : null;
+  if (!cuadro) return falla(`El cuadro de ese abono ya no existe, así que no puedo revertirlo. No cambié nada.`);
+  let estructura; let filas;
+  try { estructura = JSON.parse(cuadro.estructura); filas = JSON.parse(cuadro.filas); } catch { return falla('No pude leer el cuadro. No cambié nada.'); }
+  const clave = claveNombre(pago.referencia);
+  const coincidentes = filas.filter(f => claveNombre(f?.nombre) === clave);
+  if (coincidentes.length !== 1) {
+    return falla(`En "${cuadro.nombre_cuadro}" ${coincidentes.length === 0 ? 'ya no está' : 'hay más de una fila con el nombre de'} ${pago.referencia}, así que no puedo revertir el abono con seguridad. No cambié nada.`);
+  }
+  const claveAbono = resolverClaveAbono('abono', estructura.columnas, normalizarClave);
+  if (!claveAbono) return falla(`El cuadro "${cuadro.nombre_cuadro}" tiene más de una columna de abono, así que no sé de cuál restar. No cambié nada.`);
+  const fila = coincidentes[0];
+  const actual = Number(fila[claveAbono]);
+  const monto = Number(pago.monto);
+  if (!Number.isFinite(actual) || actual + 0.005 < monto) {
+    return falla(`El abono acumulado de ${fila.nombre} en el cuadro (${formatoMonto(Number.isFinite(actual) ? actual : 0)}) es menor que el abono a anular (${formatoMonto(monto)}); parece que el cuadro se editó a mano. No cambié nada.`);
+  }
+  const abonoDespues = Math.round((actual - monto) * 100) / 100;
+  const filaNueva = calcularFila({ ...fila, [claveAbono]: abonoDespues }, estructura.reglas_calculo || {});
+  return {
+    ok: true, cuadro, estructura, filas, fila, filaNueva, claveAbono, abonoAntes: actual, abonoDespues,
+    filasNuevas: filas.map(f => (f === fila ? filaNueva : f)),
+  };
+}
+
+async function iniciarAnularAbono(env, negocio, pedido) {
+  const aviso = mensaje => ({ tipo: 'aviso', mensaje });
+  const { results: abonos } = await env.oficina_ia_db.prepare(
+    `SELECT id, fecha, monto, referencia, cuadro_id FROM pagos
+     WHERE negocio_id = ? AND tipo = 'abono_prestamo' AND anulado = 0 ORDER BY id DESC`
+  ).bind(negocio.id).all();
+
+  const e = elegirAbonoAAnular(abonos, pedido.nombre, buscarFila);
+  if (e.tipo === 'sin_abonos') return aviso(textoSinAbonosParaAnular());
+  if (e.tipo === 'sin_nombre') return aviso(textoPedirNombreAnularAbono());
+  if (e.tipo === 'ninguno') return aviso(textoNingunoAnularAbono(pedido.nombre));
+  if (e.tipo === 'ambiguo') return aviso(textoAmbiguoAnularAbono(pedido.nombre, e.nombres));
+
+  const pago = e.pago;
+  if (pedido.monto !== null && Math.abs(Number(pago.monto) - pedido.monto) > 0.005) {
+    return aviso(textoMontoDistintoAnularAbono(pago.referencia, Number(pago.monto), pedido.monto));
+  }
+  const calc = await calcularReversoAbono(env, negocio.id, pago);
+  if (!calc.ok) return aviso(calc.mensaje);
+
+  await guardarPagoPendiente(env, negocio.id, {
+    tipoPendiente: 'anular_abono', pagoId: pago.id, nombre: pago.referencia, cuadroId: pago.cuadro_id,
+  });
+  return {
+    tipo: 'pago_pendiente',
+    mensaje: textoPrevioAnularAbono({
+      dicho: pedido.nombre, nombre: calc.fila.nombre, cuadro: calc.cuadro.nombre_cuadro, monto: Number(pago.monto), fecha: pago.fecha,
+      abonoAntes: calc.abonoAntes, abonoDespues: calc.abonoDespues,
+      saldoAntes: Number(calc.fila.saldo), saldoDespues: Number(calc.filaNueva.saldo), aproximado: e.aproximado,
+    }),
+  };
+}
+
+// "sí / no" a la vista previa de anular un abono. Se reclama el pendiente (un mensaje repetido no lo
+// anula dos veces) y se vuelve a validar con los datos de ahora: el pago sigue vigente y sigue siendo el último.
+async function procesarRespuestaAnularAbono(env, negocio, numeroCliente, texto, datos) {
+  const c = clasificarRespuestaConfirmacion(texto);
+  if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, 'Listo, no anulé nada. El abono sigue registrado.');
+  if (c !== 'confirmar') {
+    return await responderPago(env, negocio, numeroCliente, 'Responde "sí" para anular el abono o "no" para dejarlo como está.');
+  }
+  const db = env.oficina_ia_db;
+  const reclamo = await db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
+  if (reclamo.meta.changes !== 1) {
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, 'Ese abono ya se procesó, no lo anulé otra vez.');
+    return Response.json({ ok: true, anulacion_ya_procesada: true });
+  }
+
+  let mensaje = 'Algo cambió (ese abono ya no está vigente o ya no es el último), así que no anulé nada. Repíteme el pedido y lo reviso de nuevo.';
+  let anulado = false;
+  try {
+    const pago = await db.prepare(
+      `SELECT id, fecha, monto, referencia, cuadro_id FROM pagos
+       WHERE id = ? AND negocio_id = ? AND tipo = 'abono_prestamo' AND anulado = 0`
+    ).bind(datos.pagoId, negocio.id).first();
+    const { results: vigentes } = pago ? await db.prepare(
+      `SELECT id, referencia FROM pagos WHERE negocio_id = ? AND tipo = 'abono_prestamo' AND anulado = 0 AND cuadro_id IS ? AND id > ?`
+    ).bind(negocio.id, pago.cuadro_id, pago.id).all() : { results: [] };
+    const hayPosterior = vigentes.some(p => claveNombre(p.referencia) === claveNombre(pago?.referencia));
+    if (pago && !hayPosterior) {
+      const calc = await calcularReversoAbono(env, negocio.id, pago);
+      if (!calc.ok) {
+        mensaje = calc.mensaje;
+      } else {
+        const marcarAnulado = db.prepare(
+          "UPDATE pagos SET anulado = 1, motivo_anulacion = 'Abono anulado por el usuario' WHERE id = ? AND negocio_id = ? AND anulado = 0"
+        ).bind(pago.id, negocio.id);
+        await guardarCuadro(env, calc.cuadro.id, calc.filasNuevas, JSON.stringify(calc.filas), [marcarAnulado]);
+        anulado = true;
+        const lineas = [`Listo ✅ Anulé el abono de ${formatoMonto(pago.monto)} de ${calc.fila.nombre} en "${calc.cuadro.nombre_cuadro}". No se borró: quedó anulado.`,
+          `Lleva abonado ${formatoMonto(calc.abonoDespues)} en total (antes ${formatoMonto(calc.abonoAntes)}).`];
+        const saldo = Number(calc.filaNueva.saldo);
+        if (calc.filaNueva.saldo !== undefined && Number.isFinite(saldo)) lineas.push(`Saldo pendiente: ${formatoMonto(saldo)}.`);
+        mensaje = lineas.join('\n');
+      }
+    }
+  } catch (e) {
+    console.log('[WEBHOOK] Error anulando abono:', e?.message);
+    mensaje = 'No pude anular el abono. No cambié nada; inténtalo de nuevo en un momento.';
+  }
+  await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, mensaje);
+  return Response.json({ ok: true, abono_anulado: anulado });
+}
+
 // Abono de préstamo en un cuadro: suma al acumulado de la fila, recalcula el saldo con las reglas
 // del cuadro y registra el hecho en `pagos` (tipo abono_prestamo). Cuadro + historial + pago van en
 // UN batch atómico. El cuadro sigue siendo el dueño del saldo; `pagos` no calcula saldos de préstamos.
@@ -2075,7 +2215,25 @@ async function procesarFotoCuadro(env, negocio, numeroCliente, mensajeEntrante) 
     return Response.json({ ok: true, negocio: negocio.slug, importacion_pendiente: true, tipo: 'secciones' });
   }
 
-  const datos = construirDatosImportacion(extraido);
+  let datos = construirDatosImportacion(extraido);
+
+  // Si el Total de la foto no cuadra y las correcciones propuestas tampoco lo arreglan, se vuelve a leer
+  // la foto UNA vez y se queda con la lectura que cuadra mejor. Si la segunda lectura falla (límite de
+  // uso, etc.) se sigue con la primera: nunca bloquea.
+  if (datos.validacion.tieneFilaTotales && !datos.validacion.coincide && datos.propuestasCuadran !== true) {
+    try {
+      const extraido2 = await analizarFotoCuadro(bytes, mimeType, env.GROQ_API_KEY_PRO || env.GROQ_API_KEY);
+      if (extraido2.tipo === 'tabla') {
+        const datos2 = construirDatosImportacion(extraido2);
+        if (esMejorLectura(datos2, datos)) {
+          console.log('[WEBHOOK] La segunda lectura de la foto cuadra mejor; se usa esa.');
+          datos = datos2;
+        }
+      }
+    } catch (e) {
+      console.log('[WEBHOOK] Segunda lectura de la foto no disponible:', e?.message);
+    }
+  }
 
   await env.oficina_ia_db.prepare(
     `INSERT INTO importaciones_pendientes (negocio_id, datos) VALUES (?, ?)
@@ -2136,6 +2294,20 @@ function construirDatosImportacion(extraido) {
   const { pie, alertas: alertasPie } = validarPie(extraido.pie, columnasInternas, filas);
   const avisosPendientes = [...avisosEncabezado(encabezado), ...alertasPie];
 
+  // Si la fila "Total" de la foto no cuadra, se buscan celdas mal leídas usando la redundancia del
+  // propio cuadro (sospechososCuadro.js). Solo se PROPONE: nada se cambia sin que el usuario diga "corregir".
+  let propuestas = [];
+  let propuestasCuadran = null;
+  if (validacion.tieneFilaTotales && !validacion.coincide) {
+    try {
+      const s = analizarSospechosos(columnasInternas, columnasBonitas, filas, filaTotales);
+      propuestas = s.propuestas;
+      propuestasCuadran = s.cuadra;
+    } catch (e) {
+      console.log('[WEBHOOK] Error buscando celdas sospechosas:', e?.message);
+    }
+  }
+
   return {
     nombreCuadro: extraido.titulo || 'Cuadro importado',
     subtitulo: extraido.subtitulo || null,
@@ -2145,10 +2317,73 @@ function construirDatosImportacion(extraido) {
     filaTotales,
     reglas,
     validacion,
+    propuestas,
+    propuestasCuadran,
     encabezado,
     pie,
     avisosPendientes,
   };
+}
+
+// Vuelve a correr el detector de fórmulas sobre los datos YA corregidos y agrega las reglas nuevas
+// (las que ya había se conservan). Se llama tras cada corrección: la primera detección se hizo con la
+// lectura mala, y una fórmula que fallaba por una celda errónea (ej. interés = monto × 0.12) quedaba
+// perdida aunque el usuario corrigiera después. Las reglas quedan en el orden de las columnas.
+function redetectarReglas(datos) {
+  let nuevas;
+  try { nuevas = detectarFormulas(datos.columnasInternas, datos.filas); } catch (e) { return; }
+  const actuales = datos.reglas || {};
+  const combinadas = {};
+  for (const c of datos.columnasInternas) {
+    if (actuales[c]) combinadas[c] = actuales[c];
+    else if (nuevas[c]) combinadas[c] = nuevas[c].formula;
+  }
+  for (const [k, v] of Object.entries(actuales)) if (!(k in combinadas)) combinadas[k] = v;
+  datos.reglas = combinadas;
+}
+
+// Recalcula la validación contra los totales de la foto y las propuestas de corrección.
+function actualizarValidacionImportacion(datos) {
+  datos.validacion = validarContraTotales(datos.columnasInternas, datos.filas, datos.filaTotales);
+  datos.propuestas = [];
+  datos.propuestasCuadran = null;
+  if (datos.validacion.tieneFilaTotales && !datos.validacion.coincide) {
+    try {
+      const s = analizarSospechosos(datos.columnasInternas, datos.columnasBonitas, datos.filas, datos.filaTotales);
+      datos.propuestas = s.propuestas;
+      datos.propuestasCuadran = s.cuadra;
+    } catch (e) {
+      console.log('[WEBHOOK] Error buscando celdas sospechosas:', e?.message);
+    }
+  }
+}
+
+// "corregir": aplica las correcciones propuestas (ya calculadas por el código al leer la foto).
+async function aplicarPropuestasPendientes(env, negocio, numeroCliente, datos) {
+  const props = datos.propuestas || [];
+  if (props.length === 0) {
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
+      'No tengo correcciones sugeridas para este cuadro. Dime qué cambiar, por ejemplo: "el monto de Carlos es 460".');
+    return Response.json({ ok: true, sin_propuestas: true });
+  }
+  datos.filas = aplicarPropuestas(datos.filas, props);
+  redetectarReglas(datos);
+  actualizarValidacionImportacion(datos);
+  await env.oficina_ia_db.prepare(
+    "UPDATE importaciones_pendientes SET datos = ?, creado_en = datetime('now') WHERE negocio_id = ?"
+  ).bind(JSON.stringify(datos), negocio.id).run();
+  await enviarVistaPreviaImportacion(env, negocio, numeroCliente, datos);
+  return Response.json({ ok: true, correcciones_aplicadas: props.length });
+}
+
+// ¿La segunda lectura de la foto es mejor que la primera? Solo si cuadra con los totales (o lo logra
+// con las correcciones propuestas) y la primera no.
+function esMejorLectura(nueva, actual) {
+  if (nueva.validacion.coincide && !actual.validacion.coincide) return true;
+  if (nueva.validacion.coincide || actual.validacion.coincide) return false;
+  if (nueva.propuestasCuadran === true && actual.propuestasCuadran !== true) return true;
+  if (actual.propuestasCuadran === true) return false;
+  return nueva.validacion.detalles.length < actual.validacion.detalles.length;
 }
 
 // Convierte un valor tal como lo transcribió Groq (puede venir como
@@ -2217,8 +2452,11 @@ function construirTextoConfirmacion(datos) {
         return `${bonita}: tu foto dice ${d.totalFoto}, yo sumé ${d.sumaCalculada}`;
       })
       .join('\n');
-    resumenValidacion = `\n\n⚠️ El Total no coincide con lo que leí:\n${detalle}\nRevisa esos datos arriba y dime cuál está mal.`;
+    const hayPropuestas = (datos.propuestas || []).length > 0;
+    resumenValidacion = `\n\n⚠️ El Total no coincide con lo que leí:\n${detalle}` +
+      (hayPropuestas ? `\n\n${textoPropuestas(datos.propuestas, datos.propuestasCuadran)}` : '\nRevisa esos datos arriba y dime cuál está mal.');
   }
+  const hayDiscrepancia = datos.origen !== 'texto' && datos.validacion.tieneFilaTotales && !datos.validacion.coincide;
 
   // Campos que no se leyeron con seguridad (encabezado o pie) — se avisa,
   // nunca se bloquea: el cuadro se puede crear igual y completarlos después.
@@ -2229,7 +2467,9 @@ function construirTextoConfirmacion(datos) {
   const bloqueEncabezado = lineasEncabezado.length > 0 ? `${lineasEncabezado.join('\n')}\n\n` : '';
   const bloquePie = lineasPie.length > 0 ? `\n\n${lineasPie.join('\n')}` : '';
 
-  return `${datos.origen === 'texto' ? `Así quedó tu ${nombreDocumento(datos)}:` : 'Aquí está el cuadro que leí de tu foto:'}\n\n${bloqueEncabezado}${lineas.join('\n')}${bloquePie}${resumenValidacion}${avisoPendientes}\n\n¿Está bien así? Responde "sí" para crear ${datos.origen === 'texto' ? `la ${nombreDocumento(datos)}` : 'el cuadro'}, "no" para descartar${datos.origen === 'texto' ? 'la' : 'lo'}, o dime qué corregir${datos.origen === 'texto' ? ' (ej. "el cliente es Juan Pérez", "las sillas son 12", "agrega 3 mesas a 80", "quita las sillas")' : ''}.`;
+  return `${datos.origen === 'texto' ? `Así quedó tu ${nombreDocumento(datos)}:` : 'Aquí está el cuadro que leí de tu foto:'}\n\n${bloqueEncabezado}${lineas.join('\n')}${bloquePie}${resumenValidacion}${avisoPendientes}\n\n${hayDiscrepancia
+    ? `Los totales aún no cuadran. ${(datos.propuestas || []).length > 0 ? 'Responde "corregir" para aplicar mis correcciones' : 'Dime qué corregir (ej. "el monto de Carlos es 460")'}, "crear igual" para guardar el cuadro tal como lo leí, o "no" para descartarlo.`
+    : `¿Está bien así? Responde "sí" para crear ${datos.origen === 'texto' ? `la ${nombreDocumento(datos)}` : 'el cuadro'}, "no" para descartar${datos.origen === 'texto' ? 'la' : 'lo'}, o dime qué corregir${datos.origen === 'texto' ? ' (ej. "el cliente es Juan Pérez", "las sillas son 12", "agrega 3 mesas a 80", "quita las sillas")' : ''}.`}`;
 }
 
 // Misma idea que enviarVistaPreviaImportacion, pero para un reporte
@@ -2323,6 +2563,11 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }
+  if (datos.tipoPendiente === 'anular_abono') {
+    const respuesta = await procesarRespuestaAnularAbono(env, negocio, numeroCliente, texto, datos);
+    await marcarFlujoPagoCerrado(env, negocio.id);
+    return respuesta;
+  }
   // normalizarClave ya quita tildes/mayúsculas — más confiable que una
   // expresión regular con \b, que en JavaScript NO reconoce como letra
   // un carácter acentuado: /^s[ií]\b/ nunca hace match con "sí" escrito
@@ -2331,6 +2576,20 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
   // (ej. "no se ve bien el monto de Susan" sigue siendo una corrección).
   const respuesta = clasificarRespuestaPendiente(texto);
   const esSecciones = datos.tipo === 'secciones';
+
+  // Si el Total de la foto no cuadra, un "sí" a secas NO crea el cuadro (es dinero): hay que decir
+  // "corregir" (aplica las correcciones propuestas) o "crear igual" (se guarda tal como se leyó).
+  const hayDiscrepancia = !esSecciones && datos.origen !== 'texto' && datos.validacion?.tieneFilaTotales && !datos.validacion.coincide;
+  if (hayDiscrepancia) {
+    const accionPropuesta = clasificarAccionPropuesta(texto);
+    if (accionPropuesta === 'corregir') return await aplicarPropuestasPendientes(env, negocio, numeroCliente, datos);
+    if (accionPropuesta === 'crear_igual') return await confirmarImportacion(env, negocio, numeroCliente, datos);
+    if (respuesta === 'confirmar') {
+      await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
+        `Los totales de la foto todavía no cuadran con lo que leí. ${(datos.propuestas || []).length > 0 ? 'Responde "corregir" para aplicar mis correcciones, ' : 'Dime qué corregir (ej. "el monto de Carlos es 460"), '}"crear igual" para guardarlo tal como está, o "no" para descartarlo.`);
+      return Response.json({ ok: true, confirmacion_con_discrepancia: true });
+    }
+  }
 
   if (respuesta === 'confirmar') {
     return esSecciones
@@ -2407,7 +2666,8 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
   delete reglasSinCampoCorregido[campoInterno];
   datos.filas[indiceFila] = calcularFila(datos.filas[indiceFila], reglasSinCampoCorregido);
 
-  datos.validacion = validarContraTotales(datos.columnasInternas, datos.filas, datos.filaTotales);
+  redetectarReglas(datos);
+  actualizarValidacionImportacion(datos);
   if ((datos.pie || []).length > 0) datos.pie = recalcularPie(datos.pie, datos.columnasInternas, datos.filas);
 
   await env.oficina_ia_db.prepare(
@@ -2766,7 +3026,12 @@ async function iniciarAnularPago(env, negocio, args) {
     return aviso('¿Cuál pago quieres anular? Dime el cliente, el monto o la factura, por ejemplo: "anula el pago de Ana".');
   }
 
-  const candidatos = filtrarPagos(await cargarPagosVigentes(env, negocio.id), { cliente, monto, numero, fecha });
+  const coinciden = filtrarPagos(await cargarPagosVigentes(env, negocio.id), { cliente, monto, numero, fecha });
+  // Un abono de préstamo vive en el cuadro: anularlo aquí dejaría el cuadro sin revertir. Va por su propio flujo.
+  const candidatos = coinciden.filter(p => p.tipo !== 'abono_prestamo');
+  if (candidatos.length === 0 && coinciden.length > 0) {
+    return aviso('Ese es un abono de préstamo: se anula desde el cuadro para que el saldo quede bien. Dime por ejemplo: "anula el último abono de Yisel".');
+  }
   if (candidatos.length === 0) return aviso('No encuentro pagos vigentes con esos datos. Revisa el cliente, el monto o la factura.');
   if (candidatos.length > 1) {
     const lista = candidatos.slice(0, 8).map(litePago);
