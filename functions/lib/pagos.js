@@ -827,7 +827,8 @@ export function mencionaCuadro(texto, nombreCuadro, todosLosNombres = []) {
 }
 
 export function textoRechazoCorreccionAbono(nombre) {
-  return `Para corregir un abono hay que anular el anterior y registrar el correcto, y eso todavía no está listo. No cambié nada. Si quieres sumar un abono nuevo, dime por ejemplo: "${nombre || 'Yisel'} abonó 10".`;
+  const n = nombre || 'Yisel';
+  return `Un abono no se corrige: se anula el último y se registra el correcto. No cambié nada. Dime por ejemplo: "anula el último abono de ${n}" y luego "${n} abonó 10".`;
 }
 
 export function textoVariosExactos(nombre, coincidencias) {
@@ -860,5 +861,98 @@ export function textoConfirmarAbonoParecido({ dicho, nombre, cuadro, monto, abon
     lineas.push(`• Saldo: debía ${formatoMonto(saldoAntes)}, quedará ${formatoMonto(saldoDespues)}`);
   }
   lineas.push('', '¿Lo registro? Responde "sí" para registrarlo o "no" para cancelar.');
+  return lineas.join('\n');
+}
+
+// ── Anular el ÚLTIMO abono de una persona (fase 1b-4b) ──────────────────────────────────────
+// Se detecta en código (0 tokens de Groq). Solo el último abono vigente de la persona: para
+// retroceder más, se repite el comando. Nunca se borra: el pago queda anulado.
+const RE_VERBO_ANULAR = /\b(?:anul\w*|cancel\w*|borr\w*|elimin\w*|quit\w*|deshaz\w*|deshac\w*|deshech\w*|revert\w*|reviert\w*)\b/;
+const NOMBRE_RELLENO = new Set(['de', 'del', 'a', 'la', 'el', 'para', 'ultimo', 'ultima', 'que', 'le', 'hice', 'puse', 'registre', 'registraste', 'por', 'favor', 'porfa', 'gracias', 'hoy', 'ahora', 'anterior', 'pasado', 'mismo']);
+
+/**
+ * @returns {null | { nombre: string|null, monto: number|null }}
+ */
+export function detectarAnularAbono(texto) {
+  const t = sinTildes(texto).replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t || /\?/.test(String(texto ?? ''))) return null;
+  if (/^(?:como|puedo|se puede|es posible|quiero saber|que pasa)\b/.test(t)) return null;
+  if (/\bno\s+(?:\w+\s+)?(?:anul|cancel|borr|elimin|quit)/.test(t)) return null;
+  const m = t.match(/\babonos?\b(.*)$/);
+  if (!m) return null;
+  const antes = t.slice(0, m.index);
+  if (!RE_VERBO_ANULAR.test(antes) && !RE_VERBO_ANULAR.test(m[1])) return null;
+
+  let resto = m[1].replace(RE_VERBO_ANULAR, ' ');
+  let monto = null;
+  const mm = resto.match(/(?:b\/\s*|\$\s*)?(\d+(?:\.\d+)?)/);
+  if (mm) { monto = parsearMonto(mm[1]); resto = resto.replace(mm[0], ' '); }
+  const palabras = resto.replace(/\bb\/|\$/g, ' ').split(' ').filter(Boolean);
+  while (palabras.length && NOMBRE_RELLENO.has(palabras[0])) palabras.shift();
+  while (palabras.length && NOMBRE_RELLENO.has(palabras[palabras.length - 1])) palabras.pop();
+  // El nombre dicho en el prefijo ("anula de Yisel el abono") no se intenta adivinar: se pregunta.
+  const nombre = palabras.length >= 1 && palabras.length <= 4 && palabras.every(p => /^[a-zñ]+$/.test(p)) ? palabras.join(' ') : null;
+  return { nombre, monto };
+}
+
+/**
+ * Elige el abono a anular entre los abonos VIGENTES del negocio.
+ * @param {Array<{id, referencia, monto, fecha, cuadro_id}>} abonos  abono_prestamo no anulados
+ * @param {string|null} nombreDicho
+ * @param {Function} buscarFilaFn  fuzzy de buscarFila.js
+ * @returns {{tipo:'ok', pago, aproximado:boolean} | {tipo:'sin_abonos'|'sin_nombre'|'ninguno'} | {tipo:'ambiguo', nombres:string[]}}
+ */
+export function elegirAbonoAAnular(abonos, nombreDicho, buscarFilaFn) {
+  const lista = (abonos || []).filter(p => String(p?.referencia ?? '').trim());
+  if (lista.length === 0) return { tipo: 'sin_abonos' };
+  const dicho = claveNombre(nombreDicho);
+  if (!dicho) return { tipo: 'sin_nombre' };
+
+  const porClave = new Map();
+  for (const p of lista) {
+    const k = claveNombre(p.referencia);
+    if (!porClave.has(k)) porClave.set(k, p.referencia);
+  }
+  const ultimoDe = clave => lista.filter(p => claveNombre(p.referencia) === clave).reduce((a, b) => (b.id > a.id ? b : a));
+
+  if (porClave.has(dicho)) return { tipo: 'ok', pago: ultimoDe(dicho), aproximado: false };
+
+  const contenidos = [...porClave.keys()].filter(k => mismoCliente(dicho, k));
+  if (contenidos.length === 1) return { tipo: 'ok', pago: ultimoDe(contenidos[0]), aproximado: true };
+  if (contenidos.length > 1) return { tipo: 'ambiguo', nombres: contenidos.map(k => porClave.get(k)) };
+
+  const filas = [...porClave.keys()].map(k => ({ nombre: k }));
+  const b = buscarFilaFn(dicho, filas);
+  if (b.tipo === 'ambiguo') return { tipo: 'ambiguo', nombres: b.candidatos.map(c => porClave.get(c.nombre)) };
+  if (b.fila) return { tipo: 'ok', pago: ultimoDe(b.fila.nombre), aproximado: true };
+  return { tipo: 'ninguno' };
+}
+
+export function textoSinAbonosParaAnular() {
+  return 'No tengo abonos registrados para anular. Los abonos que registraste antes de esta función no aparecen aquí; si necesitas corregir uno, dímelo y lo vemos.';
+}
+export function textoPedirNombreAnularAbono() {
+  return '¿De quién es el abono que quieres anular? Dime por ejemplo: "anula el último abono de Yisel".';
+}
+export function textoNingunoAnularAbono(nombre) {
+  return `No encuentro abonos registrados de "${nombre}". Revisa el nombre, por ejemplo: "anula el último abono de Yisel".`;
+}
+export function textoAmbiguoAnularAbono(nombre, nombres) {
+  return [`"${nombre}" se parece a más de una persona con abonos:`, ...nombres.slice(0, 5).map(n => `• ${n}`), '', 'Dime el nombre exacto, por ejemplo: "anula el último abono de ' + nombres[0] + '".'].join('\n');
+}
+export function textoMontoDistintoAnularAbono(nombre, montoUltimo, montoDicho) {
+  return `El último abono de ${nombre} fue de ${formatoMonto(montoUltimo)}, no de ${formatoMonto(montoDicho)}. Solo puedo anular el último. No cambié nada.`;
+}
+
+export function textoPrevioAnularAbono({ dicho, nombre, cuadro, monto, fecha, abonoAntes, abonoDespues, saldoAntes, saldoDespues, aproximado }) {
+  const lineas = [];
+  if (aproximado) lineas.push(`No encontré abonos de "${dicho}" con ese nombre exacto. ¿Quisiste decir ${nombre}?`, '');
+  lineas.push(`Voy a anular el último abono de ${nombre} en "${cuadro}":`,
+    `• Abono: ${formatoMonto(monto)} (${fechaLegible(fecha)})`,
+    `• Abono acumulado: ${formatoMonto(abonoAntes)} → ${formatoMonto(abonoDespues)}`);
+  if (Number.isFinite(saldoAntes) && Number.isFinite(saldoDespues)) {
+    lineas.push(`• Saldo: ${formatoMonto(saldoAntes)} → ${formatoMonto(saldoDespues)}`);
+  }
+  lineas.push('', 'No se borra: el abono queda anulado. ¿Lo anulo? Responde "sí" o "no".');
   return lineas.join('\n');
 }
