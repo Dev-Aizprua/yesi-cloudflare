@@ -18,6 +18,7 @@ import { generarPdfCuadro } from '../lib/pdfCuadro.js';
 import { subirImagenCloudinary } from '../lib/cloudinary.js';
 import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro.js';
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
+import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
 import { camposFaltantes, generarDocxCarta, capitalizarInicio } from '../lib/motorCartas.js';
@@ -274,26 +275,33 @@ export async function onRequestPost(context) {
       'SELECT nombre_cuadro, estructura FROM cuadros WHERE negocio_id = ?'
     ).bind(negocio.id).all();
 
-    const cartasDisponibles = await listarPlantillasParaPrompt(env);
+    // Qué grupos de herramientas ofrecer lo decide el CÓDIGO según lo que dijo el usuario (este mensaje y
+    // sus 2 mensajes anteriores, para los seguimientos). Ver herramientasPorIntencion.js.
+    const textosRecientes = historialReciente.filter(m => m.rol === 'usuario').slice(0, 3).map(m => m.mensaje);
+    const grupos = elegirGrupos(textosRecientes);
+    const cartasDisponibles = grupos.has('cartas') ? await listarPlantillasParaPrompt(env) : [];
 
     // ── 6. Armar el system prompt y llamar a Groq con Tool Use ────
     // registrar_pago solo se ofrece a negocios que ya tienen facturas proforma: un negocio de
     // préstamos (como el del financista) nunca la ve, y sus abonos siguen por actualizar_fila.
     const conPagos = await negocioTieneProformas(env, negocio.id);
     const conAjustes = await negocioTieneDocumentos(env, negocio.id);
-    const herramientasDisponibles = herramientas.filter(h =>
+    const herramientasDisponibles = filtrarHerramientas(herramientas, grupos).filter(h =>
       (h.function.name !== 'registrar_pago' || conPagos) && (h.function.name !== 'ajustar_pago' || conAjustes));
-    const systemPrompt = construirSystemPrompt(negocio, cuadrosDelNegocio, cartasDisponibles, conPagos, conAjustes);
+    const systemPrompt = construirSystemPrompt(negocio, cuadrosDelNegocio, cartasDisponibles, conPagos, conAjustes, grupos);
 
     const mensajesGroq = [
       { role: 'system', content: systemPrompt },
-      // El historial viene DESC (más reciente primero) — lo invertimos para orden cronológico
-      ...historialReciente.reverse().map(m => ({
+      // El historial viene DESC (más reciente primero) — lo invertimos para orden cronológico.
+      // Los mensajes viejos largos se recortan: solo el último (el actual) va completo.
+      ...historialReciente.reverse().map((m, i, arr) => ({
         role: m.rol === 'usuario' ? 'user' : 'assistant',
-        content: m.mensaje,
+        content: i === arr.length - 1 ? m.mensaje : recortarParaHistorial(m.mensaje),
       })),
     ];
 
+    const tokensEstimados = Math.round((JSON.stringify(mensajesGroq).length + JSON.stringify(herramientasDisponibles).length) / 3.3);
+    console.log('[WEBHOOK] Grupos de herramientas:', [...grupos].join(','), '| herramientas:', herramientasDisponibles.length, '| tokens estimados:', tokensEstimados);
     console.log('[WEBHOOK] Llamando a Groq con', mensajesGroq.length, 'mensajes...');
 
     let respuestaGroq;
@@ -2083,7 +2091,7 @@ const REGLA_CAMPO_LIBRE =
   'documento ya trae el verbo justo antes. Copia EXACTOS los nombres, fechas, horas, lugares, números y cantidades ' +
   'que dio el usuario: solo cambia la forma de la frase, nunca los datos, y no agregues nada que no dijo.';
 
-function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPagos = false, conAjustes = false) {
+function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPagos = false, conAjustes = false, grupos = null) {
   let prompt = `Eres el asistente de Oficina IA para el negocio "${negocio.nombre}".\n`;
 
   if (negocio.contexto_negocio) {
@@ -2096,6 +2104,14 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
     return columnas.map(col => `"${col}" (clave: "${normalizarClave(col)}")`).join(', ');
   };
   const esSeccionesEstructura = (estructuraJson) => JSON.parse(estructuraJson || '{}').tipo === 'secciones';
+  // Cotizaciones y facturas guardadas como cuadro (traen encabezado o pie): no se editan fila por fila,
+  // así que se listan solo por nombre (antes cada una repetía todas sus columnas en el prompt).
+  const esDocumentoEstructura = (estructuraJson) => {
+    try {
+      const e = JSON.parse(estructuraJson || '{}');
+      return (Array.isArray(e.pie) && e.pie.length > 0) || (Array.isArray(e.encabezado) && e.encabezado.length > 0);
+    } catch { return false; }
+  };
   const AVISO_SOLO_LECTURA = 'reporte de SOLO LECTURA (viene de una foto) — usa consultar_cuadro o enviar_excel; NUNCA agregar_fila/actualizar_fila/eliminar_fila con este';
 
   if (cuadros.length === 0) {
@@ -2109,14 +2125,19 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
       if (columnasDesc) prompt += `Columnas de este cuadro: ${columnasDesc}.\n`;
     }
   } else {
-    prompt += `\nEste negocio tiene varios cuadros: ${cuadros.map(c => c.nombre_cuadro).join(', ')}. Identifica a cuál se refiere el usuario y menciona nombre_cuadro.\n`;
-    for (const c of cuadros) {
+    const documentos = cuadros.filter(c => esDocumentoEstructura(c.estructura));
+    const normales = cuadros.filter(c => !esDocumentoEstructura(c.estructura));
+    prompt += `\nEste negocio tiene varios cuadros: ${(normales.length > 0 ? normales : cuadros).map(c => c.nombre_cuadro).join(', ')}. Identifica a cuál se refiere el usuario y menciona nombre_cuadro.\n`;
+    for (const c of normales) {
       if (esSeccionesEstructura(c.estructura)) {
         prompt += `- "${c.nombre_cuadro}": ${AVISO_SOLO_LECTURA}.\n`;
       } else {
         const columnasDesc = describirColumnas(c.estructura);
         if (columnasDesc) prompt += `- "${c.nombre_cuadro}": ${columnasDesc}\n`;
       }
+    }
+    if (documentos.length > 0 && normales.length > 0) {
+      prompt += `Documentos guardados (cotizaciones/facturas; no se editan fila por fila): ${documentos.map(c => c.nombre_cuadro).join(', ')}.\n`;
     }
   }
 
@@ -2130,29 +2151,32 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
     }
   }
 
-  prompt += `
-Reglas OBLIGATORIAS:
-- NUNCA calcules montos, interés ni saldos tú mismo — solo extrae los valores crudos que el usuario mencionó.
-- NUNCA decidas a quién corresponde un nombre parecido o mal escrito — extrae el nombre TAL CUAL lo dijo el usuario.
-- Si el usuario solo pregunta/consulta sin pedir un cambio, usa consultar_cuadro, nunca una herramienta de escritura.
-- Si el usuario pide el PDF de un cuadro, cotización o factura proforma, usa enviar_pdf (NO enviar_excel ni generar_carta).
-- Si el usuario pide el Excel, la hoja de cálculo o el archivo del cuadro, usa enviar_excel (con_imagen=true solo si además pide la imagen). Si pide ver el cuadro o la imagen, usa consultar_cuadro.
-- NUNCA inventes un número de teléfono — el parámetro "telefono" solo se llena si el usuario lo dio explícitamente en este mensaje o en uno reciente de la conversación.
-- En agregar_fila y actualizar_fila, usa EXACTAMENTE la "clave" indicada arriba para cada columna — NUNCA inventes un nombre de campo nuevo. Ejemplo: si la columna es "Monto" (clave "monto") y el usuario dice "préstamo de 200" o "capital de 200", igual usa la clave "monto", no "prestamo" ni "capital".
-- En crear_cuadro, las fórmulas de reglas_calculo deben referirse a las columnas usando su clave en minúsculas y sin tildes (ej. columna "Deuda" → escribe "deuda" en la fórmula, no "Deuda").
-- Si el usuario pide una COTIZACIÓN o presupuesto (ej. "hazme una cotización para Juan, 10 sillas a 25"), usa crear_cotizacion: una entrada en "lineas" por producto o servicio, con descripcion, cantidad y precio UNITARIO tal cual los dijo. NUNCA calcules totales, subtotal ni ITBMS. El campo itbms de una línea se llena SOLO si el usuario dijo una tasa para esa línea (ej. "10%", "exento"); si no la dijo, OMÍTELO (el sistema aplica 7%) y NUNCA la deduzcas por el tipo de producto. Si dijo "todo exento" o "todo al 10%", repítelo en cada línea. NO uses crear_cuadro ni generar_carta para una cotización.
-- Si el usuario pide una FACTURA, una factura proforma o una nota de cobro para un cliente (ej. "hazme una factura para Juan, 10 sillas a 25"), usa crear_factura_proforma (este sistema no emite facturas fiscales; todo pedido de factura se resuelve así). Las mismas reglas de crear_cotizacion: "lineas" con descripcion, cantidad y precio UNITARIO tal cual los dijo; NUNCA calcules totales, subtotal ni ITBMS; "itbms" de una línea SOLO si el usuario dijo una tasa; "condicion_pago" SOLO si la dijo. NO uses crear_cuadro ni generar_carta para una factura.
-- Si el usuario pide pasar, convertir o hacer la factura (o factura proforma / nota de cobro) DE UNA COTIZACIÓN QUE YA EXISTE (ej. "hazme la factura de la cotización 004", "pasa la cotización de Juan a factura"), usa convertir_cotizacion_en_factura con nombre_cuadro = la cotización tal cual la dijo ("la última" si dijo así, o null si no dijo cuál). NO uses crear_factura_proforma para eso: esa es para una factura desde cero con productos que dicta ahora.
-- En generar_carta, usa EXACTAMENTE los "id" de campo listados arriba para esa plantilla como claves de "campos" — nunca inventes un id nuevo. Si el usuario no dio un dato, simplemente omítelo del objeto "campos", no lo dejes en blanco ni lo completes tú.
-- En generar_carta, el ÚLTIMO campo requerido de cada plantilla es su campo libre (ej. "motivo", "gestion"). ${REGLA_CAMPO_LIBRE} Esta regla tiene prioridad sobre "tal cual lo dijo" SOLO para ese último campo; todos los demás campos van tal cual.
-`.trim();
+  // Cada regla lleva su grupo: solo se incluyen las de los grupos de herramientas ofrecidos (ahorra tokens).
+  const REGLAS = [
+    { g: null, t: `- NUNCA calcules montos, interés ni saldos tú mismo — solo extrae los valores crudos que el usuario mencionó.` },
+    { g: null, t: `- NUNCA decidas a quién corresponde un nombre parecido o mal escrito — extrae el nombre TAL CUAL lo dijo el usuario.` },
+    { g: 'cuadro', t: `- Si el usuario solo pregunta/consulta sin pedir un cambio, usa consultar_cuadro, nunca una herramienta de escritura.` },
+    { g: ['documentos', 'archivos'], t: `- Si el usuario pide el PDF de un cuadro, cotización o factura proforma, usa enviar_pdf (NO enviar_excel ni generar_carta).` },
+    { g: 'archivos', t: `- Si el usuario pide el Excel, la hoja de cálculo o el archivo del cuadro, usa enviar_excel (con_imagen=true solo si además pide la imagen). Si pide ver el cuadro o la imagen, usa consultar_cuadro.` },
+    { g: ['cobro', 'cuadro'], t: `- NUNCA inventes un número de teléfono — el parámetro "telefono" solo se llena si el usuario lo dio explícitamente en este mensaje o en uno reciente de la conversación.` },
+    { g: 'cuadro', t: `- En agregar_fila y actualizar_fila, usa EXACTAMENTE la "clave" indicada arriba para cada columna — NUNCA inventes un nombre de campo nuevo. Ejemplo: si la columna es "Monto" (clave "monto") y el usuario dice "préstamo de 200" o "capital de 200", igual usa la clave "monto", no "prestamo" ni "capital".` },
+    { g: 'cuadro', t: `- En crear_cuadro, las fórmulas de reglas_calculo deben referirse a las columnas usando su clave en minúsculas y sin tildes (ej. columna "Deuda" → escribe "deuda" en la fórmula, no "Deuda").` },
+    { g: 'documentos', t: `- Si el usuario pide una COTIZACIÓN o presupuesto (ej. "hazme una cotización para Juan, 10 sillas a 25"), usa crear_cotizacion: una entrada en "lineas" por producto o servicio, con descripcion, cantidad y precio UNITARIO tal cual los dijo. NUNCA calcules totales, subtotal ni ITBMS. El campo itbms de una línea se llena SOLO si el usuario dijo una tasa para esa línea (ej. "10%", "exento"); si no la dijo, OMÍTELO (el sistema aplica 7%) y NUNCA la deduzcas por el tipo de producto. Si dijo "todo exento" o "todo al 10%", repítelo en cada línea. NO uses crear_cuadro ni generar_carta para una cotización.` },
+    { g: 'documentos', t: `- Si el usuario pide una FACTURA, una factura proforma o una nota de cobro para un cliente (ej. "hazme una factura para Juan, 10 sillas a 25"), usa crear_factura_proforma (este sistema no emite facturas fiscales; todo pedido de factura se resuelve así). Las mismas reglas de crear_cotizacion: "lineas" con descripcion, cantidad y precio UNITARIO tal cual los dijo; NUNCA calcules totales, subtotal ni ITBMS; "itbms" de una línea SOLO si el usuario dijo una tasa; "condicion_pago" SOLO si la dijo. NO uses crear_cuadro ni generar_carta para una factura.` },
+    { g: 'documentos', t: `- Si el usuario pide pasar, convertir o hacer la factura (o factura proforma / nota de cobro) DE UNA COTIZACIÓN QUE YA EXISTE (ej. "hazme la factura de la cotización 004", "pasa la cotización de Juan a factura"), usa convertir_cotizacion_en_factura con nombre_cuadro = la cotización tal cual la dijo ("la última" si dijo así, o null si no dijo cuál). NO uses crear_factura_proforma para eso: esa es para una factura desde cero con productos que dicta ahora.` },
+    { g: 'cartas', t: `- En generar_carta, usa EXACTAMENTE los "id" de campo listados arriba para esa plantilla como claves de "campos" — nunca inventes un id nuevo. Si el usuario no dio un dato, simplemente omítelo del objeto "campos", no lo dejes en blanco ni lo completes tú.` },
+    { g: 'cartas', t: `- En generar_carta, el ÚLTIMO campo requerido de cada plantilla es su campo libre (ej. "motivo", "gestion"). ${REGLA_CAMPO_LIBRE} Esta regla tiene prioridad sobre "tal cual lo dijo" SOLO para ese último campo; todos los demás campos van tal cual.` },
+  ];
+  const incluye = g => !grupos || g === null || [].concat(g).some(x => grupos.has(x));
+  prompt += `\nReglas OBLIGATORIAS:\n${REGLAS.filter(r => incluye(r.g)).map(r => r.t).join('\n')}`;
+
 
   // Regla de pagos: solo si el negocio ya tiene facturas proforma (la herramienta registrar_pago
   // solo se ofrece entonces). Así un negocio de préstamos no la ve nunca.
-  const reglaPagos = conPagos
+  const reglaPagos = conPagos && (!grupos || grupos.has('pagos'))
     ? `\n- Si el usuario dice que un cliente PAGÓ, ABONÓ o CANCELÓ algo de una FACTURA (ej. "Juan pagó 100", "Ana abonó 50 de la factura 004", "Juan pagó 100 ayer"), usa registrar_pago con el cliente, el monto y, SOLO si los dijo, el número de factura y la fecha, tal cual. NUNCA calcules saldos ni decidas a qué factura va: el sistema lo hace y le pregunta al usuario. NO uses registrar_pago para abonos de un cuadro de préstamos ni de ningún otro cuadro: eso sigue siendo actualizar_fila.`
     : '';
-  const reglaAjustes = conAjustes
+  const reglaAjustes = conAjustes && (!grupos || grupos.has('pagos'))
     ? `\n- Si el usuario pide ANULAR o DESHACER un PAGO (ej. "anula el pago de Ana", "me equivoqué con el pago de Juan"), ANULAR una factura o cotización (ej. "anula la factura 004") o APLICAR un saldo a favor a una factura (ej. "aplica el saldo a favor de Ana a la factura 004"), usa ajustar_pago con la accion que corresponda y los datos tal cual los dijo. NUNCA calcules ni decidas cuál pago o factura es: el sistema pregunta y pide confirmación. "Anular" NO es "eliminar el cuadro" (eso sigue siendo eliminar_cuadro).`
     : '';
   return `${prompt}${reglaPagos}${reglaAjustes}`;
@@ -3426,6 +3450,12 @@ async function interpretarCorreccion(textoUsuario, columnasDisponibles, groqApiK
   const texto = (mensaje?.content || mensaje?.reasoning_content || mensaje?.reasoning || '').trim();
   const limpio = texto.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
   return JSON.parse(limpio);
+}
+
+// Los mensajes viejos del historial se recortan para no gastar tokens (el actual va completo).
+function recortarParaHistorial(texto, max = 500) {
+  const t = String(texto ?? '');
+  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 // Devuelve el id de la fila guardada (o null si no se pudo guardar).
