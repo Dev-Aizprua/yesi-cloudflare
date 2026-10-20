@@ -20,6 +20,7 @@ import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
 import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
+import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga } from '../lib/cargaFilasTexto.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
 import { camposFaltantes, generarDocxCarta, capitalizarInicio } from '../lib/motorCartas.js';
 import { validarReporteSecciones } from '../lib/reporteSecciones.js';
@@ -374,9 +375,18 @@ export async function onRequestPost(context) {
     }
 
     // ── 7. Aplicar la acción de verdad sobre cuadros/D1 ───────────
-    const argumentos = JSON.parse(llamada.function.arguments);
+    let argumentos = JSON.parse(llamada.function.arguments);
+    let nombreLlamada = llamada.function.name;
+    // Red de seguridad (cargaFilasTexto.js): varios registros dictados juntos van por cargar_filas. Si Groq los
+    // manda como varias llamadas a agregar_fila (aquí solo se ejecutaría la primera), se redirige.
+    const reencaminada = reencaminarACargaFilas(textoUsuario, mensajeModelo.tool_calls);
+    if (reencaminada) {
+      console.log('[WEBHOOK] Varios registros: se redirige a cargar_filas (Groq había usado agregar_fila).');
+      nombreLlamada = reencaminada.nombre;
+      argumentos = reencaminada.args;
+    }
     // Red de seguridad determinista (pagos.js): corrige decisiones de Groq que el texto del usuario desmiente.
-    const corregida = corregirLlamadaPago(textoUsuario, llamada.function.name, argumentos);
+    const corregida = corregirLlamadaPago(textoUsuario, nombreLlamada, argumentos);
     if (corregida.corregida) {
       console.log('[WEBHOOK] Llamada corregida por código:', corregida.corregida, JSON.stringify(corregida.args));
     }
@@ -494,7 +504,7 @@ export async function onRequestPost(context) {
       ok: true,
       negocio: negocio.slug,
       mensaje_usuario: textoUsuario,
-      herramienta: llamada.function.name,
+      herramienta: nombreLlamada,
       argumentos,
       resultado,
       imagen_generada: !!pngBytes,
@@ -515,6 +525,12 @@ async function aplicarAccion(env, negocio, nombreHerramienta, args) {
   // crear_cuadro no necesita un cuadro existente — se resuelve aparte
   if (nombreHerramienta === 'crear_cuadro') {
     return crearCuadro(env, negocio, args);
+  }
+
+  // cargar_filas: varios registros dictados juntos (con vista previa y confirmación). Tampoco necesita que
+  // el cuadro esté ya elegido: lo resuelve la propia función (o pregunta).
+  if (nombreHerramienta === 'cargar_filas') {
+    return iniciarCargaFilas(env, negocio, args);
   }
 
   // crear_cotizacion tampoco depende de un cuadro existente
@@ -787,7 +803,7 @@ async function crearCuadro(env, negocio, args) {
   return {
     tipo: 'ok',
     mensaje: `Listo, creé el cuadro "${args.nombre_cuadro}", pero está VACÍO: no cargué ningún registro.\n` +
-      `Agrégalos diciéndome, por ejemplo, "agrega a Juan, monto 100", o mándame una foto de la tabla y la leo completa.`,
+      `Dímelos todos juntos (ej. "carga a Carlos 460, Susan 300, Yisel 200"), agrega uno diciendo "agrega a Juan, monto 100", o mándame una foto de la tabla y la leo completa.`,
   };
 }
 
@@ -2073,9 +2089,12 @@ function normalizarClave(texto) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, '') // quita paréntesis, %, etc. — ej. "interes (10%)" -> "interes 10"
+    .replace(/[^a-z0-9\s_]/g, '') // quita paréntesis, %, etc. — ej. "interes (10%)" -> "interes 10" (el "_" se conserva)
     .trim()
-    .replace(/\s+/g, '_'); // "abono a capital" -> "abono_a_capital" — expr-eval no acepta espacios en un nombre de variable
+    .replace(/[\s_]+/g, '_') // "abono a capital" -> "abono_a_capital" — expr-eval no acepta espacios en un nombre de variable
+    .replace(/^_+|_+$/g, '');
+  // Es IDEMPOTENTE: una clave que ya viene normalizada ("abono_a_capital", como se la damos a Groq en el prompt)
+  // sigue igual. Antes el "_" se borraba y quedaba "abonoacapital", una clave que no existe en el cuadro.
 }
 
 // Cómo se redacta el "campo libre" de una carta (el ÚLTIMO campo requerido de
@@ -2160,6 +2179,7 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
     { g: 'archivos', t: `- Si el usuario pide el Excel, la hoja de cálculo o el archivo del cuadro, usa enviar_excel (con_imagen=true solo si además pide la imagen). Si pide ver el cuadro o la imagen, usa consultar_cuadro.` },
     { g: ['cobro', 'cuadro'], t: `- NUNCA inventes un número de teléfono — el parámetro "telefono" solo se llena si el usuario lo dio explícitamente en este mensaje o en uno reciente de la conversación.` },
     { g: 'cuadro', t: `- En agregar_fila y actualizar_fila, usa EXACTAMENTE la "clave" indicada arriba para cada columna — NUNCA inventes un nombre de campo nuevo. Ejemplo: si la columna es "Monto" (clave "monto") y el usuario dice "préstamo de 200" o "capital de 200", igual usa la clave "monto", no "prestamo" ni "capital".` },
+    { g: 'cuadro', t: `- Si el usuario dicta o pega VARIOS registros a la vez (2 o más personas o filas) para cargarlos, usa cargar_filas UNA sola vez (nunca varias llamadas a agregar_fila) y NO los extraigas tú: el sistema los lee del mensaje. Si además pide crear el cuadro, usa cargar_filas con cuadro_nuevo=true y sus columnas. Para UN solo registro usa agregar_fila.` },
     { g: 'cuadro', t: `- En crear_cuadro, las fórmulas de reglas_calculo deben referirse a las columnas usando su clave en minúsculas y sin tildes (ej. columna "Deuda" → escribe "deuda" en la fórmula, no "Deuda").` },
     { g: 'documentos', t: `- Si el usuario pide una COTIZACIÓN o presupuesto (ej. "hazme una cotización para Juan, 10 sillas a 25"), usa crear_cotizacion: una entrada en "lineas" por producto o servicio, con descripcion, cantidad y precio UNITARIO tal cual los dijo. NUNCA calcules totales, subtotal ni ITBMS. El campo itbms de una línea se llena SOLO si el usuario dijo una tasa para esa línea (ej. "10%", "exento"); si no la dijo, OMÍTELO (el sistema aplica 7%) y NUNCA la deduzcas por el tipo de producto. Si dijo "todo exento" o "todo al 10%", repítelo en cada línea. NO uses crear_cuadro ni generar_carta para una cotización.` },
     { g: 'documentos', t: `- Si el usuario pide una FACTURA, una factura proforma o una nota de cobro para un cliente (ej. "hazme una factura para Juan, 10 sillas a 25"), usa crear_factura_proforma (este sistema no emite facturas fiscales; todo pedido de factura se resuelve así). Las mismas reglas de crear_cotizacion: "lineas" con descripcion, cantidad y precio UNITARIO tal cual los dijo; NUNCA calcules totales, subtotal ni ITBMS; "itbms" de una línea SOLO si el usuario dijo una tasa; "condicion_pago" SOLO si la dijo. NO uses crear_cuadro ni generar_carta para una factura.` },
@@ -2568,6 +2588,368 @@ async function enviarImagenCuadroDirecta(negocio, to, pngBytes, captionCorta) {
   return res.json();
 }
 
+// ── CARGAR VARIOS REGISTROS DESDE TEXTO (cargar_filas) ────────────
+// "Agrega a Carlos 460, Susan 300, Yisel 200": una llamada pequeña y aparte a Groq SOLO separa los registros
+// (cargaFilasTexto.js); el código los coloca en las columnas, aplica las fórmulas del cuadro y avisa de lo que
+// no encaja. Nada se guarda hasta el "sí": el pendiente (tipoPendiente 'cargar_filas') va en la misma tabla
+// importaciones_pendientes que fotos, pagos y abonos, así un "sí" nunca llega a Groq.
+
+// Un cuadro editable es una tabla normal: no un reporte por secciones ni una cotización/factura.
+function esCuadroEditable(c) {
+  try {
+    const e = JSON.parse(c.estructura || '{}');
+    if (e.tipo === 'secciones') return false;
+    if ((Array.isArray(e.pie) && e.pie.length > 0) || (Array.isArray(e.encabezado) && e.encabezado.length > 0)) return false;
+    return Array.isArray(e.columnas) && e.columnas.length > 0;
+  } catch { return false; }
+}
+
+// Nombre dicho → cuadro: coincidencia exacta (sin tildes/mayúsculas) o parecido claro; null si no hay o es ambiguo.
+function resolverCuadroPorNombre(cuadros, dicho) {
+  const d = normalizarClave(dicho || '');
+  if (!d) return null;
+  const exacto = cuadros.find(c => normalizarClave(c.nombre_cuadro) === d);
+  if (exacto) return exacto;
+  const b = buscarFila(String(dicho).trim(), cuadros.map(c => ({ nombre: c.nombre_cuadro, _c: c })));
+  return (b.tipo === 'exacto' || b.tipo === 'alto') ? b.fila._c : null;
+}
+
+function textoElegirCuadroCarga(opciones) {
+  return `¿En cuál cuadro los cargo?\n${opciones.map((o, i) => `${i + 1}. ${o.nombre}`).join('\n')}\nResponde con el número o el nombre, o "no" para cancelar.`;
+}
+
+async function iniciarCargaFilas(env, negocio, args) {
+  const aviso = mensaje => ({ tipo: 'aviso', mensaje });
+  const texto = String(args._texto || '').trim();
+  if (!texto) return aviso('No recibí los registros. Mándamelos así: "agrega Carlos 460, Susan 300, Yisel 200".');
+
+  const cuadros = await obtenerCuadros(env, negocio.id);
+  const editables = cuadros.filter(esCuadroEditable);
+
+  if (args.cuadro_nuevo === true) return await prepararCargaNueva(env, negocio, texto, args, cuadros);
+
+  if (editables.length === 0) {
+    return aviso('Todavía no tienes un cuadro donde cargarlos. Dime el nombre y las columnas (ej. "crea el cuadro Préstamos con Nombre, Monto, Interés, Abono y Saldo") y los cargo junto con los registros.');
+  }
+
+  const dicho = String(args.nombre_cuadro ?? '').trim();
+  let cuadro = null;
+  if (dicho) {
+    cuadro = resolverCuadroPorNombre(editables, dicho);
+    if (!cuadro && resolverCuadroPorNombre(cuadros.filter(c => !esCuadroEditable(c)), dicho)) {
+      return aviso(`"${dicho}" es un documento o un reporte: no se le cargan registros. Dime otro cuadro, o dime las columnas para crear uno nuevo.`);
+    }
+  } else if (editables.length === 1) {
+    cuadro = editables[0];
+  }
+
+  if (!cuadro) {
+    // Varios cuadros y no quedó claro cuál: se guarda el mensaje original (con los registros) y se pregunta.
+    const opciones = editables.map(c => ({ id: c.id, nombre: c.nombre_cuadro }));
+    await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'cargar_filas', fase: 'eligiendo_cuadro', texto, opciones });
+    return { tipo: 'carga_pendiente', mensaje: textoElegirCuadroCarga(opciones) };
+  }
+  return await prepararCargaExistente(env, negocio, texto, cuadro);
+}
+
+async function prepararCargaExistente(env, negocio, texto, cuadro) {
+  const estructura = JSON.parse(cuadro.estructura || '{}');
+  const columnasBonitas = estructura.columnas || [];
+  const columnasInternas = columnasBonitas.map(normalizarClave);
+  const reglas = estructura.reglas_calculo || {};
+  const filasExistentes = JSON.parse(cuadro.filas || '[]');
+  return await construirCarga(env, negocio, {
+    texto, modo: 'existente', cuadroId: cuadro.id, nombreCuadro: cuadro.nombre_cuadro,
+    columnasBonitas, columnasInternas, reglas, filasExistentes,
+    numericas: columnasNumericasDe(columnasInternas, filasExistentes, reglas, columnasInternas[0]),
+  });
+}
+
+async function prepararCargaNueva(env, negocio, texto, args, cuadros) {
+  const aviso = mensaje => ({ tipo: 'aviso', mensaje });
+  const nombre = String(args.nombre_cuadro ?? '').trim();
+  const columnas = (Array.isArray(args.columnas) ? args.columnas : []).map(c => String(c ?? '').trim()).filter(Boolean);
+  if (!nombre) return aviso('¿Cómo se va a llamar el cuadro nuevo?');
+  if (columnas.length < 2) {
+    return aviso('Para crear el cuadro con esos registros necesito sus columnas. Dime cuáles, por ejemplo: "Nombre, Monto, Interés, Abono y Saldo".');
+  }
+  const yaExiste = cuadros.find(c => normalizarClave(c.nombre_cuadro) === normalizarClave(nombre));
+  if (yaExiste) {
+    return aviso(`Ya existe un cuadro llamado "${yaExiste.nombre_cuadro}". Dime si los cargo ahí, o dame otro nombre para el cuadro nuevo.`);
+  }
+  const columnasInternas = columnas.map(normalizarClave);
+  if (new Set(columnasInternas).size !== columnasInternas.length || columnasInternas.some(c => !c)) {
+    return aviso('Dos columnas quedarían con el mismo nombre. Dime las columnas otra vez, con nombres distintos.');
+  }
+
+  // Fórmulas que dijo el usuario: se normalizan y se validan ANTES de guardar nada (igual que crear_cuadro).
+  const crudas = normalizarFormulasClaves(args.reglas_calculo, columnas);
+  const reglas = {};
+  for (const [campo, formula] of Object.entries(crudas)) {
+    const clave = normalizarClave(campo);
+    if (!columnasInternas.includes(clave)) continue;
+    const v = validarFormula(formula);
+    if (!v.valida) return { tipo: 'error', mensaje: `La fórmula de "${campo}" tiene un error: ${v.error}` };
+    reglas[clave] = formula;
+  }
+  return await construirCarga(env, negocio, {
+    texto, modo: 'nuevo', cuadroId: null, nombreCuadro: nombre,
+    columnasBonitas: columnas, columnasInternas, reglas, filasExistentes: [], numericas: null,
+  });
+}
+
+// Lee los registros del mensaje, arma las filas, guarda el pendiente y devuelve la vista previa (texto).
+async function construirCarga(env, negocio, ctx) {
+  const aviso = mensaje => ({ tipo: 'aviso', mensaje });
+  let extraidas;
+  try {
+    extraidas = await extraerFilasDeTexto(ctx.texto, ctx.columnasBonitas, ctx.columnasInternas, ctx.reglas, env.GROQ_API_KEY, fetchGroq);
+  } catch (e) {
+    console.log('[WEBHOOK] Error leyendo los registros del texto:', e?.message);
+    return aviso(
+      e?.codigo === 'limite' ? 'Estoy con mucho trabajo en este momento 🙏 Repite tus registros en unos segundos, por favor.'
+        : e?.codigo === 'formato' ? 'No pude leer bien esos registros. Mándalos uno por línea (ej. "Carlos 460" y debajo "Susan 300"), o en dos partes si son muchos.'
+          : 'Tuve un problema leyendo los registros. Inténtalo de nuevo en unos segundos.'
+    );
+  }
+  if (extraidas.length === 0) {
+    return aviso('No encontré registros en tu mensaje. Mándamelos así: "agrega Carlos 460, Susan 300, Yisel 200".');
+  }
+  if (extraidas.length > MAX_FILAS_CARGA) {
+    return aviso(`Son demasiados registros de una vez (el máximo es ${MAX_FILAS_CARGA}). Mándalos en partes.`);
+  }
+
+  const r = armarFilasNuevas({
+    extraidas, columnasBonitas: ctx.columnasBonitas, columnasInternas: ctx.columnasInternas,
+    reglas: ctx.reglas, filasExistentes: ctx.filasExistentes, columnasNumericas: ctx.numericas, normalizarClave,
+  });
+  if (r.filas.length === 0) {
+    return aviso(`No agregué nada.${r.omitidas.length ? `\n${r.omitidas.map(o => `• ${o}`).join('\n')}` : ''}`);
+  }
+
+  const datos = {
+    tipoPendiente: 'cargar_filas', fase: 'confirmando', modo: ctx.modo, cuadroId: ctx.cuadroId, nombreCuadro: ctx.nombreCuadro,
+    columnasBonitas: ctx.columnasBonitas, columnasInternas: ctx.columnasInternas, reglas: ctx.reglas,
+    numericas: [...r.numericas], filas: r.filas, avisos: r.avisos, sinAsignar: r.sinAsignar, omitidas: r.omitidas,
+  };
+  // Cuadro nuevo: si dieron valores calculados sin fórmula, el detector las encuentra igual que con una foto.
+  if (ctx.modo === 'nuevo') redetectarReglas(datos);
+  await guardarPagoPendiente(env, negocio.id, datos);
+  return { tipo: 'carga_pendiente', mensaje: textoVistaPreviaCarga(datos) };
+}
+
+async function guardarPendienteCarga(env, negocioId, datos) {
+  await env.oficina_ia_db.prepare(
+    "UPDATE importaciones_pendientes SET datos = ?, creado_en = datetime('now') WHERE negocio_id = ?"
+  ).bind(JSON.stringify(datos), negocioId).run();
+}
+
+// Posición de un nombre dentro de las filas por cargar: exacto, o parecido claro. -1 = no está; 'ambiguo' = hay dos.
+function indiceFilaCarga(filas, claveNombre, dicho) {
+  const d = normalizarClave(dicho || '');
+  const exacto = filas.findIndex(f => normalizarClave(String(f[claveNombre] ?? '')) === d);
+  if (exacto !== -1) return exacto;
+  const b = buscarFila(String(dicho).trim(), filas.map(f => ({ nombre: String(f[claveNombre] ?? '') })));
+  if (b.tipo === 'ambiguo') return 'ambiguo';
+  if (b.tipo === 'alto') return filas.findIndex(f => String(f[claveNombre] ?? '') === b.fila.nombre);
+  return -1;
+}
+
+async function procesarRespuestaCargaFilas(env, negocio, numeroCliente, texto, datos) {
+  const responder = async (mensaje, extra = {}) => {
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, mensaje);
+    return Response.json({ ok: true, negocio: negocio.slug, carga_filas: true, ...extra });
+  };
+  const descartar = async (mensaje = 'Listo, no cargué nada.') => {
+    await env.oficina_ia_db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, mensaje);
+    return Response.json({ ok: true, carga_cancelada: true });
+  };
+  const respuesta = clasificarRespuestaPendiente(texto);
+
+  // Fase 1: había varios cuadros y se preguntó en cuál cargar.
+  if (datos.fase === 'eligiendo_cuadro') {
+    if (respuesta === 'descartar') return await descartar();
+    const cuadros = (await obtenerCuadros(env, negocio.id)).filter(esCuadroEditable);
+    let elegido = null;
+    const n = String(texto).trim().match(/^(\d{1,2})[.)]?$/);
+    if (n) {
+      const op = (datos.opciones || [])[Number(n[1]) - 1];
+      if (op) elegido = cuadros.find(c => c.id === op.id) || null;
+    } else {
+      elegido = resolverCuadroPorNombre(cuadros, String(texto).trim().replace(/^(?:(?:en|al|el|la|del|cuadro)\s+)+/i, ''));
+    }
+    if (!elegido) return await responder(`No identifiqué ese cuadro.\n${textoElegirCuadroCarga(datos.opciones || [])}`);
+    const r = await prepararCargaExistente(env, negocio, datos.texto, elegido);
+    return await responder(r.mensaje, { carga_preparada: r.tipo === 'carga_pendiente' });
+  }
+
+  // Fase 2: vista previa esperando "sí" / "no" / correcciones. "quita a X" y "agrega a Y" se reconocen
+  // primero (por su verbo), así nunca se confunden con un "no" o un "sí" aunque el clasificador general dude.
+  const corr = detectarCorreccionCarga(texto);
+  if (!corr && respuesta === 'confirmar') return await guardarCargaFilas(env, negocio, numeroCliente, datos);
+  if (!corr && respuesta === 'descartar') return await descartar();
+
+  const claveNombre = datos.columnasInternas[0];
+
+  if (corr?.tipo === 'quitar') {
+    const i = indiceFilaCarga(datos.filas, claveNombre, corr.nombre);
+    if (i === 'ambiguo') return await responder(`Hay dos registros parecidos a "${corr.nombre}". Dime el nombre completo de cuál quitar.`);
+    if (i === -1) {
+      return await responder(`No encontré a "${corr.nombre}" entre los que voy a cargar (${datos.filas.map(f => f[claveNombre]).join(', ')}).`);
+    }
+    const [quitada] = datos.filas.splice(i, 1);
+    datos.avisos = (datos.avisos || []).filter(a => !a.startsWith(`${quitada[claveNombre]}:`));
+    datos.sinAsignar = (datos.sinAsignar || []).filter(s => s.nombre !== quitada[claveNombre]);
+    if (datos.filas.length === 0) return await descartar(`Quité a ${quitada[claveNombre]} y no queda ningún registro por cargar, así que descarté la carga.`);
+    await guardarPendienteCarga(env, negocio.id, datos);
+    return await responder(textoVistaPreviaCarga(datos), { registro_quitado: true });
+  }
+
+  if (corr?.tipo === 'agregar') {
+    let existentes = datos.filas;
+    if (datos.modo === 'existente') {
+      const cuadro = await env.oficina_ia_db.prepare('SELECT * FROM cuadros WHERE id = ? AND negocio_id = ?').bind(datos.cuadroId, negocio.id).first();
+      if (!cuadro) return await descartar(`El cuadro "${datos.nombreCuadro}" ya no existe, así que descarté la carga.`);
+      existentes = [...JSON.parse(cuadro.filas || '[]'), ...datos.filas];
+    }
+    let extraidas;
+    try {
+      extraidas = await extraerFilasDeTexto(texto, datos.columnasBonitas, datos.columnasInternas, datos.reglas, env.GROQ_API_KEY, fetchGroq);
+    } catch (e) {
+      console.log('[WEBHOOK] Error leyendo los registros a agregar:', e?.message);
+      return await responder('No pude leer ese registro. Inténtalo de nuevo, por ejemplo: "agrega a Ana, monto 100".');
+    }
+    const r = armarFilasNuevas({
+      extraidas, columnasBonitas: datos.columnasBonitas, columnasInternas: datos.columnasInternas,
+      reglas: datos.reglas, filasExistentes: existentes, columnasNumericas: new Set(datos.numericas || []), normalizarClave,
+    });
+    if (r.filas.length === 0) {
+      return await responder(`No agregué nada.${r.omitidas.length ? `\n${r.omitidas.map(o => `• ${o}`).join('\n')}` : ''}`);
+    }
+    if (datos.filas.length + r.filas.length > MAX_FILAS_CARGA) return await responder(`Con eso pasarían de ${MAX_FILAS_CARGA} registros. Primero guarda estos y luego mandas los demás.`);
+    datos.filas.push(...r.filas);
+    datos.avisos = [...(datos.avisos || []), ...r.avisos];
+    datos.sinAsignar = [...(datos.sinAsignar || []), ...r.sinAsignar];
+    datos.omitidas = [...(datos.omitidas || []), ...r.omitidas];
+    await guardarPendienteCarga(env, negocio.id, datos);
+    return await responder(textoVistaPreviaCarga(datos), { registro_agregado: true });
+  }
+
+  // "el monto de Carlos es 460": Groq solo extrae a qué registro/columna/valor se refiere; el código aplica.
+  let c;
+  try { c = await interpretarCorreccion(texto, datos.columnasBonitas, env.GROQ_API_KEY); } catch (e) {
+    console.log('[WEBHOOK] Error interpretando la corrección de la carga:', e?.message);
+    c = null;
+  }
+  const ayuda = 'No entendí esa corrección. Puedes decir: "el monto de Carlos es 460", "quita a Susan", "agrega a Ana, monto 100", "sí" para guardar o "no" para descartar.';
+  if (!c || !c.nombre || !c.campo) return await responder(ayuda);
+
+  const campo = normalizarClave(c.campo);
+  if (!datos.columnasInternas.includes(campo)) {
+    return await responder(`No reconozco la columna "${c.campo}". Las columnas son: ${datos.columnasBonitas.join(', ')}.`);
+  }
+  const i = indiceFilaCarga(datos.filas, claveNombre, c.nombre);
+  if (i === 'ambiguo') return await responder(`Hay dos registros parecidos a "${c.nombre}". Dime el nombre completo.`);
+  if (i === -1) return await responder(`No encontré a "${c.nombre}" entre los que voy a cargar (${datos.filas.map(f => f[claveNombre]).join(', ')}).`);
+
+  const pv = parsearValorCarga(c.valor);
+  if (pv.tipo === 'vacio') return await responder(ayuda);
+  if (pv.tipo === 'porcentaje') return await responder('Un porcentaje no se guarda como monto. Dime el monto, por ejemplo: "el interés de Carlos es 46".');
+  if (pv.tipo === 'texto' && (datos.numericas || []).includes(campo)) {
+    return await responder(`La columna "${datos.columnasBonitas[datos.columnasInternas.indexOf(campo)]}" es de números. Dime el valor en números.`);
+  }
+
+  const nombreFila = datos.filas[i][claveNombre];
+  const valor = pv.tipo === 'numero' ? pv.valor : pv.texto;
+  const fila = { ...datos.filas[i], [campo]: valor };
+  if (campo === claveNombre) fila.nombre = valor;
+  // El campo corregido se respeta tal cual lo dijo el usuario; lo que depende de él se recalcula.
+  const reglasSinCampo = { ...datos.reglas };
+  delete reglasSinCampo[campo];
+  datos.filas[i] = calcularFila(fila, reglasSinCampo);
+  datos.avisos = (datos.avisos || []).filter(a => !a.startsWith(`${nombreFila}:`));
+  datos.sinAsignar = (datos.sinAsignar || []).filter(s => s.nombre !== nombreFila);
+  await guardarPendienteCarga(env, negocio.id, datos);
+  return await responder(textoVistaPreviaCarga(datos), { correccion_aplicada: true });
+}
+
+// Guarda de verdad. Primero "reclama" el pendiente (si un mensaje repetido ya lo consumió, no se guarda dos veces).
+async function guardarCargaFilas(env, negocio, numeroCliente, datos) {
+  const db = env.oficina_ia_db;
+  const claveNombre = datos.columnasInternas[0];
+  const quitarPendiente = () => db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
+
+  let cuadro = null;
+  let filasActuales = [];
+  if (datos.modo === 'existente') {
+    cuadro = await db.prepare('SELECT * FROM cuadros WHERE id = ? AND negocio_id = ?').bind(datos.cuadroId, negocio.id).first();
+    if (!cuadro) {
+      await quitarPendiente();
+      await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
+        `El cuadro "${datos.nombreCuadro}" ya no existe, así que no cargué nada.`);
+      return Response.json({ ok: true, carga_no_guardada: true });
+    }
+    filasActuales = JSON.parse(cuadro.filas || '[]');
+  }
+
+  const reclamo = await quitarPendiente();
+  if (reclamo.meta.changes !== 1) return Response.json({ ok: true, carga_ya_procesada: true });
+
+  let mensaje;
+  let nombreFinal = datos.nombreCuadro;
+  let columnas = datos.columnasBonitas;
+  let todas;
+  let subtitulo;
+  try {
+    if (datos.modo === 'existente') {
+      // Por si apareció alguien con el mismo nombre mientras se confirmaba.
+      const yaEstan = new Set(filasActuales.map(f => normalizarClave(String(f[claveNombre] ?? f.nombre ?? ''))));
+      const nuevas = datos.filas.filter(f => !yaEstan.has(normalizarClave(String(f[claveNombre] ?? ''))));
+      if (nuevas.length === 0) {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
+          'Esos registros ya estaban en el cuadro, así que no agregué nada.');
+        return Response.json({ ok: true, carga_sin_nuevos: true });
+      }
+      todas = [...filasActuales, ...nuevas];
+      await guardarCuadro(env, cuadro.id, todas, JSON.stringify(filasActuales));
+      subtitulo = JSON.parse(cuadro.estructura || '{}').subtitulo || null;
+      const saltadas = datos.filas.length - nuevas.length;
+      mensaje = `Listo ✅ Agregué ${nuevas.length} registro(s) a "${cuadro.nombre_cuadro}" (ahora tiene ${todas.length}).` +
+        (saltadas > 0 ? `\n${saltadas} ya estaba(n) y no se repitieron.` : '');
+    } else {
+      const existentes = await obtenerCuadros(env, negocio.id);
+      const choca = existentes.some(c => normalizarClave(c.nombre_cuadro) === normalizarClave(datos.nombreCuadro));
+      nombreFinal = choca ? `${datos.nombreCuadro} (nuevo)` : datos.nombreCuadro;
+      todas = datos.filas;
+      await db.prepare('INSERT INTO cuadros (negocio_id, nombre_cuadro, estructura, filas) VALUES (?, ?, ?, ?)')
+        .bind(negocio.id, nombreFinal, JSON.stringify({ columnas: datos.columnasBonitas, reglas_calculo: datos.reglas }), JSON.stringify(todas)).run();
+      mensaje = `Listo ✅ Creé el cuadro "${nombreFinal}" con ${todas.length} registro(s).`;
+    }
+  } catch (e) {
+    console.log('[WEBHOOK] Error guardando la carga de filas:', e?.message);
+    try { await guardarPagoPendiente(env, negocio.id, datos); } catch (e2) { console.log('[WEBHOOK] No pude restaurar el pendiente de la carga:', e2?.message); }
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
+      'No pude guardar los registros. Responde "sí" para intentarlo de nuevo, o "no" para descartarlos.');
+    return Response.json({ ok: false, error: e?.message });
+  }
+
+  // Imagen del cuadro resultante (directa por Meta, sin Cloudinary). Si falla, va solo el texto.
+  let enviada = false;
+  try {
+    const png = await generarImagenCuadro(nombreFinal, columnas, todas, subtitulo, true, {});
+    if (png) {
+      const resImg = await enviarImagenCuadroDirecta(negocio, numeroCliente, png, mensaje);
+      console.log('[WEBHOOK] Respuesta de Meta al enviar el cuadro cargado:', JSON.stringify(resImg));
+      enviada = !!resImg?.messages;
+    }
+  } catch (e) {
+    console.log('[WEBHOOK] Error generando la imagen tras la carga:', e?.message);
+  }
+  if (!enviada) await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, mensaje);
+  return Response.json({ ok: true, carga_guardada: datos.filas.length, cuadro: nombreFinal });
+}
+
 // ── RESPUESTA A LA IMPORTACIÓN PENDIENTE (sí / no / corrección) ──
 async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, importacionPendiente) {
   const datos = JSON.parse(importacionPendiente.datos);
@@ -2589,6 +2971,11 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
   }
   if (datos.tipoPendiente === 'anular_abono') {
     const respuesta = await procesarRespuestaAnularAbono(env, negocio, numeroCliente, texto, datos);
+    await marcarFlujoPagoCerrado(env, negocio.id);
+    return respuesta;
+  }
+  if (datos.tipoPendiente === 'cargar_filas') {
+    const respuesta = await procesarRespuestaCargaFilas(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }

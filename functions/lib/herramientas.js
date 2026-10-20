@@ -46,7 +46,8 @@ export const herramientas = [
         'sus fórmulas de cálculo. Se usa SOLO cuando el negocio no tiene todavía ' +
         'ningún cuadro, o pide explícitamente uno adicional distinto a los que ya ' +
         'tiene (ej. "quiero llevar aparte mis gastos de gasolina"). NO se usa para ' +
-        'agregar un registro a un cuadro que ya existe — para eso está agregar_fila.',
+        'agregar un registro a un cuadro que ya existe — para eso está agregar_fila. ' +
+        'Si el usuario pide el cuadro nuevo Y dicta registros para cargarle, usa cargar_filas en vez de esta.',
       parameters: {
         type: 'object',
         properties: {
@@ -103,6 +104,41 @@ export const herramientas = [
           },
         },
         required: ['nombre'],
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'cargar_filas',
+      description:
+        'Carga VARIOS registros (2 o más) dictados o pegados en el mismo mensaje, en un cuadro que ya existe ' +
+        'o en uno NUEVO que el usuario pide crear con esos registros. NO extraigas los registros tú: el sistema ' +
+        'los lee del mensaje, los calcula y le pide confirmación al usuario. Llámala UNA sola vez. ' +
+        'Para UN solo registro usa agregar_fila.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre_cuadro: {
+            type: ['string', 'null'],
+            description: 'Cuadro donde cargarlos (el nombre del que ya existe, o el nombre del nuevo si pide crearlo). Omitir/null si el negocio solo tiene uno.',
+          },
+          cuadro_nuevo: {
+            type: ['boolean', 'null'],
+            description: 'true SOLO si el usuario pide crear un cuadro nuevo con estos registros.',
+          },
+          columnas: {
+            type: ['array', 'null'],
+            items: { type: 'string' },
+            description: 'SOLO si cuadro_nuevo: las columnas tal como las dijo el usuario (la primera es el nombre).',
+          },
+          reglas_calculo: {
+            type: ['object', 'null'],
+            additionalProperties: { type: 'string' },
+            description: 'SOLO si cuadro_nuevo y el usuario dio fórmulas (igual que en crear_cuadro). Si no las dio, omitir.',
+          },
+        },
       },
     },
   },
