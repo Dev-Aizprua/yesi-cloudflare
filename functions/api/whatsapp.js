@@ -19,6 +19,7 @@ import { subirImagenCloudinary } from '../lib/cloudinary.js';
 import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro.js';
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
 import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
+import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga } from '../lib/cargaFilasTexto.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
@@ -262,6 +263,42 @@ export async function onRequestPost(context) {
       }
     }
 
+    // ── 3.10. "Anula la última venta / el último gasto": en código (0 tokens), con vista previa y "sí" ──
+    const pedidoAnularRegistro = detectarAnularRegistro(textoUsuario);
+    if (pedidoAnularRegistro) {
+      let respuestaRegistro = null;
+      try {
+        respuestaRegistro = await iniciarAnularRegistro(env, negocio, pedidoAnularRegistro);
+      } catch (e) {
+        console.log('[WEBHOOK] Error iniciando anular venta/gasto, se sigue con Groq:', e?.message);
+      }
+      if (respuestaRegistro) {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, respuestaRegistro.mensaje);
+        await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+        await guardarMensaje(env, negocio.id, 'asistente', respuestaRegistro.mensaje, 'texto');
+        await marcarFlujoPagoCerrado(env, negocio.id);
+        return Response.json({ ok: true, negocio: negocio.slug, consulta: 'anular_registro' });
+      }
+    }
+
+    // ── 3.11. "¿Cuánto vendí hoy?" / "gastos del mes": consulta de información, se responde en código ──
+    const consultaVG = detectarConsultaVentasGastos(textoUsuario);
+    if (consultaVG) {
+      let resumenVG = null;
+      try {
+        resumenVG = await armarResumenVentasGastosNegocio(env, negocio, consultaVG);
+      } catch (e) {
+        console.log('[WEBHOOK] Error armando el resumen de ventas/gastos, se sigue con Groq:', e?.message);
+      }
+      if (resumenVG) {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, resumenVG);
+        await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+        await guardarMensaje(env, negocio.id, 'asistente', resumenVG, 'texto');
+        await marcarFlujoPagoCerrado(env, negocio.id);
+        return Response.json({ ok: true, negocio: negocio.slug, consulta: 'ventas_gastos' });
+      }
+    }
+
     // ── 4. Guardar el mensaje entrante en el historial ────────────
     // Se guarda el id: si Groq falla, este mensaje se borra del historial (si no, el siguiente mensaje
     // haría que Groq intente cumplir también el que falló).
@@ -384,6 +421,12 @@ export async function onRequestPost(context) {
       console.log('[WEBHOOK] Varios registros: se redirige a cargar_filas (Groq había usado agregar_fila).');
       nombreLlamada = reencaminada.nombre;
       argumentos = reencaminada.args;
+    }
+    // Varias llamadas a registrar_venta / registrar_gasto (una por artículo): se unen en una sola.
+    const unida = !reencaminada ? unirLlamadasVentasGastos(mensajeModelo.tool_calls) : null;
+    if (unida) {
+      nombreLlamada = unida.nombre;
+      argumentos = unida.args;
     }
     // Red de seguridad determinista (pagos.js): corrige decisiones de Groq que el texto del usuario desmiente.
     const corregida = corregirLlamadaPago(textoUsuario, nombreLlamada, argumentos);
@@ -548,6 +591,12 @@ async function aplicarAccion(env, negocio, nombreHerramienta, args) {
   }
   if (nombreHerramienta === 'ajustar_pago') {
     return iniciarAjustePago(env, negocio, args);
+  }
+  if (nombreHerramienta === 'registrar_venta') {
+    return iniciarRegistroVenta(env, negocio, args);
+  }
+  if (nombreHerramienta === 'registrar_gasto') {
+    return iniciarRegistroGasto(env, negocio, args);
   }
 
   // generar_carta tampoco depende de un cuadro — se resuelve aparte
@@ -2180,6 +2229,8 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
     { g: ['cobro', 'cuadro'], t: `- NUNCA inventes un número de teléfono — el parámetro "telefono" solo se llena si el usuario lo dio explícitamente en este mensaje o en uno reciente de la conversación.` },
     { g: 'cuadro', t: `- En agregar_fila y actualizar_fila, usa EXACTAMENTE la "clave" indicada arriba para cada columna — NUNCA inventes un nombre de campo nuevo. Ejemplo: si la columna es "Monto" (clave "monto") y el usuario dice "préstamo de 200" o "capital de 200", igual usa la clave "monto", no "prestamo" ni "capital".` },
     { g: 'cuadro', t: `- Si el usuario dicta o pega VARIOS registros a la vez (2 o más personas o filas) para cargarlos, usa cargar_filas UNA sola vez (nunca varias llamadas a agregar_fila) y NO los extraigas tú: el sistema los lee del mensaje. Si además pide crear el cuadro, usa cargar_filas con cuadro_nuevo=true y sus columnas. Para UN solo registro usa agregar_fila.` },
+    { g: 'ventas', t: `- Si el usuario dice que VENDIÓ algo de contado (ej. "vendí 3 jugos a 2.50", "vendí 2 pasteles por 10 en total a María"), usa registrar_venta: una entrada en "articulos" por producto, con descripcion, cantidad y precio UNITARIO tal cual los dijo (si dijo "por X en total" o un total para ese artículo, ponlo en "total" y deja precio vacío). NUNCA calcules totales. cliente y fecha SOLO si los dijo. Una venta de contado NO es una cotización ni una factura.` },
+    { g: 'ventas', t: `- Si el DUEÑO dice que ÉL gastó, compró o pagó algo (ej. "gasté 45 en luz", "pagué la luz 45", "compré hielo por 10"), usa registrar_gasto: una entrada en "gastos" por cada gasto (descripcion y monto tal cual), proveedor y categoria SOLO si los dijo. registrar_pago es SOLO cuando un CLIENTE pagó o abonó una factura. Si el usuario nombra un cuadro (ej. "en el cuadro Gastos"), usa las herramientas de cuadro.` },
     { g: 'cuadro', t: `- En crear_cuadro, las fórmulas de reglas_calculo deben referirse a las columnas usando su clave en minúsculas y sin tildes (ej. columna "Deuda" → escribe "deuda" en la fórmula, no "Deuda").` },
     { g: 'documentos', t: `- Si el usuario pide una COTIZACIÓN o presupuesto (ej. "hazme una cotización para Juan, 10 sillas a 25"), usa crear_cotizacion: una entrada en "lineas" por producto o servicio, con descripcion, cantidad y precio UNITARIO tal cual los dijo. NUNCA calcules totales, subtotal ni ITBMS. El campo itbms de una línea se llena SOLO si el usuario dijo una tasa para esa línea (ej. "10%", "exento"); si no la dijo, OMÍTELO (el sistema aplica 7%) y NUNCA la deduzcas por el tipo de producto. Si dijo "todo exento" o "todo al 10%", repítelo en cada línea. NO uses crear_cuadro ni generar_carta para una cotización.` },
     { g: 'documentos', t: `- Si el usuario pide una FACTURA, una factura proforma o una nota de cobro para un cliente (ej. "hazme una factura para Juan, 10 sillas a 25"), usa crear_factura_proforma (este sistema no emite facturas fiscales; todo pedido de factura se resuelve así). Las mismas reglas de crear_cotizacion: "lineas" con descripcion, cantidad y precio UNITARIO tal cual los dijo; NUNCA calcules totales, subtotal ni ITBMS; "itbms" de una línea SOLO si el usuario dijo una tasa; "condicion_pago" SOLO si la dijo. NO uses crear_cuadro ni generar_carta para una factura.` },
@@ -2626,7 +2677,19 @@ async function iniciarCargaFilas(env, negocio, args) {
   const cuadros = await obtenerCuadros(env, negocio.id);
   const editables = cuadros.filter(esCuadroEditable);
 
-  if (args.cuadro_nuevo === true) return await prepararCargaNueva(env, negocio, texto, args, cuadros);
+  // Groq a veces arrastra del historial un "cuadro nuevo" o un nombre de cuadro que el usuario NO dijo ahora
+  // (ej. "carga a Hugo 100" tras crear Gastos). El código solo acepta lo que está en el mensaje actual.
+  const planoTexto = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const textoPlano = ' ' + planoTexto(texto) + ' ';
+  const pideNuevo = /\b(cre[ae]|crear|crea|nuev[oa]|arma|armar|haz|hacer|genera|generar)\b/.test(planoTexto(texto));
+  const nombreEnTexto = n => { const p = planoTexto(n); return !!p && textoPlano.includes(' ' + p + ' '); };
+
+  if (args.cuadro_nuevo === true && pideNuevo) return await prepararCargaNueva(env, negocio, texto, args, cuadros);
+  if (args.cuadro_nuevo === true) args = { ...args, nombre_cuadro: '', cuadro_nuevo: false };
+  if (String(args.nombre_cuadro ?? '').trim() && !nombreEnTexto(args.nombre_cuadro)) {
+    const hallado = resolverCuadroPorNombre(editables, args.nombre_cuadro);
+    if (!hallado || !nombreEnTexto(hallado.nombre_cuadro)) args = { ...args, nombre_cuadro: '' };
+  }
 
   if (editables.length === 0) {
     return aviso('Todavía no tienes un cuadro donde cargarlos. Dime el nombre y las columnas (ej. "crea el cuadro Préstamos con Nombre, Monto, Interés, Abono y Saldo") y los cargo junto con los registros.');
@@ -2950,6 +3013,132 @@ async function guardarCargaFilas(env, negocio, numeroCliente, datos) {
   return Response.json({ ok: true, carga_guardada: datos.filas.length, cuadro: nombreFinal });
 }
 
+// ── VENTAS DE CONTADO Y GASTOS (ventasGastos.js) ──────────────────
+// "Vendí 3 jugos a 2.50" / "Gasté 45 en luz": Groq solo extrae los valores crudos; el código calcula el total,
+// muestra la vista previa y NO guarda nada hasta el "sí" (pendiente en importaciones_pendientes con
+// tipoPendiente 'venta' | 'gasto' | 'anular_registro'). Lo anulado no se borra (columna `anulado`).
+
+async function iniciarRegistroVenta(env, negocio, args) {
+  const r = armarVentas(args);
+  if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
+  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'venta', items: r.items, total: r.total, fecha: r.fecha, cliente: r.cliente });
+  return { tipo: 'pago_pendiente', mensaje: textoVistaPreviaVenta(r) };
+}
+
+async function iniciarRegistroGasto(env, negocio, args) {
+  const r = armarGastos(args);
+  if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
+  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'gasto', items: r.items, total: r.total, fecha: r.fecha });
+  return { tipo: 'pago_pendiente', mensaje: textoVistaPreviaGasto(r) };
+}
+
+const lineaDeVentaGuardada = v => lineaVenta({ descripcion: v.descripcion, cantidad: Number(v.cantidad), precio: Number(v.precio), total: Number(v.total), soloTotal: false }) + (v.cliente_nombre ? ` — ${v.cliente_nombre}` : '');
+const lineaDeGastoGuardado = g => lineaGasto({ descripcion: g.descripcion, monto: Number(g.monto), categoria: g.categoria, proveedor: g.proveedor });
+
+// "Anula la última venta / el último gasto": vista previa del registro elegido; nada cambia hasta el "sí".
+async function iniciarAnularRegistro(env, negocio, pedido) {
+  const aviso = mensaje => ({ tipo: 'aviso', mensaje });
+  const esVenta = pedido.tipo === 'venta';
+  const { results } = await env.oficina_ia_db.prepare(esVenta
+    ? 'SELECT id, fecha, descripcion, cantidad, precio, total, cliente_nombre FROM ventas WHERE negocio_id = ? AND anulado = 0 ORDER BY id DESC LIMIT 100'
+    : 'SELECT id, fecha, descripcion, categoria, monto, proveedor FROM gastos WHERE negocio_id = ? AND anulado = 0 ORDER BY id DESC LIMIT 100'
+  ).bind(negocio.id).all();
+  const describir = esVenta ? lineaDeVentaGuardada : lineaDeGastoGuardado;
+
+  const e = elegirRegistroAAnular(results, pedido);
+  if (e.tipo === 'sin_registros') return aviso(textoSinRegistrosAnular(pedido.tipo));
+  if (e.tipo === 'sin_criterio') return aviso(textoPedirCriterioAnular(pedido.tipo));
+  if (e.tipo === 'ninguno') return aviso(textoNingunoAnular(pedido.tipo));
+  if (e.tipo === 'ambiguo') return aviso(textoAmbiguoAnular(pedido.tipo, e.candidatos, describir));
+
+  const linea = describir(e.registro);
+  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'anular_registro', tipo: pedido.tipo, id: e.registro.id, linea, fecha: e.registro.fecha });
+  return { tipo: 'pago_pendiente', mensaje: textoPrevioAnularRegistro(pedido.tipo, linea, e.registro.fecha) };
+}
+
+// "¿Cuánto vendí hoy?": se responde en código (0 tokens). Los totales los suma el código sobre lo vigente.
+async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
+  const db = env.oficina_ia_db;
+  const p = consulta.periodo;
+  let ventas = [];
+  let gastos = [];
+  if (consulta.que !== 'gastos') {
+    ventas = (await db.prepare(
+      'SELECT fecha, descripcion, cantidad, precio, total, cliente_nombre FROM ventas WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? ORDER BY fecha DESC, id DESC LIMIT 5000'
+    ).bind(negocio.id, p.desde, p.hasta).all()).results;
+  }
+  if (consulta.que !== 'ventas') {
+    gastos = (await db.prepare(
+      'SELECT fecha, descripcion, categoria, monto, proveedor FROM gastos WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? ORDER BY fecha DESC, id DESC LIMIT 5000'
+    ).bind(negocio.id, p.desde, p.hasta).all()).results;
+  }
+  return armarResumenVentasGastos({ que: consulta.que, periodo: p, ventas, gastos });
+}
+
+// "sí / no" a la vista previa de una venta, un gasto o una anulación. Se reclama el pendiente con DELETE
+// (un "sí" repetido no guarda dos veces); si el guardado falla, se restaura para poder reintentar.
+async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos) {
+  const anula = datos.tipoPendiente === 'anular_registro';
+  const c = clasificarRespuestaConfirmacion(texto);
+  if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, anula ? 'Listo, no anulé nada. Sigue registrado.' : 'Listo, no guardé nada.');
+  if (c !== 'confirmar') {
+    return await responderPago(env, negocio, numeroCliente, `Responde "sí" para ${anula ? 'anular' : 'guardar'} o "no" para dejarlo como está.`);
+  }
+  const db = env.oficina_ia_db;
+  const reclamo = await db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
+  if (reclamo.meta.changes !== 1) {
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, 'Eso ya se procesó, no lo repetí.');
+    return Response.json({ ok: true, registro_ya_procesado: true });
+  }
+
+  let mensaje;
+  try {
+    if (anula) {
+      const esVenta = datos.tipo === 'venta';
+      const res = await db.prepare(esVenta
+        ? "UPDATE ventas SET anulado = 1, estado = 'anulada', motivo_anulacion = 'Anulada por el usuario' WHERE id = ? AND negocio_id = ? AND anulado = 0"
+        : "UPDATE gastos SET anulado = 1, motivo_anulacion = 'Anulado por el usuario' WHERE id = ? AND negocio_id = ? AND anulado = 0"
+      ).bind(datos.id, negocio.id).run();
+      mensaje = res.meta.changes === 1
+        ? `Listo ✅ Anulé ${esVenta ? 'la venta' : 'el gasto'}: ${datos.linea}. No se borró: quedó ${esVenta ? 'anulada' : 'anulado'}.`
+        : `${esVenta ? 'Esa venta' : 'Ese gasto'} ya no estaba vigente, así que no cambié nada.`;
+    } else if (datos.tipoPendiente === 'venta') {
+      await db.batch(datos.items.map(i => db.prepare(
+        "INSERT INTO ventas (negocio_id, cliente_nombre, fecha, descripcion, cantidad, precio, total, estado) VALUES (?, ?, ?, ?, ?, ?, ?, 'pagada')"
+      ).bind(negocio.id, datos.cliente || null, datos.fecha, i.descripcion, i.cantidad, i.precio, i.total)));
+      mensaje = `Listo ✅ Registré ${datos.items.length > 1 ? `las ${datos.items.length} ventas` : 'la venta'} de contado por ${formatoMonto(datos.total)}.`;
+      mensaje += await textoTotalDelDia(db, negocio.id, 'ventas', 'total', datos.fecha, 'Ventas');
+    } else {
+      await db.batch(datos.items.map(i => db.prepare(
+        'INSERT INTO gastos (negocio_id, fecha, descripcion, categoria, monto, proveedor) VALUES (?, ?, ?, ?, ?, ?)'
+      ).bind(negocio.id, datos.fecha, i.descripcion, i.categoria || null, i.monto, i.proveedor || null)));
+      mensaje = `Listo ✅ Registré ${datos.items.length > 1 ? `los ${datos.items.length} gastos` : 'el gasto'} por ${formatoMonto(datos.total)}.`;
+      mensaje += await textoTotalDelDia(db, negocio.id, 'gastos', 'monto', datos.fecha, 'Gastos');
+    }
+  } catch (e) {
+    console.log('[WEBHOOK] Error guardando venta/gasto/anulación:', e?.message);
+    try { await guardarPagoPendiente(env, negocio.id, datos); } catch (e2) { console.log('[WEBHOOK] No pude restaurar el pendiente:', e2?.message); }
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
+      'No pude guardarlo. Responde "sí" para intentarlo de nuevo, o "no" para descartarlo.');
+    return Response.json({ ok: false, error: e?.message });
+  }
+  await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, mensaje);
+  return Response.json({ ok: true, registro_guardado: datos.tipoPendiente });
+}
+
+// Total vigente de ese día (línea extra del mensaje de confirmación). Si falla, no se agrega nada.
+async function textoTotalDelDia(db, negocioId, tabla, columna, fecha, etiqueta) {
+  try {
+    const r = await db.prepare(
+      `SELECT COALESCE(SUM(${columna}), 0) AS t, COUNT(*) AS n FROM ${tabla} WHERE negocio_id = ? AND fecha = ? AND anulado = 0`
+    ).bind(negocioId, fecha).first();
+    const cuando = fecha === fechaIsoPanama() ? 'hoy' : fechaLegible(fecha);
+    return `\n${etiqueta} de ${cuando}: ${formatoMonto(Number(r?.t || 0))} (${r?.n || 0} ${Number(r?.n) === 1 ? 'registro' : 'registros'}).`;
+  } catch (e) {
+    return '';
+  }
+}
+
 // ── RESPUESTA A LA IMPORTACIÓN PENDIENTE (sí / no / corrección) ──
 async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, importacionPendiente) {
   const datos = JSON.parse(importacionPendiente.datos);
@@ -2976,6 +3165,11 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
   }
   if (datos.tipoPendiente === 'cargar_filas') {
     const respuesta = await procesarRespuestaCargaFilas(env, negocio, numeroCliente, texto, datos);
+    await marcarFlujoPagoCerrado(env, negocio.id);
+    return respuesta;
+  }
+  if (datos.tipoPendiente === 'venta' || datos.tipoPendiente === 'gasto' || datos.tipoPendiente === 'anular_registro') {
+    const respuesta = await procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }

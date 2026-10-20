@@ -17,6 +17,7 @@ export const GRUPOS_HERRAMIENTAS = {
   archivos: ['enviar_excel', 'enviar_pdf', 'consultar_cuadro'],
   cobro: ['generar_cobro', 'consultar_cuadro'],
   cartas: ['generar_carta'],
+  ventas: ['registrar_venta', 'registrar_gasto'],
 };
 
 // Se aplican sobre texto SIN tildes y en minúsculas.
@@ -25,6 +26,7 @@ const PATRONES = {
   pagos: /\b(pag(?:o|os|ue|ues|ar|aron|ado|ada|ando)|abon\w*|cancel\w*|salda\w*|saldo|favor|anul\w*|deshac\w*|deshaz\w*|deshech\w*|equivoc\w*|equivoq\w*|revert\w*|devolu\w*)\b/,
   archivos: /\b(excel|xlsx|pdf|hoja\w*|archivo\w*|imagen\w*|foto\w*|pantallazo|captura|descarg\w*|envia\w*|manda\w*|pasa\w*|muestra\w*|ver)\b/,
   cobro: /\b(cobr\w*|recordatorio\w*|recuerd\w*|reclam\w*|moroso\w*|moros\w*|deud\w*|deben?|debe|lista de cobros)\b/,
+  ventas: /\b(vend\w*|venta\w*|gast\w*|compr\w*|pague|pagamos|desembols\w*)\b/,
   cartas: /\b(cart\w*|poder|constancia\w*|certific\w*|autoriza\w*|solicitud\w*|declaraci\w*|renuncia\w*|permiso\w*|contrato\w*|word|docx|documento\w*|plantilla\w*)\b/,
 };
 

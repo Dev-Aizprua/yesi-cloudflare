@@ -452,6 +452,70 @@ export const herramientas = [
   {
     type: 'function',
     function: {
+      name: 'registrar_venta',
+      description:
+        'Registra una VENTA DE CONTADO hecha por el dueño (ej. "vendí 3 jugos a 2.50", "vendí 2 pasteles por 10 en total a María", "ayer vendí un pan a 1"). ' +
+        'Extrae SOLO lo que dijo, tal cual: NUNCA calcules totales — el sistema calcula y pide confirmación antes de guardar. ' +
+        'NO es para cotizaciones ni facturas proforma, ni para pagos de un cliente a una factura.',
+      parameters: {
+        type: 'object',
+        properties: {
+          articulos: {
+            type: 'array',
+            description: 'Una entrada por cada producto o servicio vendido.',
+            items: {
+              type: 'object',
+              properties: {
+                descripcion: { type: 'string', description: 'Producto o servicio, tal cual lo dijo (ej. "jugos").' },
+                cantidad: { type: ['string', 'null'], description: 'Cantidad tal cual (ej. "3"). Null/omitir si no la dijo (se asume 1).' },
+                precio: { type: ['string', 'null'], description: 'Precio de UNA unidad, solo si dijo "a X" / "cada uno". Null/omitir si dijo un total.' },
+                total: { type: ['string', 'null'], description: 'Total del artículo, solo si dijo "por X en total" o un solo monto sin cantidad. Null/omitir si dio precio unitario.' },
+              },
+              required: ['descripcion'],
+            },
+          },
+          cliente: { type: ['string', 'null'], description: 'Nombre del cliente SOLO si lo dijo. Null/omitir si no.' },
+          fecha: { type: ['string', 'null'], description: 'Fecha SOLO si la dijo, tal cual (ej. "ayer", "15/10/2026"). Null/omitir si no (el sistema usa hoy).' },
+        },
+        required: ['articulos'],
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_gasto',
+      description:
+        'Registra un GASTO del negocio que el dueño hizo (ej. "gasté 45 en luz", "pagué la luz 45", "compré hielo por 10", "ayer pagué 20 de agua"). ' +
+        'Extrae SOLO lo que dijo, tal cual. NO es cuando un cliente paga una factura (eso es registrar_pago).',
+      parameters: {
+        type: 'object',
+        properties: {
+          gastos: {
+            type: 'array',
+            description: 'Una entrada por cada gasto.',
+            items: {
+              type: 'object',
+              properties: {
+                descripcion: { type: 'string', description: 'En qué fue el gasto, tal cual (ej. "luz", "hielo").' },
+                monto: { type: 'string', description: 'Monto tal cual se dijo (ej. "45", "$20.50").' },
+                categoria: { type: ['string', 'null'], description: 'Categoría SOLO si la dijo. Null/omitir si no.' },
+                proveedor: { type: ['string', 'null'], description: 'A quién se pagó SOLO si lo dijo. Null/omitir si no.' },
+              },
+              required: ['descripcion', 'monto'],
+            },
+          },
+          fecha: { type: ['string', 'null'], description: 'Fecha SOLO si la dijo, tal cual (ej. "ayer"). Null/omitir si no (el sistema usa hoy).' },
+        },
+        required: ['gastos'],
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
       name: 'ajustar_pago',
       description:
         'Corrige PAGOS y FACTURAS ya registrados, con una "accion": ' +
