@@ -1,4 +1,4 @@
-// functions/api/whatsapp.js
+//// functions/api/whatsapp.js
 // OFICINA IA — Webhook de WhatsApp
 // Adaptado para el proyecto Techzone/Kairós (yesi-agente-ia), que usa
 // una estructura de carpetas PLANA (functions/api/whatsapp.js), a
@@ -19,7 +19,8 @@ import { subirImagenCloudinary } from '../lib/cloudinary.js';
 import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro.js';
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
 import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
-import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos } from '../lib/ventasGastos.js';
+import { detectarPedidoArchivo, resolverCuadroDelPedido } from '../lib/atajoArchivos.js';
+import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga } from '../lib/cargaFilasTexto.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
@@ -174,6 +175,7 @@ export async function onRequestPost(context) {
     if (!textoUsuario) {
       return Response.json({ ok: true, info: 'mensaje vacío tras procesar' });
     }
+    if (tipoMensaje === 'audio') console.log('[WEBHOOK] Transcripción del audio:', JSON.stringify(textoUsuario));
 
     // ── 3.5. ¿Hay un cuadro importado de una foto esperando confirmación? ──
     // Si es así, este mensaje de texto NO es para las 7 herramientas
@@ -304,6 +306,16 @@ export async function onRequestPost(context) {
     // haría que Groq intente cumplir también el que falló).
     const idMensajeUsuario = await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
 
+    // ── 4b. Atajo: "pásame el Excel/PDF de X" se resuelve en código, sin Groq ──
+    let mensajeModelo;
+    let llamada;
+    const atajoArchivo = await resolverAtajoArchivo(env, negocio, textoUsuario);
+    if (atajoArchivo) {
+      console.log('[WEBHOOK] Atajo de archivo (sin Groq):', atajoArchivo.nombre, JSON.stringify(atajoArchivo.args));
+      llamada = { function: { name: atajoArchivo.nombre, arguments: JSON.stringify(atajoArchivo.args) } };
+      mensajeModelo = { tool_calls: [llamada] };
+    } else {
+
     // ── 5. Cargar contexto mínimo para Groq (no todo, por tokens) ─
     const { results: historialReciente } = await env.oficina_ia_db.prepare(
       'SELECT rol, mensaje FROM conversaciones WHERE negocio_id = ? ORDER BY id DESC LIMIT 6'
@@ -355,7 +367,7 @@ export async function onRequestPost(context) {
           model: 'openai/gpt-oss-120b',
           messages: mensajesGroq,
           tools: herramientasDisponibles,
-          tool_choice: 'auto',
+          tool_choice: esRegistroDirecto(textoUsuario) && herramientasDisponibles.some(h => h.function.name === 'registrar_venta' || h.function.name === 'registrar_gasto') ? 'required' : 'auto',
         }),
       });
       dataGroq = await respuestaGroq.json();
@@ -388,8 +400,8 @@ export async function onRequestPost(context) {
       return Response.json({ ok: false, error: dataGroq.error.message });
     }
 
-    const mensajeModelo = dataGroq.choices?.[0]?.message;
-    const llamada = mensajeModelo?.tool_calls?.[0];
+    mensajeModelo = dataGroq.choices?.[0]?.message;
+    llamada = mensajeModelo?.tool_calls?.[0];
 
     if (!llamada) {
       // Groq respondió con texto plano en vez de usar una herramienta
@@ -410,6 +422,8 @@ export async function onRequestPost(context) {
         respuesta_texto: textoRespuesta,
       });
     }
+
+    } // fin del bloque que usa Groq (el atajo de archivo lo salta)
 
     // ── 7. Aplicar la acción de verdad sobre cuadros/D1 ───────────
     let argumentos = JSON.parse(llamada.function.arguments);
@@ -3022,14 +3036,38 @@ async function iniciarRegistroVenta(env, negocio, args) {
   const r = armarVentas(args);
   if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
   await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'venta', items: r.items, total: r.total, fecha: r.fecha, cliente: r.cliente });
-  return { tipo: 'pago_pendiente', mensaje: textoVistaPreviaVenta(r) };
+  const repetidos = await textoPosibleRepetido(env, negocio.id, 'ventas', 'total', r.items.map(i => ({ descripcion: i.descripcion, valor: i.total })), r.fecha);
+  return { tipo: 'pago_pendiente', mensaje: conAvisoRepetido(textoVistaPreviaVenta(r), repetidos) };
 }
 
 async function iniciarRegistroGasto(env, negocio, args) {
   const r = armarGastos(args);
   if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
   await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'gasto', items: r.items, total: r.total, fecha: r.fecha });
-  return { tipo: 'pago_pendiente', mensaje: textoVistaPreviaGasto(r) };
+  const repetidos = await textoPosibleRepetido(env, negocio.id, 'gastos', 'monto', r.items.map(i => ({ descripcion: i.descripcion, valor: i.monto })), r.fecha);
+  return { tipo: 'pago_pendiente', mensaje: conAvisoRepetido(textoVistaPreviaGasto(r), repetidos) };
+}
+
+// ¿Ya hay un registro vigente igual (misma fecha, concepto y monto)? Solo avisa en la vista previa: el usuario decide.
+async function textoPosibleRepetido(env, negocioId, tabla, columna, items, fecha) {
+  try {
+    const repetidos = [];
+    for (const i of items) {
+      const ya = await env.oficina_ia_db.prepare(
+        `SELECT 1 AS x FROM ${tabla} WHERE negocio_id = ? AND fecha = ? AND anulado = 0 AND LOWER(descripcion) = LOWER(?) AND ABS(${columna} - ?) < 0.005 LIMIT 1`
+      ).bind(negocioId, fecha, i.descripcion, i.valor).first();
+      if (ya) repetidos.push(`${i.descripcion} por ${formatoMonto(i.valor)}`);
+    }
+    return repetidos;
+  } catch (e) {
+    return [];
+  }
+}
+
+function conAvisoRepetido(texto, repetidos) {
+  if (!repetidos || repetidos.length === 0) return texto;
+  const aviso = `Ojo: ya tienes registrado ${repetidos.join(' y ')} en esa fecha. Si es otro igual, responde "sí"; si lo mandaste dos veces, responde "no".`;
+  return texto.replace(/\n\n(¿(?:La|Lo) guardo\?)/, `\n\n${aviso}\n\n$1`);
 }
 
 const lineaDeVentaGuardada = v => lineaVenta({ descripcion: v.descripcion, cantidad: Number(v.cantidad), precio: Number(v.precio), total: Number(v.total), soloTotal: false }) + (v.cliente_nombre ? ` — ${v.cliente_nombre}` : '');
@@ -3136,6 +3174,29 @@ async function textoTotalDelDia(db, negocioId, tabla, columna, fecha, etiqueta) 
     return `\n${etiqueta} de ${cuando}: ${formatoMonto(Number(r?.t || 0))} (${r?.n || 0} ${Number(r?.n) === 1 ? 'registro' : 'registros'}).`;
   } catch (e) {
     return '';
+  }
+}
+
+// ── ATAJO "PÁSAME EL EXCEL / EL PDF DE X" (atajoArchivos.js) ──────
+// Pedido inequívoco + cuadro resuelto con certeza → se entrega por la misma ruta de enviar_excel / enviar_pdf
+// sin llamar a Groq. Cualquier duda (varios cuadros sin nombre, nombre que no encaja) devuelve null y el
+// mensaje sigue por Groq como siempre.
+async function resolverAtajoArchivo(env, negocio, texto) {
+  try {
+    const pedido = detectarPedidoArchivo(texto);
+    if (!pedido) return null;
+    const cuadros = await obtenerCuadros(env, negocio.id);
+    const cuadro = resolverCuadroDelPedido(cuadros, pedido, {
+      formato: pedido.formato, resolverPorNombre: resolverCuadroPorNombre, buscarDocumento: buscarDocumentoGuardado,
+    });
+    if (!cuadro) return null;
+    return {
+      nombre: pedido.formato === 'pdf' ? 'enviar_pdf' : 'enviar_excel',
+      args: { nombre_cuadro: cuadro.nombre_cuadro, con_imagen: pedido.conImagen },
+    };
+  } catch (e) {
+    console.log('[WEBHOOK] Error en el atajo de archivo, se sigue con Groq:', e?.message);
+    return null;
   }
 }
 

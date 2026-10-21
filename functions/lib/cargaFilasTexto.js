@@ -102,12 +102,14 @@ export function armarFilasNuevas({ extraidas, columnasBonitas, columnasInternas,
 
     for (const [k, v] of Object.entries(e?.valores || {})) {
       const col = normalizarClave(k);
-      if (!columnasInternas.includes(col) || col === claveNombre) {
+      if (col === claveNombre) continue; // el nombre ya va aparte; repetirlo no es un dato suelto
+      if (!columnasInternas.includes(col)) {
         sinAsignar.push({ nombre, texto: `${k}: ${v}` });
         continue;
       }
       const pv = parsearValorCarga(v);
       if (pv.tipo === 'vacio') continue;
+      if (pv.tipo === 'porcentaje' && reglas[col] && formulaUsaPorcentaje(reglas[col], pv.texto)) continue; // la fórmula ya lo aplica
       if (pv.tipo === 'porcentaje') {
         sinAsignar.push({ nombre, texto: `${bonita(col)}: ${pv.texto} (es un porcentaje, no un monto)` });
         continue;
@@ -127,6 +129,12 @@ export function armarFilasNuevas({ extraidas, columnasBonitas, columnasInternas,
     crudas.push({ fila, dados });
   }
 
+  // Nombres sin ningún dato (típico de una nota de voz mal entendida): se avisa antes de guardar en 0.
+  const sinDatos = crudas.filter(x => Object.keys(x.fila).every(k => k === claveNombre || k === 'nombre') && Object.keys(x.dados).length === 0)
+    .map(x => x.fila[claveNombre]);
+  if (sinDatos.length > 0) {
+    avisos.push(`${sinDatos.join(', ')}: sin ningún monto (quedarían en 0). Si no era eso, responde "no".`);
+  }
   // Columnas de números: las conocidas, o (cuadro nuevo) las que solo recibieron números.
   let numericas = columnasNumericas ? new Set(columnasNumericas) : new Set();
   if (!columnasNumericas) {
@@ -155,6 +163,15 @@ export function armarFilasNuevas({ extraidas, columnasBonitas, columnasInternas,
     filas.push(calculada);
   }
   return { filas, avisos, sinAsignar, omitidas, numericas };
+}
+
+// ¿La fórmula ya aplica ese porcentaje? ("10%" y monto*0.10 → sí). Compara el número/100 con los números de la fórmula.
+function formulaUsaPorcentaje(formula, textoPct) {
+  const n = parseFloat(String(textoPct).replace(',', '.').replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(n)) return false;
+  const tasa = n / 100;
+  const nums = String(formula).match(/\d+(?:\.\d+)?/g) || [];
+  return nums.some(x => Math.abs(parseFloat(x) - tasa) < 1e-9);
 }
 
 // ── Lectura con Groq (llamada pequeña y aparte) ─────────────────────────────────────────────────────

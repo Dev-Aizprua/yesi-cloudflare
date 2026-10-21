@@ -146,11 +146,14 @@ export function detectarAnularRegistro(texto) {
   if (!t || t.length > 90) return null;
   if (/^(?:como|puedo|se puede|es posible|quiero saber|que pasa)\b/.test(t)) return null;
   if (/\bno\s+(?:\w+\s+)?(?:anul|cancel|borr|elimin|deshaz)/.test(t)) return null;
-  const m = t.match(/\b(?:anul\w*|elimin\w*|borr\w*|deshaz\w*|deshac\w*|cancel\w*)\s+(?:(?:por favor|porfa)\s+)?(?:(?:la|el|esa|ese|mi)\s+)?(?:(ultim[oa]|anterior)\s+)?(venta|gasto)\b(.*)$/);
+  // El verbo y "venta"/"gasto" pueden ir separados por hasta 5 palabras ("anula por favor la última venta",
+  // "anúlame esa última venta"): así una nota de voz transcrita con relleno también entra.
+  const m = t.match(/\b(?:anul\w*|elimin\w*|borr\w*|deshaz\w*|deshac\w*|cancel\w*)\s+((?:[a-zñ]+\s+){0,5}?)(venta|gasto)\b(.*)$/);
   if (!m || !RE_VERBO_ANULAR.test(t)) return null;
+  const entre = m[1] || '';
   const resto = m[3] || '';
-  if (/\b(cuadro|abono|pago|factura|cotizacion|proforma|tabla|excel)\b/.test(resto)) return null;
-  const ultima = !!m[1] || /\bultim[oa]\b/.test(resto);
+  if (/\b(cuadro|abono|pago|factura|cotizacion|proforma|tabla|excel|fila|registro)\b/.test(`${entre} ${resto}`)) return null;
+  const ultima = /\b(ultim[oa]|anterior)\b/.test(`${entre} ${resto}`);
   const filtro = resto.split(' ').filter(p => p.length >= 3 && !RELLENO.has(p));
   return { tipo: m[2], ultima, filtro };
 }
@@ -308,4 +311,17 @@ export function unirLlamadasVentasGastos(toolCalls) {
     for (const k of ['fecha', 'cliente']) if (a[k] && !args[k]) args[k] = a[k];
   }
   return args[campo].length > 0 ? { nombre, args } : null;
+}
+
+/**
+ * ¿El mensaje ES un registro directo ("Vendí 2 panes por 1 en total", "Pagué la luz 45")? Empieza con el verbo
+ * del dueño y trae una cantidad. En ese caso el webhook obliga a Groq a llamar una herramienta (tool_choice
+ * 'required'): en la prueba real, 2 de 6 veces contestó con texto ("¿La guardo?") y NO dejó nada pendiente, así
+ * que el primer "sí" no guardaba nada y había que repetirlo.
+ */
+export function esRegistroDirecto(texto) {
+  const t = plano(texto);
+  if (!t || t.length > 200) return false;
+  if (!/^(?:(?:hoy|ayer|antier|anteayer)\s+)?(?:(?:ya|yo)\s+)?(?:vendi|vendimos|gaste|gastamos|compre|compramos|pague|pagamos)\b/.test(t)) return false;
+  return /\d|\b(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|veinte)\b/.test(t);
 }
