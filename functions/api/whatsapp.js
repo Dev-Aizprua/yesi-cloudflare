@@ -1,4 +1,4 @@
-//// functions/api/whatsapp.js
+// functions/api/whatsapp.js
 // OFICINA IA — Webhook de WhatsApp
 // Adaptado para el proyecto Techzone/Kairós (yesi-agente-ia), que usa
 // una estructura de carpetas PLANA (functions/api/whatsapp.js), a
@@ -19,8 +19,8 @@ import { subirImagenCloudinary } from '../lib/cloudinary.js';
 import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro.js';
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
 import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
-import { detectarPedidoArchivo, resolverCuadroDelPedido } from '../lib/atajoArchivos.js';
-import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto } from '../lib/ventasGastos.js';
+import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
+import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga } from '../lib/cargaFilasTexto.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
@@ -30,7 +30,7 @@ import { generarImagenReporteSecciones } from '../lib/imagenReporteSecciones.js'
 import { generarExcelReporteSecciones } from '../lib/excelReporteSecciones.js';
 import { validarPie, validarEncabezado, avisosEncabezado, recalcularPie } from '../lib/tablaExtendida.js';
 import { construirDatosCotizacion, siguienteNumeroDocumento, nombreDocumento, elegirCotizacion, buscarDocumentoGuardado, lineasDesdeCuadro, aplicarCorreccionDocumento, describirParaCorreccion, clasificarRespuestaPendiente, filaIndiceDocumento } from '../lib/cotizacion.js';
-import { parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDocumento, mismoCliente, calcularSaldos, repartirPago, ordenarMasAntiguoPrimero, textoVistaPrevia, textoElegirDocumento, clasificarRespuestaConfirmacion, clasificarRespuestaElegir, formatoMonto, fechaLegible,
+import { redondear2, parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDocumento, mismoCliente, calcularSaldos, repartirPago, ordenarMasAntiguoPrimero, textoVistaPrevia, textoElegirDocumento, clasificarRespuestaConfirmacion, clasificarRespuestaElegir, formatoMonto, fechaLegible,
   filtrarPagos, textoElegirPago, clasificarRespuestaElegirIndice, planAnularPago, textoPrevioAnularPago, planAnularDocumento, textoPrevioAnularDocumento, planAplicarSaldo, textoPrevioAplicarSaldo,
   corregirLlamadaPago, esSiNoPuro, columnaDePago, acumularAbono, esCorreccionDeAbono,
   detectarConsultaDeudas, extraerPrestamosDeCuadros, agruparSaldosAFavor, armarReporteDeudas, unirCuadrosDePrestamo,
@@ -224,6 +224,21 @@ export async function onRequestPost(context) {
       }
     }
 
+    // ── 3.7b. Agradecimiento suelto ("gracias", "ok gracias"): se responde en código, sin Groq ──
+    // Va después de los pendientes (3.5/3.6): si había algo esperando confirmación, ya se atendió arriba.
+    if (detectarAgradecimiento(textoUsuario)) {
+      const respuestaGracias = respuestaAgradecimiento();
+      try {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, respuestaGracias);
+      } catch (e) {
+        console.log('[WEBHOOK] Error enviando respuesta de agradecimiento:', e.message);
+      }
+      await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+      await guardarMensaje(env, negocio.id, 'asistente', respuestaGracias, 'texto');
+      await marcarFlujoPagoCerrado(env, negocio.id);
+      return Response.json({ ok: true, negocio: negocio.slug, atajo: 'agradecimiento' });
+    }
+
     // ── 3.8. "¿Quién me debe?": consulta de información, se responde en código ──
     // Va DESPUÉS de los pendientes (3.5/3.6) y del "sí/no" suelto (3.7), así un "sí" nunca se confunde
     // con una consulta. No llama a Groq (0 tokens). Si armar el reporte falla, se sigue con el flujo normal.
@@ -243,6 +258,25 @@ export async function onRequestPost(context) {
         await guardarMensaje(env, negocio.id, 'asistente', reporte, 'texto');
         await marcarFlujoPagoCerrado(env, negocio.id);
         return Response.json({ ok: true, negocio: negocio.slug, consulta: 'deudas' });
+      }
+    }
+
+    // ── 3.8b. "Anula el último cobro de Ana" (ventas a crédito): en código, con vista previa y "sí" ──
+    // Va antes de 3.9: "anula el último abono de Yisel" (préstamos) NO entra aquí; "cobro" o "abono ... fiado" sí.
+    const pedidoAnularCobro = detectarAnularCobroVenta(textoUsuario);
+    if (pedidoAnularCobro) {
+      let respuestaCobro = null;
+      try {
+        respuestaCobro = await iniciarAnularCobroVenta(env, negocio, pedidoAnularCobro);
+      } catch (e) {
+        console.log('[WEBHOOK] Error iniciando anular cobro de venta, se sigue:', e?.message);
+      }
+      if (respuestaCobro) {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, respuestaCobro.mensaje);
+        await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+        await guardarMensaje(env, negocio.id, 'asistente', respuestaCobro.mensaje, 'texto');
+        await marcarFlujoPagoCerrado(env, negocio.id);
+        return Response.json({ ok: true, negocio: negocio.slug, consulta: 'anular_cobro_venta' });
       }
     }
 
@@ -334,7 +368,8 @@ export async function onRequestPost(context) {
     // ── 6. Armar el system prompt y llamar a Groq con Tool Use ────
     // registrar_pago solo se ofrece a negocios que ya tienen facturas proforma: un negocio de
     // préstamos (como el del financista) nunca la ve, y sus abonos siguen por actualizar_fila.
-    const conPagos = await negocioTieneProformas(env, negocio.id);
+    // También se ofrece si hay ventas a crédito por cobrar: "Ana pagó 5" se cobra con la misma herramienta.
+    const conPagos = (await negocioTieneProformas(env, negocio.id)) || (await negocioTieneVentasACredito(env, negocio.id));
     const conAjustes = await negocioTieneDocumentos(env, negocio.id);
     const herramientasDisponibles = filtrarHerramientas(herramientas, grupos).filter(h =>
       (h.function.name !== 'registrar_pago' || conPagos) && (h.function.name !== 'ajustar_pago' || conAjustes));
@@ -2243,7 +2278,7 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
     { g: ['cobro', 'cuadro'], t: `- NUNCA inventes un número de teléfono — el parámetro "telefono" solo se llena si el usuario lo dio explícitamente en este mensaje o en uno reciente de la conversación.` },
     { g: 'cuadro', t: `- En agregar_fila y actualizar_fila, usa EXACTAMENTE la "clave" indicada arriba para cada columna — NUNCA inventes un nombre de campo nuevo. Ejemplo: si la columna es "Monto" (clave "monto") y el usuario dice "préstamo de 200" o "capital de 200", igual usa la clave "monto", no "prestamo" ni "capital".` },
     { g: 'cuadro', t: `- Si el usuario dicta o pega VARIOS registros a la vez (2 o más personas o filas) para cargarlos, usa cargar_filas UNA sola vez (nunca varias llamadas a agregar_fila) y NO los extraigas tú: el sistema los lee del mensaje. Si además pide crear el cuadro, usa cargar_filas con cuadro_nuevo=true y sus columnas. Para UN solo registro usa agregar_fila.` },
-    { g: 'ventas', t: `- Si el usuario dice que VENDIÓ algo de contado (ej. "vendí 3 jugos a 2.50", "vendí 2 pasteles por 10 en total a María"), usa registrar_venta: una entrada en "articulos" por producto, con descripcion, cantidad y precio UNITARIO tal cual los dijo (si dijo "por X en total" o un total para ese artículo, ponlo en "total" y deja precio vacío). NUNCA calcules totales. cliente y fecha SOLO si los dijo. Una venta de contado NO es una cotización ni una factura.` },
+    { g: 'ventas', t: `- Si el usuario dice que VENDIÓ algo, de contado o fiado (ej. "vendí 3 jugos a 2.50", "vendí 2 pasteles por 10 en total a María", "le vendí a Ana 3 jugos fiado"), usa registrar_venta (el sistema detecta si es a crédito; tú solo extrae los datos): una entrada en "articulos" por producto, con descripcion, cantidad y precio UNITARIO tal cual los dijo (si dijo "por X en total" o un total para ese artículo, ponlo en "total" y deja precio vacío). NUNCA calcules totales. cliente y fecha SOLO si los dijo. Una venta de contado NO es una cotización ni una factura.` },
     { g: 'ventas', t: `- Si el DUEÑO dice que ÉL gastó, compró o pagó algo (ej. "gasté 45 en luz", "pagué la luz 45", "compré hielo por 10"), usa registrar_gasto: una entrada en "gastos" por cada gasto (descripcion y monto tal cual), proveedor y categoria SOLO si los dijo. registrar_pago es SOLO cuando un CLIENTE pagó o abonó una factura. Si el usuario nombra un cuadro (ej. "en el cuadro Gastos"), usa las herramientas de cuadro.` },
     { g: 'cuadro', t: `- En crear_cuadro, las fórmulas de reglas_calculo deben referirse a las columnas usando su clave en minúsculas y sin tildes (ej. columna "Deuda" → escribe "deuda" en la fórmula, no "Deuda").` },
     { g: 'documentos', t: `- Si el usuario pide una COTIZACIÓN o presupuesto (ej. "hazme una cotización para Juan, 10 sillas a 25"), usa crear_cotizacion: una entrada en "lineas" por producto o servicio, con descripcion, cantidad y precio UNITARIO tal cual los dijo. NUNCA calcules totales, subtotal ni ITBMS. El campo itbms de una línea se llena SOLO si el usuario dijo una tasa para esa línea (ej. "10%", "exento"); si no la dijo, OMÍTELO (el sistema aplica 7%) y NUNCA la deduzcas por el tipo de producto. Si dijo "todo exento" o "todo al 10%", repítelo en cada línea. NO uses crear_cuadro ni generar_carta para una cotización.` },
@@ -2259,7 +2294,7 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
   // Regla de pagos: solo si el negocio ya tiene facturas proforma (la herramienta registrar_pago
   // solo se ofrece entonces). Así un negocio de préstamos no la ve nunca.
   const reglaPagos = conPagos && (!grupos || grupos.has('pagos'))
-    ? `\n- Si el usuario dice que un cliente PAGÓ, ABONÓ o CANCELÓ algo de una FACTURA (ej. "Juan pagó 100", "Ana abonó 50 de la factura 004", "Juan pagó 100 ayer"), usa registrar_pago con el cliente, el monto y, SOLO si los dijo, el número de factura y la fecha, tal cual. NUNCA calcules saldos ni decidas a qué factura va: el sistema lo hace y le pregunta al usuario. NO uses registrar_pago para abonos de un cuadro de préstamos ni de ningún otro cuadro: eso sigue siendo actualizar_fila.`
+    ? `\n- Si el usuario dice que un cliente PAGÓ, ABONÓ o CANCELÓ algo de una FACTURA o de una VENTA A CRÉDITO (ej. "Juan pagó 100", "Ana abonó 50 de la factura 004", "Juan pagó 100 ayer"), usa registrar_pago con el cliente, el monto y, SOLO si los dijo, el número de factura y la fecha, tal cual. NUNCA calcules saldos ni decidas a qué factura va: el sistema lo hace y le pregunta al usuario. NO uses registrar_pago para abonos de un cuadro de préstamos ni de ningún otro cuadro: eso sigue siendo actualizar_fila.`
     : '';
   const reglaAjustes = conAjustes && (!grupos || grupos.has('pagos'))
     ? `\n- Si el usuario pide ANULAR o DESHACER un PAGO (ej. "anula el pago de Ana", "me equivoqué con el pago de Juan"), ANULAR una factura o cotización (ej. "anula la factura 004") o APLICAR un saldo a favor a una factura (ej. "aplica el saldo a favor de Ana a la factura 004"), usa ajustar_pago con la accion que corresponda y los datos tal cual los dijo. NUNCA calcules ni decidas cuál pago o factura es: el sistema pregunta y pide confirmación. "Anular" NO es "eliminar el cuadro" (eso sigue siendo eliminar_cuadro).`
@@ -3035,9 +3070,13 @@ async function guardarCargaFilas(env, negocio, numeroCliente, datos) {
 async function iniciarRegistroVenta(env, negocio, args) {
   const r = armarVentas(args);
   if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
-  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'venta', items: r.items, total: r.total, fecha: r.fecha, cliente: r.cliente });
+  // ¿Es fiada? Lo decide el CÓDIGO leyendo lo que dijo el usuario ("fiado", "a crédito", "me debe"), no Groq.
+  const credito = detectarVentaACredito(args._texto);
+  if (credito && !r.cliente) return { tipo: 'aviso', mensaje: textoPedirClienteCredito() };
+  const datos = { tipoPendiente: 'venta', items: r.items, total: r.total, fecha: r.fecha, cliente: r.cliente, credito };
+  await guardarPagoPendiente(env, negocio.id, datos);
   const repetidos = await textoPosibleRepetido(env, negocio.id, 'ventas', 'total', r.items.map(i => ({ descripcion: i.descripcion, valor: i.total })), r.fecha);
-  return { tipo: 'pago_pendiente', mensaje: conAvisoRepetido(textoVistaPreviaVenta(r), repetidos) };
+  return { tipo: 'pago_pendiente', mensaje: conAvisoRepetido(textoVistaPreviaVenta({ ...r, credito }), repetidos) };
 }
 
 async function iniciarRegistroGasto(env, negocio, args) {
@@ -3091,7 +3130,15 @@ async function iniciarAnularRegistro(env, negocio, pedido) {
 
   const linea = describir(e.registro);
   await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'anular_registro', tipo: pedido.tipo, id: e.registro.id, linea, fecha: e.registro.fecha });
-  return { tipo: 'pago_pendiente', mensaje: textoPrevioAnularRegistro(pedido.tipo, linea, e.registro.fecha) };
+  let previa = textoPrevioAnularRegistro(pedido.tipo, linea, e.registro.fecha);
+  if (esVenta) {
+    // Una venta a crédito con cobros: avisar que esos cobros quedarán sin efecto.
+    try {
+      const c = await env.oficina_ia_db.prepare('SELECT COALESCE(SUM(monto), 0) AS t FROM cobros_venta WHERE venta_id = ? AND anulado = 0').bind(e.registro.id).first();
+      if (Number(c?.t) > 0.005) previa = previa.replace('\n\nNo se borra', `\nOjo: ya tiene cobros por ${formatoMonto(Number(c.t))}; al anularla esos cobros quedan sin efecto.\n\nNo se borra`);
+    } catch (err) { /* sin tabla de cobros: no hay nada que avisar */ }
+  }
+  return { tipo: 'pago_pendiente', mensaje: previa };
 }
 
 // "¿Cuánto vendí hoy?": se responde en código (0 tokens). Los totales los suma el código sobre lo vigente.
@@ -3101,9 +3148,16 @@ async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
   let ventas = [];
   let gastos = [];
   if (consulta.que !== 'gastos') {
-    ventas = (await db.prepare(
-      'SELECT fecha, descripcion, cantidad, precio, total, cliente_nombre FROM ventas WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? ORDER BY fecha DESC, id DESC LIMIT 5000'
-    ).bind(negocio.id, p.desde, p.hasta).all()).results;
+    try {
+      ventas = (await db.prepare(
+        'SELECT fecha, descripcion, cantidad, precio, total, cliente_nombre, estado, a_credito FROM ventas WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? ORDER BY fecha DESC, id DESC LIMIT 5000'
+      ).bind(negocio.id, p.desde, p.hasta).all()).results;
+    } catch (e) {
+      // Sin la columna a_credito (migración 5 sin correr): se lista igual, sin marcar las ventas a crédito.
+      ventas = (await db.prepare(
+        'SELECT fecha, descripcion, cantidad, precio, total, cliente_nombre FROM ventas WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? ORDER BY fecha DESC, id DESC LIMIT 5000'
+      ).bind(negocio.id, p.desde, p.hasta).all()).results;
+    }
   }
   if (consulta.que !== 'ventas') {
     gastos = (await db.prepare(
@@ -3116,7 +3170,7 @@ async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
 // "sí / no" a la vista previa de una venta, un gasto o una anulación. Se reclama el pendiente con DELETE
 // (un "sí" repetido no guarda dos veces); si el guardado falla, se restaura para poder reintentar.
 async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos) {
-  const anula = datos.tipoPendiente === 'anular_registro';
+  const anula = datos.tipoPendiente === 'anular_registro' || datos.tipoPendiente === 'anular_cobro';
   const c = clasificarRespuestaConfirmacion(texto);
   if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, anula ? 'Listo, no anulé nada. Sigue registrado.' : 'Listo, no guardé nada.');
   if (c !== 'confirmar') {
@@ -3131,7 +3185,17 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
 
   let mensaje;
   try {
-    if (anula) {
+    if (datos.tipoPendiente === 'cobro_venta') {
+      mensaje = await guardarCobroVenta(db, negocio.id, datos);
+    } else if (datos.tipoPendiente === 'anular_cobro') {
+      const res = await db.batch([
+        db.prepare("UPDATE cobros_venta SET anulado = 1, motivo_anulacion = 'Anulado por el usuario' WHERE id = ? AND negocio_id = ? AND anulado = 0").bind(datos.id, negocio.id),
+        db.prepare("UPDATE ventas SET estado = 'pendiente' WHERE id = ? AND negocio_id = ? AND a_credito = 1 AND anulado = 0 AND EXISTS (SELECT 1 FROM cobros_venta WHERE id = ? AND anulado = 1)").bind(datos.venta_id, negocio.id, datos.id),
+      ]);
+      mensaje = res[0].meta.changes === 1
+        ? `Listo ✅ Anulé el cobro de ${datos.cliente} por ${formatoMonto(datos.monto)}. No se borró: quedó anulado y la deuda volvió a subir.`
+        : 'Ese cobro ya no estaba vigente, así que no cambié nada.';
+    } else if (anula) {
       const esVenta = datos.tipo === 'venta';
       const res = await db.prepare(esVenta
         ? "UPDATE ventas SET anulado = 1, estado = 'anulada', motivo_anulacion = 'Anulada por el usuario' WHERE id = ? AND negocio_id = ? AND anulado = 0"
@@ -3141,11 +3205,24 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
         ? `Listo ✅ Anulé ${esVenta ? 'la venta' : 'el gasto'}: ${datos.linea}. No se borró: quedó ${esVenta ? 'anulada' : 'anulado'}.`
         : `${esVenta ? 'Esa venta' : 'Ese gasto'} ya no estaba vigente, así que no cambié nada.`;
     } else if (datos.tipoPendiente === 'venta') {
-      await db.batch(datos.items.map(i => db.prepare(
-        "INSERT INTO ventas (negocio_id, cliente_nombre, fecha, descripcion, cantidad, precio, total, estado) VALUES (?, ?, ?, ?, ?, ?, ?, 'pagada')"
-      ).bind(negocio.id, datos.cliente || null, datos.fecha, i.descripcion, i.cantidad, i.precio, i.total)));
-      mensaje = `Listo ✅ Registré ${datos.items.length > 1 ? `las ${datos.items.length} ventas` : 'la venta'} de contado por ${formatoMonto(datos.total)}.`;
-      mensaje += await textoTotalDelDia(db, negocio.id, 'ventas', 'total', datos.fecha, 'Ventas');
+      if (datos.credito) {
+        // Venta fiada: queda 'pendiente' y marcada a_credito; lo que se cobre va a cobros_venta.
+        await db.batch(datos.items.map(i => db.prepare(
+          "INSERT INTO ventas (negocio_id, cliente_nombre, fecha, descripcion, cantidad, precio, total, estado, a_credito) VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', 1)"
+        ).bind(negocio.id, datos.cliente || null, datos.fecha, i.descripcion, i.cantidad, i.precio, i.total)));
+        mensaje = `Listo ✅ Registré ${datos.items.length > 1 ? `las ${datos.items.length} ventas` : 'la venta'} a crédito por ${formatoMonto(datos.total)}.`;
+        try {
+          const g = agruparDeudaVentas(await cargarVentasFiadasConSaldo(env, negocio.id)).find(x => mismoCliente(datos.cliente, x.cliente));
+          if (g) mensaje += `\n${g.cliente} te debe ahora ${formatoMonto(g.saldo)} en ventas a crédito.`;
+        } catch (e) { console.log('[WEBHOOK] No pude sumar la deuda del cliente:', e?.message); }
+        mensaje += await textoTotalDelDia(db, negocio.id, 'ventas', 'total', datos.fecha, 'Ventas');
+      } else {
+        await db.batch(datos.items.map(i => db.prepare(
+          "INSERT INTO ventas (negocio_id, cliente_nombre, fecha, descripcion, cantidad, precio, total, estado) VALUES (?, ?, ?, ?, ?, ?, ?, 'pagada')"
+        ).bind(negocio.id, datos.cliente || null, datos.fecha, i.descripcion, i.cantidad, i.precio, i.total)));
+        mensaje = `Listo ✅ Registré ${datos.items.length > 1 ? `las ${datos.items.length} ventas` : 'la venta'} de contado por ${formatoMonto(datos.total)}.`;
+        mensaje += await textoTotalDelDia(db, negocio.id, 'ventas', 'total', datos.fecha, 'Ventas');
+      }
     } else {
       await db.batch(datos.items.map(i => db.prepare(
         'INSERT INTO gastos (negocio_id, fecha, descripcion, categoria, monto, proveedor) VALUES (?, ?, ?, ?, ?, ?)'
@@ -3229,7 +3306,7 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }
-  if (datos.tipoPendiente === 'venta' || datos.tipoPendiente === 'gasto' || datos.tipoPendiente === 'anular_registro') {
+  if (['venta', 'gasto', 'anular_registro', 'cobro_venta', 'anular_cobro'].includes(datos.tipoPendiente)) {
     const respuesta = await procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
@@ -3452,10 +3529,90 @@ async function armarReporteDeudasNegocio(env, negocio, consulta) {
   const prestamos = extraerPrestamosDeCuadros(cuadros, normalizarClave);
   const proformas = await cargarProformasConSaldo(env, negocio.id);
   const saldosAFavor = agruparSaldosAFavor(await cargarPagosVigentes(env, negocio.id));
+  let ventas = { items: [] };
+  try {
+    ventas = { items: agruparDeudaVentas(await cargarVentasFiadasConSaldo(env, negocio.id)) };
+  } catch (e) {
+    console.log('[WEBHOOK] No pude leer las ventas a crédito para el reporte:', e?.message);
+  }
   return armarReporteDeudas(
-    { prestamos, facturas: { items: proformas.filter(d => d.saldo > 0.005), totalDocs: proformas.length }, saldosAFavor },
+    { prestamos, facturas: { items: proformas.filter(d => d.saldo > 0.005), totalDocs: proformas.length }, saldosAFavor, ventas },
     { cliente: consulta.tipo === 'cliente' ? consulta.cliente : null }
   );
+}
+
+// ── VENTAS A CRÉDITO (fiado): saldo = total − cobros vigentes (tabla cobros_venta). Ver ventasGastos.js ──
+async function cargarVentasFiadasConSaldo(env, negocioId) {
+  const { results } = await env.oficina_ia_db.prepare(
+    `SELECT v.id, v.cliente_nombre, v.fecha, v.descripcion, v.cantidad, v.precio, v.total,
+            v.total - COALESCE((SELECT SUM(c.monto) FROM cobros_venta c WHERE c.venta_id = v.id AND c.anulado = 0), 0) AS saldo
+     FROM ventas v WHERE v.negocio_id = ? AND v.anulado = 0 AND v.a_credito = 1 AND v.estado = 'pendiente'
+     ORDER BY v.fecha, v.id`
+  ).bind(negocioId).all();
+  return results.map(v => ({ ...v, saldo: redondear2(Number(v.saldo)) })).filter(v => v.saldo > 0.005);
+}
+
+async function negocioTieneVentasACredito(env, negocioId) {
+  try {
+    const f = await env.oficina_ia_db.prepare(
+      "SELECT 1 AS hay FROM ventas WHERE negocio_id = ? AND a_credito = 1 AND anulado = 0 AND estado = 'pendiente' LIMIT 1"
+    ).bind(negocioId).first();
+    return !!f;
+  } catch (e) {
+    return false; // sin migración de ventas a crédito
+  }
+}
+
+// "Ana pagó 5" cuando Ana debe ventas a crédito: reparte (la más antigua primero) y pide confirmación. NO guarda.
+async function iniciarCobroVenta(env, negocio, { cliente, monto, fecha, fiadas }) {
+  const reparto = repartirCobroVentas(monto, fiadas.map(v => ({ id: v.id, fecha: v.fecha, descripcion: v.descripcion, saldo: v.saldo })));
+  const nombre = fiadas[0].cliente_nombre || cliente;
+  if (reparto.sobrante > 0.005) {
+    return { tipo: 'aviso', mensaje: `${nombre} solo debe ${formatoMonto(reparto.saldoTotal)} en ventas a crédito y me dices que pagó ${formatoMonto(monto)}. Revisa el monto y dímelo otra vez.` };
+  }
+  const datos = { tipoPendiente: 'cobro_venta', cliente: nombre, monto, fecha, aplicaciones: reparto.aplicaciones, saldoTotal: reparto.saldoTotal };
+  await guardarPagoPendiente(env, negocio.id, datos);
+  return { tipo: 'pago_pendiente', mensaje: textoVistaPreviaCobroVenta(datos) };
+}
+
+// Guarda el cobro confirmado. Antes de escribir se vuelve a verificar que cada venta siga vigente y con saldo
+// suficiente (pudo anularse o cobrarse entre la vista previa y el "sí"); si cambió, no se guarda nada.
+async function guardarCobroVenta(db, negocioId, datos) {
+  const sentencias = [];
+  for (const a of datos.aplicaciones) {
+    const v = await db.prepare(
+      `SELECT v.total - COALESCE((SELECT SUM(c.monto) FROM cobros_venta c WHERE c.venta_id = v.id AND c.anulado = 0), 0) AS saldo
+       FROM ventas v WHERE v.id = ? AND v.negocio_id = ? AND v.anulado = 0 AND v.a_credito = 1`
+    ).bind(a.venta_id, negocioId).first();
+    if (!v || Number(v.saldo) < a.monto - 0.005) {
+      return `Las ventas a crédito de ${datos.cliente} cambiaron desde que te mostré la vista previa, así que no guardé nada. Dime el cobro otra vez.`;
+    }
+    sentencias.push(db.prepare('INSERT INTO cobros_venta (negocio_id, venta_id, fecha, monto) VALUES (?, ?, ?, ?)').bind(negocioId, a.venta_id, datos.fecha, a.monto));
+    if (redondear2(Number(v.saldo) - a.monto) <= 0.005) {
+      sentencias.push(db.prepare("UPDATE ventas SET estado = 'pagada' WHERE id = ? AND negocio_id = ?").bind(a.venta_id, negocioId));
+    }
+  }
+  await db.batch(sentencias);
+  const queda = redondear2(datos.saldoTotal - datos.monto);
+  return `Listo ✅ Registré el cobro de ${datos.cliente} por ${formatoMonto(datos.monto)}.\n` +
+    (queda <= 0.005 ? `${datos.cliente} ya no te debe nada en ventas a crédito.` : `${datos.cliente} te sigue debiendo ${formatoMonto(queda)} en ventas a crédito.`);
+}
+
+// "Anula el último cobro de Ana": elige entre los cobros vigentes de ventas a crédito vigentes. Nada cambia hasta el "sí".
+async function iniciarAnularCobroVenta(env, negocio, pedido) {
+  const { results } = await env.oficina_ia_db.prepare(
+    `SELECT c.id, c.fecha, c.monto, c.venta_id, v.descripcion, v.cliente_nombre
+     FROM cobros_venta c JOIN ventas v ON v.id = c.venta_id
+     WHERE c.negocio_id = ? AND c.anulado = 0 AND v.anulado = 0 ORDER BY c.id DESC LIMIT 100`
+  ).bind(negocio.id).all();
+  const lista = pedido.nombre ? results.filter(c => mismoCliente(pedido.nombre, c.cliente_nombre)) : results;
+  if (lista.length === 0) {
+    return { tipo: 'aviso', mensaje: pedido.nombre ? `No encontré cobros de ventas a crédito de ${pedido.nombre}.` : 'No tienes cobros de ventas a crédito para anular.' };
+  }
+  const c = lista[0];
+  const cobro = { cliente: c.cliente_nombre, monto: Number(c.monto), descripcion: c.descripcion };
+  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'anular_cobro', id: c.id, venta_id: c.venta_id, ...cobro, fecha: c.fecha });
+  return { tipo: 'pago_pendiente', mensaje: textoPrevioAnularCobro(cobro, c.fecha) };
 }
 
 async function guardarPagoPendiente(env, negocioId, datos) {
@@ -3502,6 +3659,22 @@ async function iniciarRegistroPago(env, negocio, args) {
     }
   } else {
     candidatos = proformas.filter(d => d.saldo > 0.005 && mismoCliente(clienteDicho, d.cliente));
+    // ¿Ese cliente también debe ventas a crédito? Si no tiene facturas por cobrar (o el mensaje habla de la
+    // venta/fiado), el pago es un cobro de venta a crédito. Si tiene de las dos, gana la factura y se avisa.
+    let fiadas = [];
+    try {
+      fiadas = (await cargarVentasFiadasConSaldo(env, negocio.id)).filter(v => mismoCliente(clienteDicho, v.cliente_nombre));
+    } catch (e) {
+      console.log('[WEBHOOK] No pude leer las ventas a crédito:', e?.message);
+    }
+    if (fiadas.length > 0) {
+      const textoPlano = String(args._texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      if (candidatos.length === 0 || /\b(fiad\w*|credito|ventas?)\b/.test(textoPlano)) {
+        return await iniciarCobroVenta(env, negocio, { cliente: clienteDicho, monto, fecha: f.fecha, fiadas });
+      }
+      const debe = redondear2(fiadas.reduce((s, v) => s + v.saldo, 0));
+      avisos.push(`${clienteDicho} también debe ${formatoMonto(debe)} en ventas a crédito. Si este pago es de esas ventas, responde "no" y dime: "${clienteDicho} pagó ${monto} de la venta a crédito".`);
+    }
   }
 
   const base = { tipoPendiente: 'pago', cliente: clienteDicho, monto, fecha: f.fecha, hoy: fechaIsoPanama(), avisos };

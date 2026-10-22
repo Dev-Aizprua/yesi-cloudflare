@@ -86,3 +86,23 @@ export function resolverCuadroDelPedido(cuadros, pedido, ayudas) {
   if (ayudas.formato === 'pdf' && ayudas.buscarDocumento) return ayudas.buscarDocumento(lista, pedido.frase) || null;
   return null;
 }
+
+// ── Agradecimientos sueltos ("gracias", "muchas gracias", "ok gracias") ──────────────────────────────
+// Se responden en código: no hay nada que hacer y llamar a Groq cuesta ~4,000-7,000 tokens y a veces
+// inventa acciones (la nota de voz "Gracias." llegó a disparar un envío de PDF). Solo entra si TODO el mensaje
+// es un agradecimiento: "gracias, y anota una venta" sigue por Groq.
+const RE_AGRADECIMIENTO = /^(?:(?:ok|okay|okey|listo|perfecto|vale|dale|genial|excelente|buenisimo|super|bueno|bien|muy bien|entendido|de acuerdo|claro)\s+)*(?:(?:muchas|muchisimas|mil|infinitas)\s+)?gracias(?:\s+(?:por\s+(?:todo|tu\s+ayuda|la\s+ayuda|avisar|ayudarme)|de\s+nuevo|otra\s+vez|igual|asistente|amigo|amiga|bot))?(?:\s+(?:ok|okay|okey|listo|perfecto|vale|genial|excelente))?$|^(?:te\s+lo\s+)?agradezco(?:\s+(?:mucho|muchisimo|tu\s+ayuda))?$/;
+
+export function detectarAgradecimiento(texto) {
+  const t = plano(texto).replace(/[\p{Extended_Pictographic}‍️]/gu, ' ').replace(/\s+/g, ' ').trim();
+  return !!t && t.length <= 60 && RE_AGRADECIMIENTO.test(t);
+}
+
+const RESPUESTAS_AGRADECIMIENTO = [
+  '¡De nada! Aquí estoy cuando me necesites.',
+  '¡Con gusto! Cuando quieras seguimos.',
+  '¡A la orden! Dime si necesitas algo más.',
+];
+export function respuestaAgradecimiento(semilla = Date.now()) {
+  return RESPUESTAS_AGRADECIMIENTO[Math.abs(Math.floor(semilla)) % RESPUESTAS_AGRADECIMIENTO.length];
+}

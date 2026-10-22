@@ -631,28 +631,33 @@ export function armarReporteDeudas(datos, opciones = {}) {
   const facturas = (fac.items || []).filter(f => f.saldo > EPS && coincide(f.cliente))
     .sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : String(a.numero).localeCompare(String(b.numero))));
   const aFavor = (datos?.saldosAFavor || []).filter(s => coincide(s.cliente));
+  // Ventas a crédito (fiado): solo aparece la sección si el negocio tiene alguna con saldo.
+  const todasVentas = (datos?.ventas?.items || []).filter(v => v.saldo > EPS);
+  const ventas = todasVentas.filter(v => coincide(v.cliente));
 
   const hayCuadros = (pre.cuadros || []).length > 0;
   const hayProformas = fac.totalDocs > 0;
-  if (!hayCuadros && !hayProformas) {
+  if (!hayCuadros && !hayProformas && todasVentas.length === 0) {
     return 'Todavía no tengo préstamos ni facturas proforma registrados, así que no puedo decirte quién te debe.';
   }
 
   const subPre = redondear2(prestamos.reduce((a, i) => a + i.saldo, 0));
   const subFac = redondear2(facturas.reduce((a, f) => a + f.saldo, 0));
-  const total = redondear2(subPre + subFac);
-  const hayDeuda = prestamos.length + facturas.length > 0;
+  const subVen = redondear2(ventas.reduce((a, v) => a + v.saldo, 0));
+  const total = redondear2(subPre + subFac + subVen);
+  const hayDeuda = prestamos.length + facturas.length + ventas.length > 0;
   const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
   const lPre = prestamos.map(i => `• ${i.persona} — ${formatoMonto(i.saldo)} (${i.cuadro})`);
   const lFac = facturas.map(f => `• Factura proforma ${f.numero}${f.cliente ? ` (${f.cliente})` : ''} — ${formatoMonto(f.saldo)} — ${fechaLegible(f.fecha)}`);
+  const lVen = ventas.map(v => `• ${v.cliente} — ${formatoMonto(v.saldo)} (${plural(v.n, 'venta', 'ventas')})`);
   const lFavor = aFavor.slice(0, 8).map(s => {
     const tieneDeuda = facturas.some(f => mismoCliente(s.cliente, f.cliente));
     return `• ${s.cliente}: ${formatoMonto(s.monto)}${tieneDeuda ? ' — puedes aplicarlo a su factura' : ''}`;
   });
   if (aFavor.length > 8) lFavor.push(`• … y ${aFavor.length - 8} más`);
 
-  const render = (nP, nF) => {
+  const render = (nP, nF, nV = lVen.length) => {
     const out = [filtro ? `💰 Lo que te debe ${filtro}` : '💰 Esto es lo que te deben'];
     if (!hayDeuda) {
       out.push('', filtro
@@ -672,6 +677,11 @@ export function armarReporteDeudas(datos, opciones = {}) {
         out.push(`Subtotal: ${formatoMonto(subFac)} (${plural(facturas.length, 'factura', 'facturas')})`);
       } else if (!filtro) {
         out.push('', 'FACTURAS POR COBRAR', hayProformas ? 'Ninguna con saldo pendiente.' : 'No tienes facturas proforma registradas.');
+      }
+      if (ventas.length > 0) {
+        out.push('', 'VENTAS A CRÉDITO (fiado)', ...lVen.slice(0, nV));
+        if (nV < lVen.length) out.push(`• … y ${lVen.length - nV} más`);
+        out.push(`Subtotal: ${formatoMonto(subVen)} (${plural(ventas.length, 'cliente', 'clientes')})`);
       }
       out.push('', `TOTAL${filtro ? '' : ' QUE TE DEBEN'}: ${formatoMonto(total)}`);
     }
@@ -693,10 +703,11 @@ export function armarReporteDeudas(datos, opciones = {}) {
 
   let nP = lPre.length;
   let nF = lFac.length;
-  let texto = render(nP, nF);
-  while (texto.length > maxChars && (nP > 0 || nF > 0)) {
-    if (nP >= nF && nP > 0) nP--; else nF--;
-    texto = render(nP, nF);
+  let nV = lVen.length;
+  let texto = render(nP, nF, nV);
+  while (texto.length > maxChars && (nP > 0 || nF > 0 || nV > 0)) {
+    if (nP >= nF && nP >= nV && nP > 0) nP--; else if (nF >= nV && nF > 0) nF--; else nV--;
+    texto = render(nP, nF, nV);
   }
   return texto.length > maxChars ? `${texto.slice(0, maxChars - 1)}…` : texto;
 }
