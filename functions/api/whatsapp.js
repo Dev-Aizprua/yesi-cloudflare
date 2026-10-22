@@ -19,6 +19,7 @@ import { subirImagenCloudinary } from '../lib/cloudinary.js';
 import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro.js';
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
 import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
+import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleCosto, textoSinCosto, detectarConsultaCostos, detectarAnularCosto, detectarConsultaGanancia, esRegistroCostoDirecto, emparejarCosto, calcularGanancia } from '../lib/costos.js';
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
 import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
@@ -335,6 +336,30 @@ export async function onRequestPost(context) {
       }
     }
 
+    // ── 3.12. Costos de productos: "anula el costo del jugo", "¿cuánto me cuesta el jugo?", "¿cuánto gané este mes?" ──
+    // Todo se resuelve en código (0 tokens). Si falla (p. ej. falta la migración 6), se sigue con el flujo normal.
+    {
+      let respuestaCostos = null;
+      let marca = null;
+      try {
+        const pedidoAnularCosto = detectarAnularCosto(textoUsuario);
+        const consultaCostos = pedidoAnularCosto ? null : detectarConsultaCostos(textoUsuario);
+        const consultaGanancia = pedidoAnularCosto || consultaCostos ? null : detectarConsultaGanancia(textoUsuario);
+        if (pedidoAnularCosto) { respuestaCostos = await iniciarAnularCosto(env, negocio, pedidoAnularCosto); marca = 'anular_costo'; }
+        else if (consultaCostos) { respuestaCostos = await responderConsultaCostos(env, negocio, consultaCostos); marca = 'costos'; }
+        else if (consultaGanancia) { respuestaCostos = await responderGanancia(env, negocio, consultaGanancia); marca = 'ganancia'; }
+      } catch (e) {
+        console.log('[WEBHOOK] Error en costos/ganancia, se sigue con Groq:', e?.message);
+      }
+      if (respuestaCostos) {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, respuestaCostos);
+        await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+        await guardarMensaje(env, negocio.id, 'asistente', respuestaCostos, 'texto');
+        await marcarFlujoPagoCerrado(env, negocio.id);
+        return Response.json({ ok: true, negocio: negocio.slug, consulta: marca });
+      }
+    }
+
     // ── 4. Guardar el mensaje entrante en el historial ────────────
     // Se guarda el id: si Groq falla, este mensaje se borra del historial (si no, el siguiente mensaje
     // haría que Groq intente cumplir también el que falló).
@@ -402,7 +427,8 @@ export async function onRequestPost(context) {
           model: 'openai/gpt-oss-120b',
           messages: mensajesGroq,
           tools: herramientasDisponibles,
-          tool_choice: esRegistroDirecto(textoUsuario) && herramientasDisponibles.some(h => h.function.name === 'registrar_venta' || h.function.name === 'registrar_gasto') ? 'required' : 'auto',
+          tool_choice: (esRegistroDirecto(textoUsuario) && herramientasDisponibles.some(h => h.function.name === 'registrar_venta' || h.function.name === 'registrar_gasto'))
+            || (esRegistroCostoDirecto(textoUsuario) && herramientasDisponibles.some(h => h.function.name === 'registrar_costo')) ? 'required' : 'auto',
         }),
       });
       dataGroq = await respuestaGroq.json();
@@ -646,6 +672,9 @@ async function aplicarAccion(env, negocio, nombreHerramienta, args) {
   }
   if (nombreHerramienta === 'registrar_gasto') {
     return iniciarRegistroGasto(env, negocio, args);
+  }
+  if (nombreHerramienta === 'registrar_costo') {
+    return iniciarRegistroCosto(env, negocio, args);
   }
 
   // generar_carta tampoco depende de un cuadro — se resuelve aparte
@@ -2280,6 +2309,7 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
     { g: 'cuadro', t: `- Si el usuario dicta o pega VARIOS registros a la vez (2 o más personas o filas) para cargarlos, usa cargar_filas UNA sola vez (nunca varias llamadas a agregar_fila) y NO los extraigas tú: el sistema los lee del mensaje. Si además pide crear el cuadro, usa cargar_filas con cuadro_nuevo=true y sus columnas. Para UN solo registro usa agregar_fila.` },
     { g: 'ventas', t: `- Si el usuario dice que VENDIÓ algo, de contado o fiado (ej. "vendí 3 jugos a 2.50", "vendí 2 pasteles por 10 en total a María", "le vendí a Ana 3 jugos fiado"), usa registrar_venta (el sistema detecta si es a crédito; tú solo extrae los datos): una entrada en "articulos" por producto, con descripcion, cantidad y precio UNITARIO tal cual los dijo (si dijo "por X en total" o un total para ese artículo, ponlo en "total" y deja precio vacío). NUNCA calcules totales. cliente y fecha SOLO si los dijo. Una venta de contado NO es una cotización ni una factura.` },
     { g: 'ventas', t: `- Si el DUEÑO dice que ÉL gastó, compró o pagó algo (ej. "gasté 45 en luz", "pagué la luz 45", "compré hielo por 10"), usa registrar_gasto: una entrada en "gastos" por cada gasto (descripcion y monto tal cual), proveedor y categoria SOLO si los dijo. registrar_pago es SOLO cuando un CLIENTE pagó o abonó una factura. Si el usuario nombra un cuadro (ej. "en el cuadro Gastos"), usa las herramientas de cuadro.` },
+    { g: 'costos', t: `- Si el usuario dice cuánto CUESTA producir o comprar un PRODUCTO suyo, con o sin desglose (ej. "el jugo cuesta: frutas 8, azúcar 2, envases 5", "mi pastel me cuesta 12", "la receta rinde 10"), usa registrar_costo: producto, una entrada en "componentes" por cada parte (descripcion y monto tal cual), o costo_total si dijo un solo monto, y rinde SOLO si lo dijo. NUNCA sumes ni dividas: el sistema calcula. Eso NO es registrar_gasto (algo que el dueño pagó) ni una venta.` },
     { g: 'cuadro', t: `- En crear_cuadro, las fórmulas de reglas_calculo deben referirse a las columnas usando su clave en minúsculas y sin tildes (ej. columna "Deuda" → escribe "deuda" en la fórmula, no "Deuda").` },
     { g: 'documentos', t: `- Si el usuario pide una COTIZACIÓN o presupuesto (ej. "hazme una cotización para Juan, 10 sillas a 25"), usa crear_cotizacion: una entrada en "lineas" por producto o servicio, con descripcion, cantidad y precio UNITARIO tal cual los dijo. NUNCA calcules totales, subtotal ni ITBMS. El campo itbms de una línea se llena SOLO si el usuario dijo una tasa para esa línea (ej. "10%", "exento"); si no la dijo, OMÍTELO (el sistema aplica 7%) y NUNCA la deduzcas por el tipo de producto. Si dijo "todo exento" o "todo al 10%", repítelo en cada línea. NO uses crear_cuadro ni generar_carta para una cotización.` },
     { g: 'documentos', t: `- Si el usuario pide una FACTURA, una factura proforma o una nota de cobro para un cliente (ej. "hazme una factura para Juan, 10 sillas a 25"), usa crear_factura_proforma (este sistema no emite facturas fiscales; todo pedido de factura se resuelve así). Las mismas reglas de crear_cotizacion: "lineas" con descripcion, cantidad y precio UNITARIO tal cual los dijo; NUNCA calcules totales, subtotal ni ITBMS; "itbms" de una línea SOLO si el usuario dijo una tasa; "condicion_pago" SOLO si la dijo. NO uses crear_cuadro ni generar_carta para una factura.` },
@@ -3170,7 +3200,7 @@ async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
 // "sí / no" a la vista previa de una venta, un gasto o una anulación. Se reclama el pendiente con DELETE
 // (un "sí" repetido no guarda dos veces); si el guardado falla, se restaura para poder reintentar.
 async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos) {
-  const anula = datos.tipoPendiente === 'anular_registro' || datos.tipoPendiente === 'anular_cobro';
+  const anula = ['anular_registro', 'anular_cobro', 'anular_costo'].includes(datos.tipoPendiente);
   const c = clasificarRespuestaConfirmacion(texto);
   if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, anula ? 'Listo, no anulé nada. Sigue registrado.' : 'Listo, no guardé nada.');
   if (c !== 'confirmar') {
@@ -3185,7 +3215,20 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
 
   let mensaje;
   try {
-    if (datos.tipoPendiente === 'cobro_venta') {
+    if (datos.tipoPendiente === 'costo') {
+      // La ficha nueva reemplaza a la vigente del mismo producto; la anterior queda en el historial (vigente = 0).
+      await db.batch([
+        db.prepare("UPDATE fichas_costo SET vigente = 0, motivo_anulacion = 'Reemplazada por una ficha nueva' WHERE negocio_id = ? AND clave = ? AND vigente = 1").bind(negocio.id, datos.clave),
+        db.prepare('INSERT INTO fichas_costo (negocio_id, producto, clave, componentes, total, rinde, costo_unidad) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(negocio.id, datos.producto, datos.clave, JSON.stringify(datos.items), datos.total, datos.rinde ?? null, datos.costoUnidad),
+      ]);
+      mensaje = `Listo ✅ Guardé el costo de "${datos.producto}": ${formatoMonto(datos.total)}${datos.rinde ? ` (rinde ${datos.rinde}, ${formatoMonto(datos.costoUnidad)} por unidad)` : ''}.\nCuando vendas ${datos.producto}, "¿cuánto gané este mes?" usará este costo.`;
+    } else if (datos.tipoPendiente === 'anular_costo') {
+      const res = await db.prepare("UPDATE fichas_costo SET vigente = 0, motivo_anulacion = 'Anulada por el usuario' WHERE id = ? AND negocio_id = ? AND vigente = 1").bind(datos.id, negocio.id).run();
+      mensaje = res.meta.changes === 1
+        ? `Listo ✅ Anulé el costo de "${datos.producto}". No se borró: queda en el historial y ya no se usa para la ganancia.`
+        : 'Ese costo ya no estaba vigente, así que no cambié nada.';
+    } else if (datos.tipoPendiente === 'cobro_venta') {
       mensaje = await guardarCobroVenta(db, negocio.id, datos);
     } else if (datos.tipoPendiente === 'anular_cobro') {
       const res = await db.batch([
@@ -3306,7 +3349,7 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }
-  if (['venta', 'gasto', 'anular_registro', 'cobro_venta', 'anular_cobro'].includes(datos.tipoPendiente)) {
+  if (['venta', 'gasto', 'anular_registro', 'cobro_venta', 'anular_cobro', 'costo', 'anular_costo'].includes(datos.tipoPendiente)) {
     const respuesta = await procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
@@ -3539,6 +3582,67 @@ async function armarReporteDeudasNegocio(env, negocio, consulta) {
     { prestamos, facturas: { items: proformas.filter(d => d.saldo > 0.005), totalDocs: proformas.length }, saldosAFavor, ventas },
     { cliente: consulta.tipo === 'cliente' ? consulta.cliente : null }
   );
+}
+
+// ── COSTOS DE PRODUCTOS (costos.js): fichas_costo, una vigente por producto; la ganancia se calcula en código ──
+async function cargarFichasCosto(env, negocioId) {
+  const { results } = await env.oficina_ia_db.prepare(
+    'SELECT id, producto, clave, componentes, total, rinde, costo_unidad FROM fichas_costo WHERE negocio_id = ? AND vigente = 1 ORDER BY producto LIMIT 200'
+  ).bind(negocioId).all();
+  return results;
+}
+
+// "El jugo cuesta: frutas 8, azúcar 2": vista previa con el total calculado por el código. NO guarda.
+async function iniciarRegistroCosto(env, negocio, args) {
+  const r = armarFichaCosto(args);
+  if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
+  let anterior = null;
+  try {
+    anterior = (await cargarFichasCosto(env, negocio.id)).find(f => f.clave === r.clave) || null;
+  } catch (e) {
+    console.log('[WEBHOOK] No pude leer las fichas de costo (¿falta la migración 6?):', e?.message);
+  }
+  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'costo', producto: r.producto, clave: r.clave, items: r.items, total: r.total, rinde: r.rinde, costoUnidad: r.costoUnidad });
+  return { tipo: 'pago_pendiente', mensaje: textoVistaPreviaCosto(r, anterior) };
+}
+
+async function iniciarAnularCosto(env, negocio, pedido) {
+  const fichas = await cargarFichasCosto(env, negocio.id);
+  const f = emparejarCosto(pedido.producto, fichas);
+  if (!f) return textoSinCosto(pedido.producto).replace(/ Para guardarlo.*$/, '');
+  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'anular_costo', id: f.id, producto: f.producto, total: Number(f.total) });
+  return `Voy a anular el costo de "${f.producto}" (${formatoMonto(Number(f.costo_unidad))} por unidad).\n\nNo se borra: queda en el historial y deja de usarse para la ganancia. ¿Lo anulo? Responde "sí" o "no".`;
+}
+
+async function responderConsultaCostos(env, negocio, consulta) {
+  const fichas = await cargarFichasCosto(env, negocio.id);
+  if (consulta.tipo === 'lista') return textoListaCostos(fichas);
+  const f = emparejarCosto(consulta.producto, fichas);
+  if (f) return textoDetalleCosto(f);
+  // "¿cuánto cuesta enviar un paquete a David?" no es un producto del negocio: no se intercepta, sigue por Groq.
+  const palabras = consulta.producto.split(' ');
+  if (palabras.length > 3 || /(?:ar|er|ir)$/.test(palabras[0])) return null;
+  return textoSinCosto(consulta.producto);
+}
+
+async function responderGanancia(env, negocio, consulta) {
+  const db = env.oficina_ia_db;
+  const p = consulta.periodo;
+  const fichas = await cargarFichasCosto(env, negocio.id);
+  let ventas;
+  try {
+    ventas = (await db.prepare(
+      'SELECT descripcion, cantidad, total, estado, a_credito FROM ventas WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? LIMIT 5000'
+    ).bind(negocio.id, p.desde, p.hasta).all()).results;
+  } catch (e) {
+    ventas = (await db.prepare(
+      'SELECT descripcion, cantidad, total FROM ventas WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? LIMIT 5000'
+    ).bind(negocio.id, p.desde, p.hasta).all()).results;
+  }
+  const texto = calcularGanancia({ ventas, fichas, periodo: p });
+  return fichas.length === 0 && ventas.length > 0
+    ? `${texto}\n\nPara calcularla guarda el costo de tus productos, por ejemplo: "El jugo cuesta: frutas 8, azúcar 2, envases 5".`
+    : texto;
 }
 
 // ── VENTAS A CRÉDITO (fiado): saldo = total − cobros vigentes (tabla cobros_venta). Ver ventasGastos.js ──

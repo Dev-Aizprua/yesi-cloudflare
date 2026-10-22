@@ -516,6 +516,38 @@ export const herramientas = [
   {
     type: 'function',
     function: {
+      name: 'registrar_costo',
+      description:
+        'Guarda cuánto CUESTA producir o comprar un PRODUCTO del negocio (ficha de costo), con o sin desglose ' +
+        '(ej. "el jugo cuesta: frutas 8, azúcar 2, envases 5", "mi pastel me cuesta 12", "la receta del jugo rinde 10: frutas 8, envases 2"). ' +
+        'Extrae SOLO lo que dijo, tal cual; NUNCA sumes ni dividas. NO es un gasto que el dueño pagó (eso es registrar_gasto) ni una venta.',
+      parameters: {
+        type: 'object',
+        properties: {
+          producto: { type: 'string', description: 'Nombre del producto, tal cual (ej. "jugo artesanal").' },
+          componentes: {
+            type: 'array',
+            description: 'Una entrada por cada parte del costo que dijo (ej. frutas, azúcar, envases). Vacío si solo dijo un costo total.',
+            items: {
+              type: 'object',
+              properties: {
+                descripcion: { type: 'string', description: 'Qué es esa parte del costo, tal cual (ej. "frutas").' },
+                monto: { type: 'string', description: 'Monto en dígitos, sin palabras de moneda (ej. "8").' },
+              },
+              required: ['descripcion', 'monto'],
+            },
+          },
+          costo_total: { type: ['string', 'null'], description: 'Costo total SOLO si dijo un único monto sin desglose (ej. "17"). Null/omitir si dio componentes.' },
+          rinde: { type: ['string', 'null'], description: 'Cuántas unidades salen con ese costo, SOLO si lo dijo (ej. "10"). Null/omitir si no.' },
+        },
+        required: ['producto'],
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
       name: 'ajustar_pago',
       description:
         'Corrige PAGOS y FACTURAS ya registrados, con una "accion": ' +
