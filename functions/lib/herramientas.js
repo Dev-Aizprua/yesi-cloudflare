@@ -468,8 +468,8 @@ export const herramientas = [
               properties: {
                 descripcion: { type: 'string', description: 'Producto o servicio, tal cual lo dijo (ej. "jugos").' },
                 cantidad: { type: ['string', 'null'], description: 'Cantidad tal cual (ej. "3"). Null/omitir si no la dijo (se asume 1).' },
-                precio: { type: ['string', 'null'], description: 'Precio de UNA unidad, solo si dijo "a X" / "cada uno". Null/omitir si dijo un total.' },
-                total: { type: ['string', 'null'], description: 'Total del artículo, solo si dijo "por X en total" o un solo monto sin cantidad. Null/omitir si dio precio unitario.' },
+                precio: { type: ['string', 'null'], description: 'Precio de UNA unidad en dígitos, sin palabras de moneda (ej. "1.50"), solo si dijo "a X" / "cada uno". Null/omitir si dijo un total.' },
+                total: { type: ['string', 'null'], description: 'Total del artículo en dígitos, sin palabras de moneda, solo si dijo "por X en total" o un solo monto sin cantidad. Null/omitir si dio precio unitario.' },
               },
               required: ['descripcion'],
             },
@@ -499,7 +499,7 @@ export const herramientas = [
               type: 'object',
               properties: {
                 descripcion: { type: 'string', description: 'En qué fue el gasto, tal cual (ej. "luz", "hielo").' },
-                monto: { type: 'string', description: 'Monto tal cual se dijo (ej. "45", "$20.50").' },
+                monto: { type: 'string', description: 'Monto en dígitos, sin palabras de moneda (ej. "45", "20.50"). "20 dólares" -> "20"; "un dólar cincuenta" -> "1.50".' },
                 categoria: { type: ['string', 'null'], description: 'Categoría SOLO si la dijo. Null/omitir si no.' },
                 proveedor: { type: ['string', 'null'], description: 'A quién se pagó SOLO si lo dijo. Null/omitir si no.' },
               },

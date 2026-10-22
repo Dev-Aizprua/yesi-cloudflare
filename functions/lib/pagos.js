@@ -24,8 +24,58 @@ export function parsearMonto(v) {
   if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? redondear2(v) : null;
   if (v === null || v === undefined) return null;
   const limpio = String(v).replace(/B\/\.?/gi, '').replace(/[$,\s]/g, '');
-  if (!/^\d+(\.\d+)?$/.test(limpio)) return null;
-  const n = Number(limpio);
+  if (/^\d+(\.\d+)?$/.test(limpio)) {
+    const n = Number(limpio);
+    return n > 0 ? redondear2(n) : null;
+  }
+  return parsearMontoHablado(v);
+}
+
+// Montos dictados por voz: "20 dólares", "veinte balboas", "un dólar cincuenta centavos", "20 con 50",
+// "cincuenta centavos". Solo hasta 999 (+ "mil"); ante la duda devuelve null y se le pregunta a la persona.
+const NUM_PALABRAS = {
+  cero: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9,
+  diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18,
+  diecinueve: 19, veinte: 20, beinte: 20, beinti: 20, veinti: 20, veintiun: 21, veintiuno: 21, veintiuna: 21, veintidos: 22, veintitres: 23,
+  veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29,
+  treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90,
+  cien: 100, ciento: 100, doscientos: 200, trescientos: 300, cuatrocientos: 400, quinientos: 500,
+  seiscientos: 600, setecientos: 700, ochocientos: 800, novecientos: 900,
+};
+
+function numeroDeTexto(s) {
+  s = String(s ?? '').trim();
+  if (!s) return null;
+  if (/^\d+(\.\d+)?$/.test(s)) return Number(s);
+  let total = 0, actual = 0;
+  for (const tok of s.split(/\s+/)) {
+    if (tok === 'y') continue;
+    if (tok === 'mil') { total += (actual || 1) * 1000; actual = 0; continue; }
+    if (/^\d+$/.test(tok)) { actual += Number(tok); continue; }
+    if (!(tok in NUM_PALABRAS)) return null;
+    actual += NUM_PALABRAS[tok];
+  }
+  return total + actual;
+}
+
+function parsearMontoHablado(v) {
+  let s = sinTildes(v).replace(/b\/\.?|\$/g, ' ').replace(/,/g, '').replace(/\s+/g, ' ').trim();
+  if (!s || s.length > 80) return null;
+  let entero = null, centavos = null;
+  const partes = s.split(/\b(?:dolar(?:es)?|balboas?|usd)\b/);
+  if (partes.length === 2) {
+    entero = numeroDeTexto(partes[0]);
+    const c = partes[1].replace(/\b(?:centavos?|cents?)\b/g, '').replace(/^\s*(?:con|y)\s+/, '').trim();
+    if (c) centavos = numeroDeTexto(c); else centavos = 0;
+  } else if (partes.length === 1) {
+    let m;
+    if ((m = s.match(/^(.+?)\s+con\s+(.+?)(?:\s+centavos?)?$/))) { entero = numeroDeTexto(m[1]); centavos = numeroDeTexto(m[2]); }
+    else if ((m = s.match(/^(.+?)\s+centavos?$/))) { entero = 0; centavos = numeroDeTexto(m[1]); }
+    else entero = numeroDeTexto(s);
+    if (centavos === null && entero !== null) centavos = 0;
+  }
+  if (entero === null || centavos === null || !Number.isInteger(centavos) || centavos < 0 || centavos > 99) return null;
+  const n = entero + centavos / 100;
   return n > 0 ? redondear2(n) : null;
 }
 

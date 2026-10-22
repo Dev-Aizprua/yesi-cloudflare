@@ -69,6 +69,20 @@ export function resolverCuadroDelPedido(cuadros, pedido, ayudas) {
   if (exacto) return exacto;
   const porNombre = ayudas.resolverPorNombre ? ayudas.resolverPorNombre(lista, pedido.frase) : null;
   if (porNombre) return porNombre;
+  if (ayudas.formato === 'pdf') {
+    // "la cotización 004" / "la factura 004": los documentos se llaman "Factura proforma 004 - Ana" o
+    // "Cotización 004 - Ana". Si el pedido trae el número y SOLO UN documento lo tiene, es ese.
+    const m = sinTildes(pedido.frase).match(/^(?:la |el )?(?:factura proforma|proforma|cotizacion|factura)\s+(?:no\.?\s*|numero\s+|#\s*)?0*(\d+)\s*$/);
+    if (m) {
+      const n = Number(m[1]);
+      const hallados = lista.filter(c => {
+        const k = sinTildes(c.nombre_cuadro).match(/^(?:factura proforma|proforma|cotizacion|factura)\s+0*(\d+)\b/);
+        return k && Number(k[1]) === n;
+      });
+      if (hallados.length === 1) return hallados[0];
+      if (hallados.length > 1) return null;
+    }
+  }
   if (ayudas.formato === 'pdf' && ayudas.buscarDocumento) return ayudas.buscarDocumento(lista, pedido.frase) || null;
   return null;
 }

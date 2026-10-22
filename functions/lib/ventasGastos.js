@@ -130,7 +130,7 @@ export function textoVistaPreviaGasto(datos, hoy = fechaIsoPanama()) {
 }
 
 // ── Anular la última venta / el último gasto ─────────────────────────────────────────────────────
-const RE_VERBO_ANULAR = /\b(anul\w*|elimin\w*|borr\w*|deshaz\w*|deshac\w*|cancel\w*)\b/;
+const RE_VERBO_ANULAR = /\b(an+ul\w*|elimin\w*|borr\w*|deshaz\w*|deshac\w*|cancel\w*)\b/;
 const RELLENO = new Set(['de', 'del', 'la', 'el', 'las', 'los', 'a', 'al', 'en', 'por', 'que', 'hice', 'hize', 'registre', 'mi', 'mis', 'esa', 'ese', 'una', 'un', 'por', 'favor', 'porfa', 'ultima', 'ultimo', 'anterior']);
 
 /**
@@ -145,17 +145,17 @@ export function detectarAnularRegistro(texto) {
   const t = plano(original);
   if (!t || t.length > 90) return null;
   if (/^(?:como|puedo|se puede|es posible|quiero saber|que pasa)\b/.test(t)) return null;
-  if (/\bno\s+(?:\w+\s+)?(?:anul|cancel|borr|elimin|deshaz)/.test(t)) return null;
+  if (/\bno\s+(?:\w+\s+)?(?:an+ul|cancel|borr|elimin|deshaz)/.test(t)) return null;
   // El verbo y "venta"/"gasto" pueden ir separados por hasta 5 palabras ("anula por favor la última venta",
   // "anúlame esa última venta"): así una nota de voz transcrita con relleno también entra.
-  const m = t.match(/\b(?:anul\w*|elimin\w*|borr\w*|deshaz\w*|deshac\w*|cancel\w*)\s+((?:[a-zñ]+\s+){0,5}?)(venta|gasto)\b(.*)$/);
+  const m = t.match(/\b(?:an+ul\w*|elimin\w*|borr\w*|deshaz\w*|deshac\w*|cancel\w*)\s+((?:[a-zñ]+\s+){0,5}?)(venta|veinta|benta|venda|gasto|gaso)\b(.*)$/);
   if (!m || !RE_VERBO_ANULAR.test(t)) return null;
   const entre = m[1] || '';
   const resto = m[3] || '';
   if (/\b(cuadro|abono|pago|factura|cotizacion|proforma|tabla|excel|fila|registro)\b/.test(`${entre} ${resto}`)) return null;
   const ultima = /\b(ultim[oa]|anterior)\b/.test(`${entre} ${resto}`);
   const filtro = resto.split(' ').filter(p => p.length >= 3 && !RELLENO.has(p));
-  return { tipo: m[2], ultima, filtro };
+  return { tipo: /^(?:venta|veinta|benta|venda)$/.test(m[2]) ? 'venta' : 'gasto', ultima, filtro };
 }
 
 /**
@@ -322,6 +322,6 @@ export function unirLlamadasVentasGastos(toolCalls) {
 export function esRegistroDirecto(texto) {
   const t = plano(texto);
   if (!t || t.length > 200) return false;
-  if (!/^(?:(?:hoy|ayer|antier|anteayer)\s+)?(?:(?:ya|yo)\s+)?(?:vendi|vendimos|gaste|gastamos|compre|compramos|pague|pagamos)\b/.test(t)) return false;
-  return /\d|\b(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|veinte)\b/.test(t);
+  if (!/^(?:(?:hoy|ayer|antier|anteayer)\s+)?(?:(?:ya|yo)\s+)?(?:vendi|vendimos|gaste|gate|gates|gasti|gastamos|compre|compramos|pague|pagamos)\b/.test(t)) return false;
+  return /\d|\b(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|veinte|[vb]einte|[vb]einti|treinta|cuarenta|cincuenta)\b/.test(t);
 }
