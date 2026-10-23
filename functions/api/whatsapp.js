@@ -19,6 +19,7 @@ import { subirImagenCloudinary } from '../lib/cloudinary.js';
 import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro.js';
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
 import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
+import { detectarPedidoReporte, detectarSeguimientoReporte, periodoDelMensajeDeReporte, periodoAnterior, calcularReporte, textoReporte, filasPdfReporte } from '../lib/reportes.js';
 import { detectarRegistroInventario, detectarConsultaInventario, detectarAnularInventario, armarRegistroInventario, textoListaInventario, textoDetalleStock, textoSinProducto, textoPrevioAnularInventario, planDescuentoVenta, emparejarProductoInventario, productoExacto, formatoCantidad } from '../lib/inventario.js';
 import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleCosto, textoSinCosto, detectarConsultaCostos, detectarAnularCosto, detectarConsultaGanancia, esRegistroCostoDirecto, emparejarCosto, calcularGanancia } from '../lib/costos.js';
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
@@ -337,6 +338,50 @@ export async function onRequestPost(context) {
       }
     }
 
+    // ── 3.14. Reporte del negocio: "¿Cómo va mi negocio este mes?", "mándamelo en PDF", "compáralo con el mes pasado" ──
+    // Todo en código (0 tokens). El seguimiento ("en PDF", "compáralo") solo vale si lo último que dijo el bot fue un reporte.
+    {
+      let respuestaRep = null;
+      let datosPdfRep = null;
+      let soloPdfRep = false;
+      let marcaRep = null;
+      try {
+        const pedidoRep = detectarPedidoReporte(textoUsuario);
+        if (pedidoRep && pedidoRep.error) {
+          respuestaRep = pedidoRep.error; marcaRep = 'reporte_error';
+        } else if (pedidoRep) {
+          const r = await responderReporte(env, negocio, pedidoRep);
+          respuestaRep = r.texto; datosPdfRep = pedidoRep.pdf ? r.pdf : null; marcaRep = 'reporte';
+        } else {
+          const seg = detectarSeguimientoReporte(textoUsuario);
+          if (seg) {
+            const ultimo = await env.oficina_ia_db.prepare("SELECT mensaje FROM conversaciones WHERE negocio_id = ? AND rol = 'asistente' ORDER BY id DESC LIMIT 1").bind(negocio.id).first();
+            const per = periodoDelMensajeDeReporte(ultimo?.mensaje);
+            if (per) {
+              const r = await responderReporte(env, negocio, { periodo: per, comparar: !!seg.comparar || /\nComparado con /.test(ultimo.mensaje) });
+              if (seg.pdf) { datosPdfRep = r.pdf; soloPdfRep = true; respuestaRep = 'Aquí está tu reporte en PDF 📄'; } else { respuestaRep = r.texto; }
+              marcaRep = 'reporte_seguimiento';
+            }
+          }
+        }
+      } catch (e) {
+        console.log('[WEBHOOK] Error en el reporte del negocio, se sigue con Groq:', e?.message);
+        respuestaRep = null; datosPdfRep = null;
+      }
+      if (respuestaRep) {
+        if (!soloPdfRep) await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, respuestaRep);
+        await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+        // En "mándamelo en PDF" no se guarda un mensaje nuevo del asistente: así el reporte sigue siendo lo último y se puede comparar después.
+        if (!soloPdfRep) await guardarMensaje(env, negocio.id, 'asistente', respuestaRep, 'texto');
+        await marcarFlujoPagoCerrado(env, negocio.id);
+        if (datosPdfRep) {
+          try { await enviarPdfCuadro(negocio, numeroCliente, datosPdfRep, soloPdfRep ? respuestaRep : 'Aquí está tu reporte en PDF 📄'); }
+          catch (e) { console.log('[WEBHOOK] Error enviando el PDF del reporte:', e?.message); }
+        }
+        return Response.json({ ok: true, negocio: negocio.slug, consulta: marcaRep });
+      }
+    }
+
     // ── 3.13. Inventario: "entraron 30 panes", "me quedan 12 jugos", "mi inventario", "anula la última entrada" ──
     // Todo en código (0 tokens). Si no aplica o falla (p. ej. falta la migración 7), se sigue con el flujo normal.
     {
@@ -429,7 +474,7 @@ export async function onRequestPost(context) {
       { role: 'system', content: systemPrompt },
       // El historial viene DESC (más reciente primero) — lo invertimos para orden cronológico.
       // Los mensajes viejos largos se recortan: solo el último (el actual) va completo.
-      ...historialReciente.reverse().map((m, i, arr) => ({
+      ...sinVistasPreviasDelCodigo(historialReciente.reverse()).map((m, i, arr) => ({
         role: m.rol === 'usuario' ? 'user' : 'assistant',
         content: i === arr.length - 1 ? m.mensaje : recortarParaHistorial(m.mensaje),
       })),
@@ -457,6 +502,29 @@ export async function onRequestPost(context) {
         }),
       });
       dataGroq = await respuestaGroq.json();
+      // Con tool_choice 'required' Groq a veces responde 400 "tool_use_failed": el modelo, en vez de llamar a la
+      // herramienta, escribe la vista previa de memoria (imita las vistas previas del historial). No es un tema de
+      // tokens y repetirlo igual vuelve a fallar. Se reintenta UNA vez sin el historial (solo instrucciones + el
+      // mensaje) y con la herramienta exacta forzada.
+      if (respuestaGroq.status === 400 && dataGroq?.error?.code === 'tool_use_failed') {
+        const nombres = herramientasDisponibles.map(h => h.function.name);
+        let forzada = null;
+        if (esRegistroCostoDirecto(textoUsuario) && nombres.includes('registrar_costo')) forzada = 'registrar_costo';
+        else if (/\b(vend\w*|venta\w*|vei?nt\w*)\b/i.test(textoUsuario) && nombres.includes('registrar_venta')) forzada = 'registrar_venta';
+        else if (/\b(gast\w*|pag[uú]e|compr\w*|pagamos|desembols\w*)\b/i.test(textoUsuario) && nombres.includes('registrar_gasto')) forzada = 'registrar_gasto';
+        console.log('[WEBHOOK] Groq no llamó la herramienta (tool_use_failed); reintento sin historial', forzada ? '(' + forzada + ')' : '');
+        respuestaGroq = await fetchGroq('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'openai/gpt-oss-120b',
+            messages: [mensajesGroq[0], mensajesGroq[mensajesGroq.length - 1]],
+            tools: herramientasDisponibles,
+            tool_choice: forzada ? { type: 'function', function: { name: forzada } } : 'required',
+          }),
+        });
+        dataGroq = await respuestaGroq.json();
+      }
     } catch (e) {
       // Red caída o respuesta que no es JSON: mismo trato que un error de Groq.
       console.log('[WEBHOOK] Falló la llamada a Groq:', e.message);
@@ -3668,6 +3736,74 @@ async function armarReporteDeudasNegocio(env, negocio, consulta) {
     { prestamos, facturas: { items: proformas.filter(d => d.saldo > 0.005), totalDocs: proformas.length }, saldosAFavor, ventas },
     { cliente: consulta.tipo === 'cliente' ? consulta.cliente : null }
   );
+}
+
+// ── REPORTE DEL NEGOCIO (reportes.js): junta lo que ya existe; no guarda nada ──
+async function leerVentasYGastos(db, negocioId, desde, hasta) {
+  let ventas;
+  try {
+    ventas = (await db.prepare(
+      'SELECT fecha, descripcion, cantidad, total, estado, a_credito FROM ventas WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? LIMIT 5000'
+    ).bind(negocioId, desde, hasta).all()).results;
+  } catch (e) {
+    ventas = (await db.prepare(
+      'SELECT fecha, descripcion, cantidad, total FROM ventas WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? LIMIT 5000'
+    ).bind(negocioId, desde, hasta).all()).results;
+  }
+  const gastos = (await db.prepare(
+    'SELECT fecha, descripcion, monto FROM gastos WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? LIMIT 5000'
+  ).bind(negocioId, desde, hasta).all()).results;
+  return { ventas, gastos };
+}
+
+async function responderReporte(env, negocio, pedido) {
+  const db = env.oficina_ia_db;
+  const p = pedido.periodo;
+  const { ventas, gastos } = await leerVentasYGastos(db, negocio.id, p.desde, p.hasta);
+  // Cada parte opcional se lee por separado: si falta una migración o falla algo, el resto del reporte sale igual.
+  let fichas = [];
+  try { fichas = await cargarFichasCosto(env, negocio.id); } catch (e) { console.log('[WEBHOOK] Reporte: sin fichas de costo:', e?.message); }
+  const suma = (arr, k) => redondear2((arr || []).reduce((s, x) => s + Number(x[k] || 0), 0));
+  const porCobrar = { fiado: 0, prestamos: 0, facturas: 0 };
+  try { porCobrar.prestamos = suma(extraerPrestamosDeCuadros(await obtenerCuadros(env, negocio.id), normalizarClave).items, 'saldo'); } catch (e) { console.log('[WEBHOOK] Reporte: sin préstamos:', e?.message); }
+  try { porCobrar.facturas = suma((await cargarProformasConSaldo(env, negocio.id)).filter(d => d.saldo > 0.005), 'saldo'); } catch (e) { console.log('[WEBHOOK] Reporte: sin facturas:', e?.message); }
+  try { porCobrar.fiado = suma(agruparDeudaVentas(await cargarVentasFiadasConSaldo(env, negocio.id)), 'saldo'); } catch (e) { console.log('[WEBHOOK] Reporte: sin ventas a crédito:', e?.message); }
+  let productos = [];
+  try { productos = await cargarProductosInventario(env, negocio.id); } catch (e) { console.log('[WEBHOOK] Reporte: sin inventario:', e?.message); }
+  let previo = null;
+  if (pedido.comparar) {
+    const pp = periodoAnterior(p);
+    previo = { periodo: pp, ...(await leerVentasYGastos(db, negocio.id, pp.desde, pp.hasta)) };
+  }
+  const rep = calcularReporte({ periodo: p, ventas, gastos, fichas, porCobrar, productos, previo });
+  return {
+    texto: textoReporte(rep),
+    pdf: {
+      nombreCuadro: `Reporte del negocio — ${p.etiqueta}`,
+      columnas: ['Concepto', 'Valor'],
+      filas: filasPdfReporte(rep),
+      reglas: {},
+      subtitulo: `Del ${fechaLegible(p.desde)} al ${fechaLegible(p.hasta)}`,
+      extras: { encabezado: [], pie: [] },
+    },
+  };
+}
+
+// Las vistas previas ("Voy a registrar esta venta… ¿La guardo? Responde "sí" o "no".") las escribe el CÓDIGO, no Groq.
+// Si quedan en el historial que ve Groq, aprende de ejemplos que la respuesta correcta a "Vendí 15 jugos a 2" es escribir
+// una vista previa en texto, y a veces lo imita en vez de llamar a la herramienta (error 400 tool_use_failed). Se quitan
+// del historial la vista previa y el mensaje del usuario que la originó (ya lo resolvió el código); el mensaje actual, siempre.
+const RE_VISTA_PREVIA = /Responde "s[ií]" o "no"\.?\s*$/i;
+function sinVistasPreviasDelCodigo(historial) {
+  const quitar = new Set();
+  historial.forEach((m, i) => {
+    if (m.rol !== 'usuario' && RE_VISTA_PREVIA.test(String(m.mensaje ?? '')) && i < historial.length - 1) {
+      quitar.add(i);
+      if (i > 0 && historial[i - 1].rol === 'usuario') quitar.add(i - 1);
+    }
+  });
+  const filtrado = historial.filter((_, i) => !quitar.has(i));
+  return filtrado.length ? filtrado : historial.slice(-1);
 }
 
 // ── INVENTARIO (inventario.js): productos que el dueño registra + movimientos (entrada, ajuste, venta) que solo se

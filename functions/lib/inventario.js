@@ -40,6 +40,37 @@ function limpiarProducto(txt) {
   return p;
 }
 
+// ¿A lo más una letra de diferencia (sobra, falta, cambia o dos juntas al revés)? "ntraron" ↔ "entraron".
+function cerca(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  if (a.length === b.length) {
+    let d = 0; const idx = [];
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { d++; idx.push(i); }
+    if (d === 1) return true;
+    return d === 2 && idx[1] === idx[0] + 1 && a[idx[0]] === b[idx[1]] && a[idx[1]] === b[idx[0]];
+  }
+  const [c, l] = a.length < b.length ? [a, b] : [b, a];
+  for (let i = 0; i < l.length; i++) if (l.slice(0, i) + l.slice(i + 1) === c) return true;
+  return false;
+}
+const VERBOS_CONOCIDOS = ['entraron', 'llegaron', 'quedaron', 'recibi', 'produje', 'compre', 'agregue', 'ingrese', 'elabore', 'prepare', 'contabilice', 'tenemos'];
+const PREFIJOS = new Set(['me', 'ya', 'hoy', 'ayer']);
+// Erratas de dedo en el verbo ("ntraron 30 panes", "entrarom 30 panes", "recibi"): se corrige SOLO el verbo, con una
+// letra de tolerancia y palabras de 6 letras o más (para no confundir "tengo", "hay", "agrega"…). Igual hay vista previa.
+function corregirVerbo(orig, s) {
+  const to = orig.split(' '); const ts = s.split(' ');
+  for (let i = 0; i < Math.min(3, ts.length); i++) {
+    if (PREFIJOS.has(ts[i])) continue;
+    if (ts[i].length >= 6 && !VERBOS_CONOCIDOS.includes(ts[i]) && !/^\d/.test(ts[i])) {
+      const v = VERBOS_CONOCIDOS.find(k => cerca(ts[i], k));
+      if (v) { to[i] = v; ts[i] = v; }
+    } else if (ts[i].length === 7 && ts[i] === 'ntraron') { to[i] = 'entraron'; ts[i] = 'entraron'; }
+    break;
+  }
+  return { orig: to.join(' '), s: ts.join(' ') };
+}
+
 // Prepara el texto: sin puntuación final, y la versión sin tildes tiene el MISMO largo para poder recortar el original.
 function preparar(texto) {
   const orig = String(texto ?? '').trim().replace(/[.!¡\s]+$/, '');
@@ -63,7 +94,8 @@ const CON_PRECIO = /(\$|\bpor\s+\d|\ba\s+\$?\d|\bdolar|\bbalboa|\bcada\s|\bc\/u|
  */
 export function detectarRegistroInventario(texto) {
   if (/\?/.test(String(texto ?? ''))) return null;
-  const { orig, s } = preparar(texto);
+  const prep = preparar(texto);
+  const { orig, s } = corregirVerbo(prep.orig, prep.s);
   if (!s || s.length > 120) return null;
   const dice = /\binventario\b|\bstock\b/.test(s);
 
