@@ -695,6 +695,17 @@ async function aplicarAccion(env, negocio, nombreHerramienta, args) {
   if (nombreHerramienta === 'generar_cobro') {
     const pedidos = [args.nombre, ...(Array.isArray(args.nombres) ? args.nombres : [])].filter(Boolean);
     const cuadroNoSirve = !!cuadro && !cuadroContieneTodos(cuadro, pedidos);
+    // Ventas a crédito (fiado): los clientes con saldo entran al cobro igual que los préstamos. Solo si
+    // existen; sin fiados todo sigue exactamente como antes.
+    const gruposFiado = agruparDeudaVentas(await cargarVentasFiadasConSaldo(env, negocio.id));
+    if (gruposFiado.length > 0) {
+      const pidioFiado = pedidos.some(p => gruposFiado.some(g => mismoCliente(p, g.cliente)));
+      if (!cuadro || cuadroNoSirve || pedidos.length === 0 || pidioFiado) {
+        const prestamosF = unirCuadrosDePrestamo(cuadros, normalizarClave);
+        const filasF = unirDeudoresConFiados(prestamosF ? prestamosF.filas : [], gruposFiado);
+        return generarCobro(env, negocio, { nombre_cuadro: 'tus deudas', unido: true }, filasF, args);
+      }
+    }
     if (!cuadro || cuadroNoSirve) {
       const prestamos = unirCuadrosDePrestamo(cuadros, normalizarClave);
       if (prestamos) {
@@ -1465,6 +1476,18 @@ async function agregarFila(env, cuadro, columnas, filas, reglas, args) {
 
 const TOPE_LISTA_GENERICA = 10;
 
+// Une los saldos de préstamos con los de ventas a crédito (fiado) en una sola lista de personas.
+// Si la misma persona está en los dos, se suman (se le cobra todo junto en un solo mensaje).
+function unirDeudoresConFiados(filasPrestamo, gruposFiado) {
+  const filas = (filasPrestamo || []).map(f => ({ ...f }));
+  for (const g of gruposFiado || []) {
+    const f = filas.find(x => mismoCliente(x.nombre, g.cliente));
+    if (f) f.saldo = redondear2(Number(f.saldo || 0) + g.saldo);
+    else filas.push({ nombre: g.cliente, saldo: g.saldo });
+  }
+  return filas;
+}
+
 async function generarCobro(env, negocio, cuadro, filas, args) {
   // Modo 1: una sola persona nombrada — comportamiento ya probado, sin cambios
   if (args.nombre) {
@@ -1474,6 +1497,7 @@ async function generarCobro(env, negocio, cuadro, filas, args) {
   // Modo 2 y 3: lista — nombres específicos, o genérica con tope
   let destinatarios;
   let notaExtra = '';
+  let generico = false;
 
   if (args.nombres && args.nombres.length > 0) {
     destinatarios = [];
@@ -1494,13 +1518,16 @@ async function generarCobro(env, negocio, cuadro, filas, args) {
     }
   } else {
     // Modo genérico: todos los que tengan saldo > 0, los de mayor saldo primero
-    const deudores = filas
-      .filter(f => typeof f.saldo === 'number' && f.saldo > 0)
-      .sort((a, b) => b.saldo - a.saldo);
-    destinatarios = deudores.slice(0, TOPE_LISTA_GENERICA);
-    if (deudores.length > TOPE_LISTA_GENERICA) {
-      notaExtra = `Hay ${deudores.length - TOPE_LISTA_GENERICA} más con saldo pendiente — pídeme "los siguientes" si quieres verlos.`;
+    // Una persona que sale en varios cuadros (o en préstamo y fiado) se cobra UNA vez, con el total.
+    const deudores = [];
+    for (const f of filas.filter(x => typeof x.saldo === 'number' && x.saldo > 0)) {
+      const ya = deudores.find(d => mismoCliente(d.nombre, f.nombre));
+      if (ya) ya.saldo = redondear2(ya.saldo + f.saldo);
+      else deudores.push({ ...f });
     }
+    deudores.sort((a, b) => b.saldo - a.saldo);
+    destinatarios = deudores;
+    generico = true;
   }
 
   if (destinatarios.length === 0) {
@@ -1511,14 +1538,18 @@ async function generarCobro(env, negocio, cuadro, filas, args) {
   // nuevo por persona (sería mucha fricción), solo se usa lo que ya existe
   const conTelefono = [];
   const sinTelefono = [];
+  let sobran = 0;
   for (const fila of destinatarios) {
     const res = await resolverTelefonoContacto(env, negocio.id, fila.nombre, null);
     if (res.telefono) {
+      // lista genérica: el tope cuenta solo a los que sí se les puede cobrar (los de mayor saldo primero)
+      if (generico && conTelefono.length >= TOPE_LISTA_GENERICA) { sobran++; continue; }
       conTelefono.push({ ...fila, telefono: res.telefono });
     } else {
       sinTelefono.push(fila.nombre);
     }
   }
+  if (sobran > 0) notaExtra = `Hay ${sobran} más con teléfono y saldo pendiente — pídeme "los siguientes" si quieres verlos.`;
 
   if (conTelefono.length === 0) {
     return {
@@ -3597,13 +3628,17 @@ async function iniciarRegistroCosto(env, negocio, args) {
   const r = armarFichaCosto(args);
   if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
   let anterior = null;
+  let parecida = null;
   try {
-    anterior = (await cargarFichasCosto(env, negocio.id)).find(f => f.clave === r.clave) || null;
+    const fichas = await cargarFichasCosto(env, negocio.id);
+    anterior = fichas.find(f => f.clave === r.clave) || null;
+    // "jugo" vs "jugo artesanal": otra ficha parecida. No se reemplaza sola; solo se avisa.
+    if (!anterior) parecida = emparejarCosto(r.producto, fichas);
   } catch (e) {
     console.log('[WEBHOOK] No pude leer las fichas de costo (¿falta la migración 6?):', e?.message);
   }
   await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'costo', producto: r.producto, clave: r.clave, items: r.items, total: r.total, rinde: r.rinde, costoUnidad: r.costoUnidad });
-  return { tipo: 'pago_pendiente', mensaje: textoVistaPreviaCosto(r, anterior) };
+  return { tipo: 'pago_pendiente', mensaje: textoVistaPreviaCosto(r, anterior, parecida) };
 }
 
 async function iniciarAnularCosto(env, negocio, pedido) {

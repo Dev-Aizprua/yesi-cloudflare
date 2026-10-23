@@ -59,12 +59,15 @@ export function armarFichaCosto(args) {
 
 const textoRinde = d => (d.rinde ? ` (rinde ${d.rinde} → costo por unidad: ${formatoMonto(d.costoUnidad)})` : '');
 
-export function textoVistaPreviaCosto(d, anterior = null) {
+export function textoVistaPreviaCosto(d, anterior = null, parecida = null) {
   const l = [`Voy a guardar el costo de "${d.producto}":`, ''];
   for (const i of d.items) l.push(`• ${i.descripcion} — ${formatoMonto(i.monto)}`);
   l.push('', `Costo total: ${formatoMonto(d.total)}${textoRinde(d)}`);
+  if (!d.rinde) l.push('Lo tomo como el costo de 1 unidad. Si es de una receta que rinde varias, di "no" y repítelo con "rinde 10" (el número que sea).');
   if (anterior) {
     l.push('', `Ojo: ya tienes un costo de "${anterior.producto}" por ${formatoMonto(Number(anterior.costo_unidad))} por unidad. Este lo reemplaza; el anterior queda en el historial.`);
+  } else if (parecida) {
+    l.push('', `Ojo: ya tienes un costo de "${parecida.producto}" (${formatoMonto(Number(parecida.costo_unidad))} por unidad). Este se guardaría aparte. Si es el mismo producto, di "no" y repítelo con ese nombre para reemplazarlo.`);
   }
   l.push('', '¿Lo guardo? Responde "sí" o "no".');
   return l.join('\n');
@@ -193,6 +196,9 @@ export function calcularGanancia(d) {
     porProducto.set(f.producto, g);
   }
   const grupos = [...porProducto.values()].sort((a, b) => b.ventas - a.ventas);
+  // Costo por unidad MAYOR que el precio de venta: casi siempre es el total de una receta que rinde varias unidades.
+  const sospechosos = grupos.filter(g => g.unidades > 0 && g.costo > g.ventas + 0.005)
+    .map(g => `${g.producto}: costo ${formatoMonto(redondear2(g.costo / g.unidades))} por unidad, vendido a ${formatoMonto(redondear2(g.ventas / g.unidades))} en promedio`);
   if (grupos.length === 0) {
     l.push('Ninguna venta de ese período tiene un costo guardado, así que no puedo calcular la ganancia.');
   } else {
@@ -203,6 +209,10 @@ export function calcularGanancia(d) {
       `Ganancia estimada: ${formatoMonto(ganancia)}${vendido > 0 ? ` (${Math.round((ganancia / vendido) * 100)}% de lo vendido)` : ''}`, '', 'Por producto:');
     for (const g of grupos.slice(0, 8)) l.push(`• ${g.producto} — vendido ${formatoMonto(g.ventas)}, costo ${formatoMonto(g.costo)}, ganancia ${formatoMonto(redondear2(g.ventas - g.costo))}`);
     if (grupos.length > 8) l.push(`…y ${grupos.length - 8} productos más (los totales los incluyen).`);
+  }
+  if (sospechosos.length > 0) {
+    l.push('', '⚠️ Revisa estos costos, salen más caros que el precio de venta:', ...sospechosos.map(s => `• ${s}`),
+      'Si es el total de una receta que rinde varias unidades, guárdalo otra vez diciendo "rinde N".');
   }
   if (sinCosto.size > 0) {
     const items = [...sinCosto.entries()].slice(0, 8).map(([k, v]) => `${k} (${formatoMonto(v)})`);
