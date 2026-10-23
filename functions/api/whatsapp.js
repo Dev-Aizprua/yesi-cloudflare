@@ -19,6 +19,7 @@ import { subirImagenCloudinary } from '../lib/cloudinary.js';
 import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro.js';
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
 import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
+import { detectarRegistroInventario, detectarConsultaInventario, detectarAnularInventario, armarRegistroInventario, textoListaInventario, textoDetalleStock, textoSinProducto, textoPrevioAnularInventario, planDescuentoVenta, emparejarProductoInventario, productoExacto, formatoCantidad } from '../lib/inventario.js';
 import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleCosto, textoSinCosto, detectarConsultaCostos, detectarAnularCosto, detectarConsultaGanancia, esRegistroCostoDirecto, emparejarCosto, calcularGanancia } from '../lib/costos.js';
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
 import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
@@ -333,6 +334,30 @@ export async function onRequestPost(context) {
         await guardarMensaje(env, negocio.id, 'asistente', resumenVG, 'texto');
         await marcarFlujoPagoCerrado(env, negocio.id);
         return Response.json({ ok: true, negocio: negocio.slug, consulta: 'ventas_gastos' });
+      }
+    }
+
+    // ── 3.13. Inventario: "entraron 30 panes", "me quedan 12 jugos", "mi inventario", "anula la última entrada" ──
+    // Todo en código (0 tokens). Si no aplica o falla (p. ej. falta la migración 7), se sigue con el flujo normal.
+    {
+      let respuestaInv = null;
+      let marcaInv = null;
+      try {
+        const anularInv = detectarAnularInventario(textoUsuario);
+        const regInv = anularInv ? null : detectarRegistroInventario(textoUsuario);
+        const consInv = anularInv || regInv ? null : detectarConsultaInventario(textoUsuario);
+        if (anularInv) { respuestaInv = await iniciarAnularInventario(env, negocio, anularInv); marcaInv = 'anular_inventario'; }
+        else if (regInv) { respuestaInv = await iniciarRegistroInventario(env, negocio, regInv); marcaInv = 'inventario'; }
+        else if (consInv) { respuestaInv = await responderConsultaInventario(env, negocio, consInv); marcaInv = 'consulta_inventario'; }
+      } catch (e) {
+        console.log('[WEBHOOK] Error en inventario, se sigue con Groq:', e?.message);
+      }
+      if (respuestaInv) {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, respuestaInv);
+        await guardarMensaje(env, negocio.id, 'usuario', textoUsuario, tipoMensaje);
+        await guardarMensaje(env, negocio.id, 'asistente', respuestaInv, 'texto');
+        await marcarFlujoPagoCerrado(env, negocio.id);
+        return Response.json({ ok: true, negocio: negocio.slug, consulta: marcaInv });
       }
     }
 
@@ -1481,14 +1506,28 @@ const TOPE_LISTA_GENERICA = 10;
 function unirDeudoresConFiados(filasPrestamo, gruposFiado) {
   const filas = (filasPrestamo || []).map(f => ({ ...f }));
   for (const g of gruposFiado || []) {
-    const f = filas.find(x => mismoCliente(x.nombre, g.cliente));
+    // Solo el MISMO nombre se suma: "Rosa" y "Rosa Pérez" podrían ser dos personas y con dinero no se adivina.
+    const f = filas.find(x => normalizarClave(x.nombre) === normalizarClave(g.cliente));
     if (f) f.saldo = redondear2(Number(f.saldo || 0) + g.saldo);
     else filas.push({ nombre: g.cliente, saldo: g.saldo });
   }
-  return filas;
+  return fusionarMismoNombre(filas);
+}
+
+// Misma persona (nombre idéntico sin tildes ni mayúsculas) en varios cuadros → una sola fila con el total.
+function fusionarMismoNombre(filas) {
+  const out = [];
+  for (const f of filas || []) {
+    const ya = typeof f.saldo === 'number' ? out.find(d => typeof d.saldo === 'number' && normalizarClave(d.nombre) === normalizarClave(f.nombre)) : null;
+    if (ya) ya.saldo = redondear2(ya.saldo + f.saldo);
+    else out.push({ ...f });
+  }
+  return out;
 }
 
 async function generarCobro(env, negocio, cuadro, filas, args) {
+  // Cuadros de préstamo unidos: una persona repetida se cobra una vez, con el total (igual en lista que en individual)
+  if (cuadro?.unido) filas = fusionarMismoNombre(filas);
   // Modo 1: una sola persona nombrada — comportamiento ya probado, sin cambios
   if (args.nombre) {
     return generarCobroIndividual(env, negocio, cuadro, filas, args.nombre, args.telefono);
@@ -1519,12 +1558,7 @@ async function generarCobro(env, negocio, cuadro, filas, args) {
   } else {
     // Modo genérico: todos los que tengan saldo > 0, los de mayor saldo primero
     // Una persona que sale en varios cuadros (o en préstamo y fiado) se cobra UNA vez, con el total.
-    const deudores = [];
-    for (const f of filas.filter(x => typeof x.saldo === 'number' && x.saldo > 0)) {
-      const ya = deudores.find(d => mismoCliente(d.nombre, f.nombre));
-      if (ya) ya.saldo = redondear2(ya.saldo + f.saldo);
-      else deudores.push({ ...f });
-    }
+    const deudores = fusionarMismoNombre(filas).filter(x => typeof x.saldo === 'number' && x.saldo > 0);
     deudores.sort((a, b) => b.saldo - a.saldo);
     destinatarios = deudores;
     generico = true;
@@ -3231,7 +3265,7 @@ async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
 // "sí / no" a la vista previa de una venta, un gasto o una anulación. Se reclama el pendiente con DELETE
 // (un "sí" repetido no guarda dos veces); si el guardado falla, se restaura para poder reintentar.
 async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos) {
-  const anula = ['anular_registro', 'anular_cobro', 'anular_costo'].includes(datos.tipoPendiente);
+  const anula = ['anular_registro', 'anular_cobro', 'anular_costo', 'anular_inventario'].includes(datos.tipoPendiente);
   const c = clasificarRespuestaConfirmacion(texto);
   if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, anula ? 'Listo, no anulé nada. Sigue registrado.' : 'Listo, no guardé nada.');
   if (c !== 'confirmar') {
@@ -3254,6 +3288,16 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
           .bind(negocio.id, datos.producto, datos.clave, JSON.stringify(datos.items), datos.total, datos.rinde ?? null, datos.costoUnidad),
       ]);
       mensaje = `Listo ✅ Guardé el costo de "${datos.producto}": ${formatoMonto(datos.total)}${datos.rinde ? ` (rinde ${datos.rinde}, ${formatoMonto(datos.costoUnidad)} por unidad)` : ''}.\nCuando vendas ${datos.producto}, "¿cuánto gané este mes?" usará este costo.`;
+    } else if (datos.tipoPendiente === 'inventario') {
+      mensaje = await guardarRegistroInventario(env, negocio.id, datos);
+    } else if (datos.tipoPendiente === 'anular_inventario') {
+      const res = await db.prepare("UPDATE inventario_movimientos SET anulado = 1 WHERE id = ? AND negocio_id = ? AND anulado = 0 AND tipo <> 'venta'").bind(datos.id, negocio.id).run();
+      if (res.meta.changes === 1) {
+        const p = productoExacto(datos.producto, await cargarProductosInventario(env, negocio.id));
+        mensaje = `Listo ✅ Anulé ese movimiento de "${datos.producto}". No se borró: queda en el historial.${p ? `\nAhora hay ${formatoCantidad(Number(p.stock))}.` : ''}`;
+      } else {
+        mensaje = 'Ese movimiento ya no estaba vigente, así que no cambié nada.';
+      }
     } else if (datos.tipoPendiente === 'anular_costo') {
       const res = await db.prepare("UPDATE fichas_costo SET vigente = 0, motivo_anulacion = 'Anulada por el usuario' WHERE id = ? AND negocio_id = ? AND vigente = 1").bind(datos.id, negocio.id).run();
       mensaje = res.meta.changes === 1
@@ -3278,24 +3322,35 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
       mensaje = res.meta.changes === 1
         ? `Listo ✅ Anulé ${esVenta ? 'la venta' : 'el gasto'}: ${datos.linea}. No se borró: quedó ${esVenta ? 'anulada' : 'anulado'}.`
         : `${esVenta ? 'Esa venta' : 'Ese gasto'} ya no estaba vigente, así que no cambié nada.`;
+      if (esVenta && res.meta.changes === 1) {
+        // Si la venta había descontado inventario, ese descuento se anula también (el stock vuelve a subir).
+        try {
+          const rv = await db.prepare("UPDATE inventario_movimientos SET anulado = 1 WHERE venta_id = ? AND negocio_id = ? AND tipo = 'venta' AND anulado = 0").bind(datos.id, negocio.id).run();
+          if (rv.meta.changes > 0) mensaje += '\n📦 Devolví al inventario lo que había descontado esa venta.';
+        } catch (e) { /* sin migración de inventario */ }
+      }
     } else if (datos.tipoPendiente === 'venta') {
       if (datos.credito) {
         // Venta fiada: queda 'pendiente' y marcada a_credito; lo que se cobre va a cobros_venta.
-        await db.batch(datos.items.map(i => db.prepare(
+        const inv = await prepararDescuentoInventario(env, negocio.id, datos.items);
+        await db.batch(datos.items.flatMap((i, idx) => [db.prepare(
           "INSERT INTO ventas (negocio_id, cliente_nombre, fecha, descripcion, cantidad, precio, total, estado, a_credito) VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', 1)"
-        ).bind(negocio.id, datos.cliente || null, datos.fecha, i.descripcion, i.cantidad, i.precio, i.total)));
+        ).bind(negocio.id, datos.cliente || null, datos.fecha, i.descripcion, i.cantidad, i.precio, i.total), ...movimientoVentaStmt(db, negocio.id, inv, idx)]));
         mensaje = `Listo ✅ Registré ${datos.items.length > 1 ? `las ${datos.items.length} ventas` : 'la venta'} a crédito por ${formatoMonto(datos.total)}.`;
         try {
           const g = agruparDeudaVentas(await cargarVentasFiadasConSaldo(env, negocio.id)).find(x => mismoCliente(datos.cliente, x.cliente));
           if (g) mensaje += `\n${g.cliente} te debe ahora ${formatoMonto(g.saldo)} en ventas a crédito.`;
         } catch (e) { console.log('[WEBHOOK] No pude sumar la deuda del cliente:', e?.message); }
         mensaje += await textoTotalDelDia(db, negocio.id, 'ventas', 'total', datos.fecha, 'Ventas');
+        if (inv.lineas.length) mensaje += '\n' + inv.lineas.join('\n');
       } else {
-        await db.batch(datos.items.map(i => db.prepare(
+        const inv = await prepararDescuentoInventario(env, negocio.id, datos.items);
+        await db.batch(datos.items.flatMap((i, idx) => [db.prepare(
           "INSERT INTO ventas (negocio_id, cliente_nombre, fecha, descripcion, cantidad, precio, total, estado) VALUES (?, ?, ?, ?, ?, ?, ?, 'pagada')"
-        ).bind(negocio.id, datos.cliente || null, datos.fecha, i.descripcion, i.cantidad, i.precio, i.total)));
+        ).bind(negocio.id, datos.cliente || null, datos.fecha, i.descripcion, i.cantidad, i.precio, i.total), ...movimientoVentaStmt(db, negocio.id, inv, idx)]));
         mensaje = `Listo ✅ Registré ${datos.items.length > 1 ? `las ${datos.items.length} ventas` : 'la venta'} de contado por ${formatoMonto(datos.total)}.`;
         mensaje += await textoTotalDelDia(db, negocio.id, 'ventas', 'total', datos.fecha, 'Ventas');
+        if (inv.lineas.length) mensaje += '\n' + inv.lineas.join('\n');
       }
     } else {
       await db.batch(datos.items.map(i => db.prepare(
@@ -3380,7 +3435,7 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }
-  if (['venta', 'gasto', 'anular_registro', 'cobro_venta', 'anular_cobro', 'costo', 'anular_costo'].includes(datos.tipoPendiente)) {
+  if (['venta', 'gasto', 'anular_registro', 'cobro_venta', 'anular_cobro', 'costo', 'anular_costo', 'inventario', 'anular_inventario'].includes(datos.tipoPendiente)) {
     const respuesta = await procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
@@ -3613,6 +3668,115 @@ async function armarReporteDeudasNegocio(env, negocio, consulta) {
     { prestamos, facturas: { items: proformas.filter(d => d.saldo > 0.005), totalDocs: proformas.length }, saldosAFavor, ventas },
     { cliente: consulta.tipo === 'cliente' ? consulta.cliente : null }
   );
+}
+
+// ── INVENTARIO (inventario.js): productos que el dueño registra + movimientos (entrada, ajuste, venta) que solo se
+// agregan o se anulan. El stock se DERIVA (suma de movimientos vigentes), nunca se guarda. Ver migracion_7_inventario.sql ──
+async function cargarProductosInventario(env, negocioId) {
+  const { results } = await env.oficina_ia_db.prepare(
+    `SELECT p.id, p.producto, p.clave, p.minimo,
+            COALESCE((SELECT SUM(m.cantidad) FROM inventario_movimientos m WHERE m.producto_id = p.id AND m.anulado = 0), 0) AS stock
+     FROM inventario_productos p WHERE p.negocio_id = ? AND p.activo = 1 ORDER BY p.producto LIMIT 300`
+  ).bind(negocioId).all();
+  return results.map(p => ({ ...p, stock: redondear2(Number(p.stock)), minimo: p.minimo === null || p.minimo === undefined ? null : Number(p.minimo) }));
+}
+
+// "Entraron 30 panes" / "Me quedan 12 jugos" / "Avísame si quedan menos de 5 panes": vista previa. NO guarda.
+// Devuelve null si el verbo es ambiguo (comprar = gasto; tengo/hay) y el producto no está en el inventario: sigue por Groq.
+async function iniciarRegistroInventario(env, negocio, pedido) {
+  const productos = await cargarProductosInventario(env, negocio.id);
+  if (pedido.ambiguo && !emparejarProductoInventario(pedido.producto, productos)) return null;
+  const r = armarRegistroInventario(pedido, productos);
+  if (!r.ok) return r.mensaje;
+  await guardarPagoPendiente(env, negocio.id, r.datos);
+  return r.texto;
+}
+
+async function iniciarAnularInventario(env, negocio, pedido) {
+  const db = env.oficina_ia_db;
+  const productos = await cargarProductosInventario(env, negocio.id);
+  let filtro = '';
+  const args = [negocio.id];
+  if (pedido.producto) {
+    const p = emparejarProductoInventario(pedido.producto, productos);
+    if (!p) return `No tengo "${pedido.producto}" en tu inventario.`;
+    filtro = ' AND m.producto_id = ?';
+    args.push(p.id);
+  }
+  const m = await db.prepare(
+    `SELECT m.id, m.tipo, m.cantidad, m.producto_id, p.producto FROM inventario_movimientos m JOIN inventario_productos p ON p.id = m.producto_id
+     WHERE m.negocio_id = ? AND m.anulado = 0 AND m.tipo IN ('entrada', 'ajuste')${filtro} ORDER BY m.id DESC LIMIT 1`
+  ).bind(...args).first();
+  if (!m) return 'No encuentro entradas ni ajustes de inventario para anular. (Las ventas se anulan con "anula la última venta" y devuelven el stock solas.)';
+  const stock = Number(productos.find(p => p.id === m.producto_id)?.stock ?? 0);
+  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'anular_inventario', id: m.id, producto: m.producto, tipo: m.tipo, cantidad: Number(m.cantidad) });
+  return textoPrevioAnularInventario(m, m.producto, stock);
+}
+
+async function responderConsultaInventario(env, negocio, consulta) {
+  const productos = await cargarProductosInventario(env, negocio.id);
+  if (consulta.tipo === 'lista') return textoListaInventario(productos);
+  // Sin inventario, "¿cuánto me queda de gasolina?" no es de este módulo: sigue por Groq.
+  if (productos.length === 0) return null;
+  const p = emparejarProductoInventario(consulta.producto, productos);
+  if (p) return textoDetalleStock(p);
+  const palabras = consulta.producto.split(' ');
+  if (palabras.length > 3 || /(?:ar|er|ir)$/.test(palabras[0])) return null;
+  return textoSinProducto(consulta.producto, true);
+}
+
+// Guarda una entrada, un ajuste de conteo o un mínimo. El ajuste calcula la diferencia EN la base (objetivo − stock de ese
+// momento), así un "sí" tardío no pisa lo que pasó entre la vista previa y la confirmación.
+async function guardarRegistroInventario(env, negocioId, d) {
+  const db = env.oficina_ia_db;
+  if (d.accion === 'minimo') {
+    const res = await db.prepare('UPDATE inventario_productos SET minimo = ? WHERE negocio_id = ? AND clave = ? AND activo = 1').bind(d.minimo, negocioId, d.clave).run();
+    return res.meta.changes === 1
+      ? `Listo ✅ Mínimo de "${d.producto}": ${formatoCantidad(d.minimo)}. Te aviso cuando una venta lo deje en ese número o menos.`
+      : `No encontré "${d.producto}" en tu inventario, así que no cambié nada.`;
+  }
+  const stmts = [db.prepare(
+    `INSERT INTO inventario_productos (negocio_id, producto, clave) SELECT ?, ?, ?
+     WHERE NOT EXISTS (SELECT 1 FROM inventario_productos WHERE negocio_id = ? AND clave = ? AND activo = 1)`
+  ).bind(negocioId, d.producto, d.clave, negocioId, d.clave)];
+  if (d.accion === 'entrada') {
+    stmts.push(db.prepare(
+      `INSERT INTO inventario_movimientos (negocio_id, producto_id, tipo, cantidad)
+       SELECT ?, id, 'entrada', ? FROM inventario_productos WHERE negocio_id = ? AND clave = ? AND activo = 1`
+    ).bind(negocioId, d.cantidad, negocioId, d.clave));
+  } else {
+    stmts.push(db.prepare(
+      `INSERT INTO inventario_movimientos (negocio_id, producto_id, tipo, cantidad)
+       SELECT ?, p.id, 'ajuste', ? - COALESCE((SELECT SUM(m.cantidad) FROM inventario_movimientos m WHERE m.producto_id = p.id AND m.anulado = 0), 0)
+       FROM inventario_productos p WHERE p.negocio_id = ? AND p.clave = ? AND p.activo = 1`
+    ).bind(negocioId, d.objetivo, negocioId, d.clave));
+  }
+  await db.batch(stmts);
+  const p = productoExacto(d.producto, await cargarProductosInventario(env, negocioId));
+  const hay = p ? formatoCantidad(p.stock) : '?';
+  let t = d.accion === 'entrada'
+    ? `Listo ✅ Entraron ${formatoCantidad(d.cantidad)} de ${d.producto}. Ahora hay ${hay}.`
+    : `Listo ✅ Ajusté el inventario de ${d.producto}: ahora hay ${hay}.`;
+  t += '\nCada venta de este producto se descuenta sola. Para ver todo: "mi inventario".';
+  return t;
+}
+
+// Antes de guardar una venta: qué productos del inventario toca y qué avisos darle al dueño. Si falla (sin migración), no pasa nada.
+async function prepararDescuentoInventario(env, negocioId, items) {
+  const vacio = { porItem: new Map(), lineas: [] };
+  try {
+    const productos = await cargarProductosInventario(env, negocioId);
+    if (productos.length === 0) return vacio;
+    const plan = planDescuentoVenta(items, productos);
+    return { porItem: new Map(plan.movimientos.map(m => [m.itemIndex, m])), lineas: plan.lineas };
+  } catch (e) {
+    return vacio;
+  }
+}
+// El movimiento va justo después del INSERT de la venta del mismo renglón: last_insert_rowid() es ese id.
+function movimientoVentaStmt(db, negocioId, inv, idx) {
+  const m = inv.porItem.get(idx);
+  return m ? [db.prepare("INSERT INTO inventario_movimientos (negocio_id, producto_id, tipo, cantidad, venta_id) VALUES (?, ?, 'venta', ?, last_insert_rowid())").bind(negocioId, m.productoId, -m.cantidad)] : [];
 }
 
 // ── COSTOS DE PRODUCTOS (costos.js): fichas_costo, una vigente por producto; la ganancia se calcula en código ──
