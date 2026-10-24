@@ -23,6 +23,7 @@ import { detectarPedidoReporte, detectarSeguimientoReporte, periodoDelMensajeDeR
 import { detectarRegistroInventario, detectarConsultaInventario, detectarAnularInventario, armarRegistroInventario, textoListaInventario, textoDetalleStock, textoSinProducto, textoPrevioAnularInventario, planDescuentoVenta, emparejarProductoInventario, productoExacto, formatoCantidad } from '../lib/inventario.js';
 import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleCosto, textoSinCosto, detectarConsultaCostos, detectarAnularCosto, detectarConsultaGanancia, esRegistroCostoDirecto, emparejarCosto, calcularGanancia } from '../lib/costos.js';
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
+import { detectarAyuda, textoAyuda } from '../lib/ayuda.js';
 import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga } from '../lib/cargaFilasTexto.js';
@@ -240,6 +241,19 @@ export async function onRequestPost(context) {
       await guardarMensaje(env, negocio.id, 'asistente', respuestaGracias, 'texto');
       await marcarFlujoPagoCerrado(env, negocio.id);
       return Response.json({ ok: true, negocio: negocio.slug, atajo: 'agradecimiento' });
+    }
+
+    // ── 3.7c. "Ayuda" / "¿qué puedes hacer?": menú en código, sin Groq ──
+    // No se guarda en el historial: el texto largo le enseñaría a Groq a contestar con texto y gastaría tokens.
+    const pedidoAyuda = detectarAyuda(textoUsuario);
+    if (pedidoAyuda) {
+      try {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, textoAyuda(pedidoAyuda.tema));
+      } catch (e) {
+        console.log('[WEBHOOK] Error enviando la ayuda:', e.message);
+      }
+      await marcarFlujoPagoCerrado(env, negocio.id);
+      return Response.json({ ok: true, negocio: negocio.slug, atajo: 'ayuda' });
     }
 
     // ── 3.8. "¿Quién me debe?": consulta de información, se responde en código ──
@@ -3785,6 +3799,7 @@ async function responderReporte(env, negocio, pedido) {
       reglas: {},
       subtitulo: `Del ${fechaLegible(p.desde)} al ${fechaLegible(p.hasta)}`,
       extras: { encabezado: [], pie: [] },
+      sinTotales: true, // la tabla del reporte mezcla secciones y textos: no lleva fila "Total"
     },
   };
 }
@@ -4913,7 +4928,7 @@ async function enviarPdfCuadro(negocio, to, datosCuadro, caption) {
   try {
     archivo = await generarPdfCuadro(
       datosCuadro.nombreCuadro, datosCuadro.columnas, datosCuadro.filas, datosCuadro.reglas,
-      datosCuadro.subtitulo, true, datosCuadro.extras || {}
+      datosCuadro.subtitulo, !datosCuadro.sinTotales, datosCuadro.extras || {}
     );
   } catch (e) {
     console.log('[WEBHOOK] Error generando PDF:', e.message);
