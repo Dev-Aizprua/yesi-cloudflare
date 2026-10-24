@@ -24,6 +24,7 @@ import { detectarRegistroInventario, detectarConsultaInventario, detectarAnularI
 import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleCosto, textoSinCosto, detectarConsultaCostos, detectarAnularCosto, detectarConsultaGanancia, esRegistroCostoDirecto, emparejarCosto, calcularGanancia } from '../lib/costos.js';
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
 import { detectarAyuda, textoAyuda } from '../lib/ayuda.js';
+import { identificadoresDelRemitente, buscarNegocioDelRemitente, atenderRemitenteDesconocido } from '../lib/accesoTelefonos.js';
 import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga } from '../lib/cargaFilasTexto.js';
@@ -84,16 +85,35 @@ export async function onRequestPost(context) {
     // de WhatsApp; en ese caso solo llega su BSUID en "from_user_id".
     const numeroCliente = mensajeEntrante.from || mensajeEntrante.from_user_id;
 
-    // ── 1. Identificar el negocio por phone_number_id ────────────
-    const negocio = await env.oficina_ia_db.prepare(
-      'SELECT * FROM negocios WHERE phone_number_id = ? AND activo = 1 LIMIT 1'
+    // ── 1. Identificar el CANAL (número del bot) y luego QUIÉN escribe ──
+    // El número del bot es compartido: el negocio se decide por el teléfono de quien escribe
+    // (tabla telefonos_autorizados), no solo por el número del bot. Los datos de cada negocio
+    // quedan aislados por negocio_id. Quien no esté autorizado no toca nada (falla cerrado).
+    const canal = await env.oficina_ia_db.prepare(
+      'SELECT * FROM negocios WHERE phone_number_id = ? LIMIT 1'
     ).bind(phoneNumberId).first();
+    if (!canal) {
+      console.log(`[WEBHOOK] phone_number_id sin canal registrado: ${phoneNumberId}`);
+      return Response.json({ ok: true, info: 'canal no encontrado' });
+    }
+
+    const identificadores = identificadoresDelRemitente(value, mensajeEntrante);
+    let negocio = null;
+    try {
+      const encontrado = await buscarNegocioDelRemitente(env.oficina_ia_db, phoneNumberId, identificadores);
+      // Las credenciales de envío son las del canal (el número real del bot), no las del negocio
+      if (encontrado) negocio = { ...encontrado, phone_number_id: canal.phone_number_id, wa_token: canal.wa_token };
+    } catch (e) {
+      console.log('[WEBHOOK] No se pudo verificar quién escribe, no se atiende:', e.message);
+      return Response.json({ ok: true, info: 'no se pudo verificar al remitente' });
+    }
     console.log('[WEBHOOK] Resultado de buscar negocio:', JSON.stringify({ id: negocio?.id, slug: negocio?.slug, activo: negocio?.activo, tipo_bot: negocio?.tipo_bot }));
 
     if (!negocio) {
-      // Número no reconocido o negocio inactivo (suscripción vencida, etc.)
-      console.log(`[WEBHOOK] phone_number_id sin negocio activo: ${phoneNumberId}`);
-      return Response.json({ ok: true, info: 'negocio no encontrado o inactivo' });
+      // Teléfono no autorizado (o negocio inactivo): se anota quién escribió y se avisa una vez cada 24 h
+      console.log(`[WEBHOOK] Remitente no autorizado en el canal ${phoneNumberId}: ${identificadores.join(', ')}`);
+      await atenderRemitenteDesconocido(env.oficina_ia_db, canal, value, mensajeEntrante, identificadores, enviarMensaje);
+      return Response.json({ ok: true, info: 'remitente no autorizado' });
     }
 
     // ── 2. Confirmación pendiente de borrado de cuadro ────────────
