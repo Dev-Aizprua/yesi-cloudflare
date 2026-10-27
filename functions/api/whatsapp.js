@@ -24,6 +24,7 @@ import { detectarRegistroInventario, detectarConsultaInventario, detectarAnularI
 import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleCosto, textoSinCosto, detectarConsultaCostos, detectarAnularCosto, detectarConsultaGanancia, esRegistroCostoDirecto, emparejarCosto, calcularGanancia } from '../lib/costos.js';
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
 import { detectarAyuda, textoAyuda } from '../lib/ayuda.js';
+import { responderCalculo } from '../lib/calculadora.js';
 import { identificadoresDelRemitente, buscarNegocioDelRemitente, atenderRemitenteDesconocido } from '../lib/accesoTelefonos.js';
 import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
@@ -274,6 +275,19 @@ export async function onRequestPost(context) {
       }
       await marcarFlujoPagoCerrado(env, negocio.id);
       return Response.json({ ok: true, negocio: negocio.slug, atajo: 'ayuda' });
+    }
+
+    // ── 3.7d. Calculadora: "25 por 18", "suma 145, 230 y 75", "7% de 85", "120 más ITBMS" → en código, sin Groq ──
+    // Solo si TODO el mensaje es un cálculo. No se guarda en el historial.
+    const calculo = responderCalculo(textoUsuario);
+    if (calculo) {
+      try {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, calculo.texto);
+      } catch (e) {
+        console.log('[WEBHOOK] Error enviando el cálculo:', e.message);
+      }
+      await marcarFlujoPagoCerrado(env, negocio.id);
+      return Response.json({ ok: true, negocio: negocio.slug, atajo: 'calculadora' });
     }
 
     // ── 3.8. "¿Quién me debe?": consulta de información, se responde en código ──
