@@ -28,7 +28,7 @@ import { responderCalculo } from '../lib/calculadora.js';
 import { identificadoresDelRemitente, buscarNegocioDelRemitente, atenderRemitenteDesconocido } from '../lib/accesoTelefonos.js';
 import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
-import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga } from '../lib/cargaFilasTexto.js';
+import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga, primeraColumnaEsFecha } from '../lib/cargaFilasTexto.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
 import { camposFaltantes, generarDocxCarta, capitalizarInicio } from '../lib/motorCartas.js';
 import { validarReporteSecciones } from '../lib/reporteSecciones.js';
@@ -3252,7 +3252,9 @@ async function guardarCargaFilas(env, negocio, numeroCliente, datos) {
   try {
     if (datos.modo === 'existente') {
       // Por si apareció alguien con el mismo nombre mientras se confirmaba.
-      const yaEstan = new Set(filasActuales.map(f => normalizarClave(String(f[claveNombre] ?? f.nombre ?? ''))));
+      // (Si la primera columna es una fecha, repetirla es normal: no se descarta nada por "ya estar".)
+      const esFecha = primeraColumnaEsFecha(claveNombre, datos.columnasBonitas?.[0]);
+      const yaEstan = new Set(esFecha ? [] : filasActuales.map(f => normalizarClave(String(f[claveNombre] ?? f.nombre ?? ''))));
       const nuevas = datos.filas.filter(f => !yaEstan.has(normalizarClave(String(f[claveNombre] ?? ''))));
       if (nuevas.length === 0) {
         await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,

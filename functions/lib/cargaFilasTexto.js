@@ -51,6 +51,11 @@ const nombreDeFila = (f, claveNombre) => String(f?.[claveNombre] ?? f?.nombre ??
 
 // ── Armado de las filas nuevas ──────────────────────────────────────────────────────────────────────
 
+/** ¿La primera columna es una fecha? ("fecha", "día"): repetirla es normal, no se tratan como "mismo nombre". */
+export function primeraColumnaEsFecha(claveNombre, nombreBonito = '') {
+  return /^(fecha|dia|date)\b/.test(String(claveNombre).replace(/_/g, ' ')) || /^\s*fecha\b/i.test(String(nombreBonito));
+}
+
 /**
  * Convierte lo que extrajo Groq en filas listas para el cuadro. NUNCA inventa ni calcula por su cuenta:
  * solo coloca valores dichos en columnas que existen y aplica las fórmulas del cuadro.
@@ -72,7 +77,9 @@ export function armarFilasNuevas({ extraidas, columnasBonitas, columnasInternas,
   const sinAsignar = [];
   const omitidas = [];
 
-  const existentes = (filasExistentes || []).map(f => ({ nombre: nombreDeFila(f, claveNombre) }));
+  // Si la primera columna es una fecha (cuadro de gastos, ventas...), repetirla es normal: no se detectan "nombres repetidos".
+  const primeraEsFecha = primeraColumnaEsFecha(claveNombre, bonita(claveNombre));
+  const existentes = primeraEsFecha ? [] : (filasExistentes || []).map(f => ({ nombre: nombreDeFila(f, claveNombre) }));
   const vistosEnMensaje = new Set();
   const crudas = [];
 
@@ -81,7 +88,7 @@ export function armarFilasNuevas({ extraidas, columnasBonitas, columnasInternas,
     if (!nombre) { omitidas.push('un registro sin nombre'); continue; }
 
     const clave = normalizarClave(nombre);
-    if (vistosEnMensaje.has(clave)) {
+    if (!primeraEsFecha && vistosEnMensaje.has(clave)) {
       omitidas.push(`${nombre} (aparece dos veces en tu mensaje; dejé solo el primero)`);
       continue;
     }
@@ -179,7 +186,7 @@ function formulaUsaPorcentaje(formula, textoPct) {
 export function construirPromptExtraccion(texto, columnasBonitas, columnasInternas, reglas = {}) {
   const lista = columnasInternas.map((c, i) => {
     const calculada = reglas[c] ? ' — se calcula sola; solo ponla si el usuario dijo su valor' : '';
-    return i === 0 ? `"${c}" (${columnasBonitas[i]}) — es el nombre del registro` : `"${c}" (${columnasBonitas[i]})${calculada}`;
+    return i === 0 ? `"${c}" (${columnasBonitas[i]}) — es el nombre del registro: en "nombre" va SOLO el valor de esta columna (${columnasBonitas[i]}), sin el resto de la frase; lo demás va en "valores"` : `"${c}" (${columnasBonitas[i]})${calculada}`;
   }).join('\n- ');
   return (
     `Extrae los registros que el usuario quiere cargar en un cuadro.\n` +
