@@ -129,6 +129,11 @@ export function responderCalculo(texto) {
   e = e.replace(/\s+/g, ' ').trim();
   if (/[^0-9.+\-*/() ]/.test(e)) return null;                      // quedó alguna palabra suelta: no es (solo) un cálculo
   if (/\d\s*\/\s*\d/.test(e) && !/\s\/\s/.test(e) && !/dividid|entre|÷/.test(r + texto)) return null; // "22/10" es una fecha
+  if (lead && /^\d+(?:\.\d+)?$/.test(e)) {                          // "cuánto es 20.12": un solo número (a veces la voz escribe "20 por 12" así)
+    const dec = e.match(/^(\d+)\.(\d{1,2})$/);
+    const pista = dec ? ` ¿Quisiste decir ${dec[1]} por ${dec[2]}? Escríbelo así: "${dec[1]} por ${dec[2]}".` : ' Dime la operación, por ejemplo: "15 por 12".';
+    return { texto: `Eso es un solo número (${formatoNumero(Number(e))}), no una operación.${pista}` };
+  }
   if (!/\d/.test(e) || !/[+\-*/]/.test(e.replace(/^-/, ''))) return null; // sin operación (un solo número, un teléfono…)
   if ((e.match(/\d+(?:\.\d+)?/g) || []).length < 2) return null;
   if (/\d\s+\d/.test(e)) return null;                              // "507 6029 1411": números pegados sin operador
