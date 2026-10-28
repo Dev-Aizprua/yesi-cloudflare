@@ -33,6 +33,7 @@ const TEMAS = {
   documentos: /^(?:cotizaciones?|facturas?|proformas?|pagos?|documentos?)$/,
   prestamos: /^(?:prestamos?|abonos?|financistas?)$/,
   cartas: /^(?:cartas?|word|constancias?|plantillas?)$/,
+  calculadora: /^(?:calculadoras?|calcular|calculos?|cuentas?|operaciones|sumas?|sumar|restas?|multiplicar|multiplicaciones|dividir|porcentajes?|itbms|impuestos?|matematicas?)$/,
 };
 
 /**
@@ -50,6 +51,10 @@ export function detectarAyuda(texto) {
       for (const [tema, re] of Object.entries(TEMAS)) if (re.test(resto)) return { tema };
     }
   }
+  // "ayuda <una o dos palabras>" que no es un tema conocido: se muestra el menú (en código) en vez de dejar que
+  // Groq invente una guía. "ayuda con la factura de Juan" (más largo, con preposición) sigue por el flujo normal.
+  const suelto = t.match(/^(?:ayuda|help|menu) ([a-z]+(?: [a-z]+)?)$/);
+  if (suelto) return { tema: null, desconocido: suelto[1] };
   return null;
 }
 
@@ -64,7 +69,8 @@ export const TEXTO_MENU = [
   '📋 *Cuadros, Excel y PDF* — "Pásame el Excel del cuadro X", o mándame la foto de un cuadro',
   '🧾 *Cotizaciones, facturas y pagos* — "Hazme una cotización para Juan", "Juan pagó 100"',
   '💳 *Préstamos y abonos* — "Yisel abonó 10", "Cóbrale a Yisel"',
-  '✉️ *Cartas en Word* — "Hazme una carta de constancia de trabajo"',
+  '🧮 *Calculadora* — "25 por 18", "el 7% de 85", "120 más ITBMS"',
+  '✉️ *Cartas en Word* — "Ayúdame con una carta" (te muestro las que tengo)',
   '',
   'Para ver más ejemplos de un tema escribe "ayuda" y el tema. Por ejemplo: "ayuda inventario".',
 ].join('\n');
@@ -135,14 +141,25 @@ const DETALLE = {
     '• "¿Quién me debe?" y "Cóbrale a Yisel"',
     '• "Pásame el Excel de préstamos"',
   ],
+  calculadora: [
+    '🧮 *Calculadora* (sin gastar nada, siempre exacta)',
+    '• Operaciones: "25 por 18", "250 + 45", "cuánto es 100 entre 8", "suma 145, 230 y 75"',
+    '• Porcentajes: "el 7% de 85", "85 más 10%", "85 menos el 10%"',
+    '• ITBMS (7%): "120 más ITBMS", "107 sin ITBMS", "el ITBMS de 200"',
+    '• Por voz también: "veinte por doce". Si el audio sale raro, dilo con números: "20 por 12".',
+    'Solo funciona cuando todo el mensaje es el cálculo.',
+  ],
   cartas: [
     '✉️ *Cartas en Word*',
-    '• "Hazme una carta de constancia de trabajo para Ana"',
+    '• "Ayúdame con una carta": te muestro los tipos de carta que tengo y los datos que necesito de cada una.',
+    '• Por ejemplo, "Hazme un poder simple" o "Hazme una carta de solicitud".',
     '• Si me falta algún dato te lo pregunto, y te mando el documento en Word.',
   ],
 };
 
-export function textoAyuda(tema) {
-  if (!tema || !DETALLE[tema]) return TEXTO_MENU;
+export function textoAyuda(tema, desconocido = null) {
+  if (!tema || !DETALLE[tema]) {
+    return desconocido ? `No tengo una ayuda llamada "${desconocido}". Esto es lo que sí puedo hacer:\n\n${TEXTO_MENU}` : TEXTO_MENU;
+  }
   return DETALLE[tema].join('\n') + '\n\nPara ver todo lo que puedo hacer escribe "ayuda".';
 }

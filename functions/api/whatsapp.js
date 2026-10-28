@@ -20,7 +20,7 @@ import { descargarImagenWhatsApp, analizarFotoCuadro } from '../lib/visionCuadro
 import { detectarFormulas, validarContraTotales } from '../lib/detectorFormulas.js';
 import { elegirGrupos, filtrarHerramientas } from '../lib/herramientasPorIntencion.js';
 import { detectarPedidoReporte, detectarSeguimientoReporte, periodoDelMensajeDeReporte, periodoAnterior, calcularReporte, textoReporte, filasPdfReporte } from '../lib/reportes.js';
-import { detectarRegistroInventario, detectarConsultaInventario, detectarAnularInventario, armarRegistroInventario, textoListaInventario, textoDetalleStock, textoSinProducto, textoPrevioAnularInventario, planDescuentoVenta, emparejarProductoInventario, productoExacto, formatoCantidad } from '../lib/inventario.js';
+import { detectarRegistroInventario, detectarConsultaInventario, detectarAnularInventario, detectarEliminarProducto, textoPrevioEliminarProducto, armarRegistroInventario, textoListaInventario, textoDetalleStock, textoSinProducto, textoPrevioAnularInventario, planDescuentoVenta, emparejarProductoInventario, productoExacto, formatoCantidad } from '../lib/inventario.js';
 import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleCosto, textoSinCosto, detectarConsultaCostos, detectarAnularCosto, detectarConsultaGanancia, esRegistroCostoDirecto, emparejarCosto, calcularGanancia } from '../lib/costos.js';
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
 import { detectarAyuda, textoAyuda } from '../lib/ayuda.js';
@@ -67,6 +67,7 @@ export async function onRequestGet(context) {
 // ── RECEPCIÓN DE MENSAJES (POST) ──────────────────────────────
 export async function onRequestPost(context) {
   const { request, env } = context;
+  let wamidReclamado = null;   // id del mensaje ya anotado como "en proceso" (se libera si falla, para que el reintento de Meta sirva)
 
   try {
     const body = await request.json();
@@ -115,6 +116,25 @@ export async function onRequestPost(context) {
       console.log(`[WEBHOOK] Remitente no autorizado en el canal ${phoneNumberId}: ${identificadores.join(', ')}`);
       await atenderRemitenteDesconocido(env.oficina_ia_db, canal, value, mensajeEntrante, identificadores, enviarMensaje);
       return Response.json({ ok: true, info: 'remitente no autorizado' });
+    }
+
+    // ── 1b. Mensaje repetido: Meta reenvía el MISMO mensaje (mismo id) si el webhook tarda en contestar ──
+    // Se anota el id; si ya estaba, se ignora (sin segunda respuesta ni segunda llamada a Groq).
+    // Si la tabla no existe todavía (migración 9) o falla, se sigue como antes.
+    if (mensajeEntrante.id) {
+      try {
+        const nuevo = await env.oficina_ia_db.prepare('INSERT OR IGNORE INTO mensajes_procesados (wamid) VALUES (?)').bind(mensajeEntrante.id).run();
+        if (nuevo.meta.changes === 0) {
+          console.log('[WEBHOOK] Mensaje repetido por Meta, se ignora:', mensajeEntrante.id);
+          return Response.json({ ok: true, info: 'mensaje repetido' });
+        }
+        wamidReclamado = mensajeEntrante.id;
+        if (Math.random() < 0.02) {
+          await env.oficina_ia_db.prepare("DELETE FROM mensajes_procesados WHERE creado < datetime('now', '-2 days')").run();
+        }
+      } catch (e) {
+        console.log('[WEBHOOK] No se pudo revisar si el mensaje estaba repetido:', e?.message);
+      }
     }
 
     // ── 2. Confirmación pendiente de borrado de cuadro ────────────
@@ -269,7 +289,7 @@ export async function onRequestPost(context) {
     const pedidoAyuda = detectarAyuda(textoUsuario);
     if (pedidoAyuda) {
       try {
-        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, textoAyuda(pedidoAyuda.tema));
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, textoAyuda(pedidoAyuda.tema, pedidoAyuda.desconocido));
       } catch (e) {
         console.log('[WEBHOOK] Error enviando la ayuda:', e.message);
       }
@@ -438,8 +458,10 @@ export async function onRequestPost(context) {
       try {
         const anularInv = detectarAnularInventario(textoUsuario);
         const regInv = anularInv ? null : detectarRegistroInventario(textoUsuario);
-        const consInv = anularInv || regInv ? null : detectarConsultaInventario(textoUsuario);
+        const consInv = anularInv || regInv || detectarEliminarProducto(textoUsuario) ? null : detectarConsultaInventario(textoUsuario);
+        const elimProd = anularInv || regInv ? null : detectarEliminarProducto(textoUsuario);
         if (anularInv) { respuestaInv = await iniciarAnularInventario(env, negocio, anularInv); marcaInv = 'anular_inventario'; }
+        else if (elimProd) { respuestaInv = await iniciarEliminarProducto(env, negocio, elimProd); marcaInv = 'eliminar_producto_inv'; }
         else if (regInv) { respuestaInv = await iniciarRegistroInventario(env, negocio, regInv); marcaInv = 'inventario'; }
         else if (consInv) { respuestaInv = await responderConsultaInventario(env, negocio, consInv); marcaInv = 'consulta_inventario'; }
       } catch (e) {
@@ -772,6 +794,9 @@ export async function onRequestPost(context) {
 
   } catch (error) {
     console.error('[WEBHOOK] Error general:', error.message);
+    if (wamidReclamado) {
+      try { await env.oficina_ia_db.prepare('DELETE FROM mensajes_procesados WHERE wamid = ?').bind(wamidReclamado).run(); } catch (e) { /* sin tabla */ }
+    }
     return Response.json({ ok: false, error: error.message }, { status: 500 });
   }
 }
@@ -2104,7 +2129,7 @@ async function procesarRespuestaAnularAbono(env, negocio, numeroCliente, texto, 
   const c = clasificarRespuestaConfirmacion(texto);
   if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, 'Listo, no anulé nada. El abono sigue registrado.');
   if (c !== 'confirmar') {
-    return await responderPago(env, negocio, numeroCliente, 'Responde "sí" para anular el abono o "no" para dejarlo como está.');
+    return await responderPago(env, negocio, numeroCliente, 'Responde "sí" para anular el abono o "no" para dejarlo como está.' + NOTA_MENSAJE_NO_GUARDADO);
   }
   const db = env.oficina_ia_db;
   const reclamo = await db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
@@ -3380,12 +3405,16 @@ async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
 
 // "sí / no" a la vista previa de una venta, un gasto o una anulación. Se reclama el pendiente con DELETE
 // (un "sí" repetido no guarda dos veces); si el guardado falla, se restaura para poder reintentar.
+// Aviso cuando llega otro mensaje mientras hay una confirmación abierta: ese mensaje NO se procesó.
+const NOTA_MENSAJE_NO_GUARDADO = '\n\n(Tu último mensaje no se guardó. Cuando termines con esto, envíalo otra vez.)';
+
 async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos) {
-  const anula = ['anular_registro', 'anular_cobro', 'anular_costo', 'anular_inventario'].includes(datos.tipoPendiente);
+  const quita = datos.tipoPendiente === 'eliminar_producto_inv';
+  const anula = quita || ['anular_registro', 'anular_cobro', 'anular_costo', 'anular_inventario'].includes(datos.tipoPendiente);
   const c = clasificarRespuestaConfirmacion(texto);
-  if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, anula ? 'Listo, no anulé nada. Sigue registrado.' : 'Listo, no guardé nada.');
+  if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, quita ? 'Listo, no quité nada. El producto sigue en tu inventario.' : anula ? 'Listo, no anulé nada. Sigue registrado.' : 'Listo, no guardé nada.');
   if (c !== 'confirmar') {
-    return await responderPago(env, negocio, numeroCliente, `Responde "sí" para ${anula ? 'anular' : 'guardar'} o "no" para dejarlo como está.`);
+    return await responderPago(env, negocio, numeroCliente, `Responde "sí" para ${quita ? 'quitarlo' : anula ? 'anular' : 'guardar'} o "no" para dejarlo como está.${NOTA_MENSAJE_NO_GUARDADO}`);
   }
   const db = env.oficina_ia_db;
   const reclamo = await db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
@@ -3414,6 +3443,11 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
       } else {
         mensaje = 'Ese movimiento ya no estaba vigente, así que no cambié nada.';
       }
+    } else if (datos.tipoPendiente === 'eliminar_producto_inv') {
+      const res = await db.prepare('UPDATE inventario_productos SET activo = 0 WHERE id = ? AND negocio_id = ? AND activo = 1').bind(datos.id, negocio.id).run();
+      mensaje = res.meta.changes === 1
+        ? `Listo ✅ Quité "${datos.producto}" de tu inventario. Su historial y tus ventas anteriores no cambiaron. Si lo vuelves a registrar, empieza de cero.`
+        : 'Ese producto ya no estaba en tu inventario, así que no cambié nada.';
     } else if (datos.tipoPendiente === 'anular_costo') {
       const res = await db.prepare("UPDATE fichas_costo SET vigente = 0, motivo_anulacion = 'Anulada por el usuario' WHERE id = ? AND negocio_id = ? AND vigente = 1").bind(datos.id, negocio.id).run();
       mensaje = res.meta.changes === 1
@@ -3551,7 +3585,7 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }
-  if (['venta', 'gasto', 'anular_registro', 'cobro_venta', 'anular_cobro', 'costo', 'anular_costo', 'inventario', 'anular_inventario'].includes(datos.tipoPendiente)) {
+  if (['venta', 'gasto', 'anular_registro', 'cobro_venta', 'anular_cobro', 'costo', 'anular_costo', 'inventario', 'anular_inventario', 'eliminar_producto_inv'].includes(datos.tipoPendiente)) {
     const respuesta = await procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
@@ -3875,6 +3909,15 @@ async function iniciarRegistroInventario(env, negocio, pedido) {
   if (!r.ok) return r.mensaje;
   await guardarPagoPendiente(env, negocio.id, r.datos);
   return r.texto;
+}
+
+// "Elimina el producto jugo del inventario": vista previa. NO borra: lo oculta (activo = 0) y conserva su historial.
+async function iniciarEliminarProducto(env, negocio, pedido) {
+  const productos = await cargarProductosInventario(env, negocio.id);
+  const p = emparejarProductoInventario(pedido.producto, productos);
+  if (!p) return `No tengo "${pedido.producto}" en tu inventario.`;
+  await guardarPagoPendiente(env, negocio.id, { tipoPendiente: 'eliminar_producto_inv', id: p.id, producto: p.producto, stock: Number(p.stock) });
+  return textoPrevioEliminarProducto(p.producto, Number(p.stock));
 }
 
 async function iniciarAnularInventario(env, negocio, pedido) {
@@ -4546,7 +4589,7 @@ async function procesarRespuestaAjuste(env, negocio, numeroCliente, texto, datos
   const c = clasificarRespuestaConfirmacion(texto);
   if (c === 'confirmar') return await guardarAjuste(env, negocio, numeroCliente, datos);
   if (c === 'cancelar') return await cancelar();
-  return await responderPago(env, negocio, numeroCliente, 'Responde "sí" para confirmar o "no" para cancelar.');
+  return await responderPago(env, negocio, numeroCliente, 'Responde "sí" para confirmar o "no" para cancelar.' + NOTA_MENSAJE_NO_GUARDADO);
 }
 
 // Aplica el ajuste: UN batch (anular + crear + marcar documento). Antes: se vuelve a verificar que todo

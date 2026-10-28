@@ -662,7 +662,7 @@ export function armarReporteDeudas(datos, opciones = {}) {
     if (!hayDeuda) {
       out.push('', filtro
         ? `No encontré deudas pendientes de ${filtro}. Si el nombre está escrito distinto en tus cuadros, dímelo como aparece.`
-        : 'Nadie te debe nada por ahora. 🎉');
+        : 'Nadie te debe nada por ahora. 🎉 (Revisé préstamos, facturas y ventas a crédito.)');
     } else {
       if (prestamos.length > 0) {
         out.push('', 'CUADROS DE COBRO (préstamos)', ...lPre.slice(0, nP));

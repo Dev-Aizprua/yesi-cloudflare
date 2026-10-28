@@ -186,6 +186,24 @@ export function detectarAnularInventario(texto) {
   return { producto: producto || null, clase: m[1] };
 }
 
+/** "Elimina el producto jugo del inventario", "quita los panes del inventario" (siempre dice "del inventario"). */
+export function detectarEliminarProducto(texto) {
+  if (/\?/.test(String(texto ?? ''))) return null;
+  const { orig, s } = preparar(texto);
+  if (!s || s.length > 90) return null;
+  if (/\bno\s+(?:\w+\s+)?(?:an+ul|borr|elimin|quit|sac)/.test(s)) return null;
+  const m = s.match(/^(?:elimin\w*|borr\w*|quit\w*|sac\w*)\s+(?:por favor\s+)?(?:el\s+|la\s+|los\s+|las\s+)?(?:producto\s+|articulo\s+)?(.+?)\s+del\s+inventario$/);
+  if (!m) return null;
+  if (/^(?:movimientos?|entradas?|ajustes?|conteos?|ultim)/.test(m[1]) || /\b(factura|cotizacion|proforma|cuadro|gasto|venta|cobro|pago|abono)\b/.test(m[1])) return null;
+  const producto = limpiarProducto(recortar(orig, s, m[1]));
+  if (!producto || producto.split(' ').length > 4 || PALABRAS_NO_PRODUCTO.test(sinTildes(producto))) return null;
+  return { producto };
+}
+
+export function textoPrevioEliminarProducto(producto, stock) {
+  return `Voy a quitar "${producto}" de tu inventario (ahora hay ${formatoCantidad(stock)}).\n\nNo se borra nada: queda su historial y tus ventas anteriores no cambian. Si después vuelves a registrarlo, empieza de cero.\n\n¿Lo quito? Responde "sí" o "no".`;
+}
+
 // ── Productos y stock ─────────────────────────────────────────────────────────────────────────────
 
 /** Producto del inventario que corresponde a lo dicho: exacto o contenido (único). null si no hay o hay duda. */
