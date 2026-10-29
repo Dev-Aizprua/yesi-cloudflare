@@ -201,9 +201,12 @@ export function elegirRegistroAAnular(registros, pedido) {
     if (pedido.fecha) return { tipo: 'ambiguo', candidatos: lista.slice(0, 5) };
     return { tipo: 'sin_criterio' };
   }
+  // Singular y plural cuentan igual ("melones" encuentra "melón", "jugo" encuentra "jugos").
+  const raiz = w => w.length > 4 && /es$/.test(w) ? w.slice(0, -2) : w.length > 3 && /s$/.test(w) ? w.slice(0, -1) : w;
+  const raices = txt => sinTildes(txt).split(/[^a-z0-9ñ]+/).filter(Boolean).map(raiz).join(' ');
   const coinciden = lista.filter(r => {
-    const base = sinTildes(`${r.descripcion ?? ''} ${r.cliente_nombre ?? ''} ${r.proveedor ?? ''}`);
-    return pedido.filtro.every(p => base.includes(p));
+    const base = raices(`${r.descripcion ?? ''} ${r.cliente_nombre ?? ''} ${r.proveedor ?? ''}`);
+    return pedido.filtro.every(p => base.includes(raiz(p)));
   });
   if (coinciden.length === 0) return { tipo: 'ninguno' };
   if (coinciden.length === 1 || pedido.ultima) return { tipo: 'ok', registro: coinciden[0] };
