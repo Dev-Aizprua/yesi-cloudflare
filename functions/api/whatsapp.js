@@ -3354,16 +3354,19 @@ const lineaDeGastoGuardado = g => lineaGasto({ descripcion: g.descripcion, monto
 async function iniciarAnularRegistro(env, negocio, pedido) {
   const aviso = mensaje => ({ tipo: 'aviso', mensaje });
   const esVenta = pedido.tipo === 'venta';
+  if (pedido.fechaInvalida) return aviso('No entendí esa fecha (o es futura). Dime "ayer" o una fecha como 24/10.');
+  const filtroFecha = pedido.fecha ? ' AND fecha = ?' : '';
   const { results } = await env.oficina_ia_db.prepare(esVenta
-    ? 'SELECT id, fecha, descripcion, cantidad, precio, total, cliente_nombre FROM ventas WHERE negocio_id = ? AND anulado = 0 ORDER BY id DESC LIMIT 100'
-    : 'SELECT id, fecha, descripcion, categoria, monto, proveedor FROM gastos WHERE negocio_id = ? AND anulado = 0 ORDER BY id DESC LIMIT 100'
-  ).bind(negocio.id).all();
+    ? `SELECT id, fecha, descripcion, cantidad, precio, total, cliente_nombre FROM ventas WHERE negocio_id = ? AND anulado = 0${filtroFecha} ORDER BY id DESC LIMIT 100`
+    : `SELECT id, fecha, descripcion, categoria, monto, proveedor FROM gastos WHERE negocio_id = ? AND anulado = 0${filtroFecha} ORDER BY id DESC LIMIT 100`
+  ).bind(...(pedido.fecha ? [negocio.id, pedido.fecha] : [negocio.id])).all();
   const describir = esVenta ? lineaDeVentaGuardada : lineaDeGastoGuardado;
 
+  if (pedido.fecha && results.length === 0) return aviso(textoNingunoAnular(pedido.tipo, pedido.fecha));
   const e = elegirRegistroAAnular(results, pedido);
   if (e.tipo === 'sin_registros') return aviso(textoSinRegistrosAnular(pedido.tipo));
   if (e.tipo === 'sin_criterio') return aviso(textoPedirCriterioAnular(pedido.tipo));
-  if (e.tipo === 'ninguno') return aviso(textoNingunoAnular(pedido.tipo));
+  if (e.tipo === 'ninguno') return aviso(textoNingunoAnular(pedido.tipo, pedido.fecha));
   if (e.tipo === 'ambiguo') return aviso(textoAmbiguoAnular(pedido.tipo, e.candidatos, describir));
 
   const linea = describir(e.registro);

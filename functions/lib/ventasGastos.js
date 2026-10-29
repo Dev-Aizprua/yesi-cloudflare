@@ -135,12 +135,35 @@ const RE_VERBO_ANULAR = /\b(an+ul\w*|elimin\w*|borr\w*|deshaz\w*|deshac\w*|cance
 const RELLENO = new Set(['de', 'del', 'la', 'el', 'las', 'los', 'a', 'al', 'en', 'por', 'que', 'hice', 'hize', 'registre', 'mi', 'mis', 'esa', 'ese', 'una', 'un', 'por', 'favor', 'porfa', 'ultima', 'ultimo', 'anterior']);
 
 /**
+ * Saca de un texto (ya sin tildes) la fecha dicha: "ayer", "anteayer", "24/10", "24 de octubre".
+ * @returns {{ fecha: string|null, invalida: boolean, resto: string }}  resto = el texto sin esas palabras
+ */
+export function extraerFechaDicha(t, ahora = new Date()) {
+  let texto = String(t ?? '');
+  let dicha = null;
+  let m = texto.match(/\b(?:del|de|el|desde)?\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/);
+  if (m) { dicha = `${m[1]}/${m[2]}${m[3] ? '/' + m[3] : ''}`; texto = texto.replace(m[0], ' '); }
+  if (!dicha) {
+    m = texto.match(new RegExp(`\\b(?:del|de|el)?\\s*(\\d{1,2}) de (${MESES.join('|')})(?: de (\\d{4}))?\\b`));
+    if (m) { dicha = `${m[1]}/${NUM_MES[m[2]]}${m[3] ? '/' + m[3] : ''}`; texto = texto.replace(m[0], ' '); }
+  }
+  if (!dicha) {
+    m = texto.match(/\b(antes de ayer|anteayer|antier|ayer|hoy)\b/);
+    if (m) { dicha = /^(?:antes de ayer|anteayer|antier)$/.test(m[1]) ? 'antier' : m[1]; texto = texto.replace(m[0], ' '); }
+  }
+  const resto = texto.replace(/\s+/g, ' ').trim();
+  if (!dicha) return { fecha: null, invalida: false, resto };
+  const r = interpretarFechaPago(dicha, ahora);
+  return r.ok ? { fecha: r.fecha, invalida: false, resto } : { fecha: null, invalida: true, resto };
+}
+
+/**
  * "Anula la última venta", "borra el último gasto", "anula el gasto de luz".
  * Se detecta en código (0 tokens). Solo si la palabra venta/gasto va JUSTO después del verbo y artículo,
  * así "elimina el cuadro Ventas" o "anula el último abono de Yisel" no entran aquí.
  * @returns {{ tipo: 'venta'|'gasto', ultima: boolean, filtro: string[] } | null}
  */
-export function detectarAnularRegistro(texto) {
+export function detectarAnularRegistro(texto, ahora = new Date()) {
   const original = String(texto ?? '');
   if (/\?/.test(original)) return null;
   const t = plano(original);
@@ -155,8 +178,10 @@ export function detectarAnularRegistro(texto) {
   const resto = m[3] || '';
   if (/\b(cuadro|abono|pago|factura|cotizacion|proforma|tabla|excel|fila|registro)\b/.test(`${entre} ${resto}`)) return null;
   const ultima = /\b(ultim[oa]|anterior)\b/.test(`${entre} ${resto}`);
-  const filtro = resto.split(' ').filter(p => p.length >= 3 && !RELLENO.has(p));
-  return { tipo: /^(?:venta|veinta|benta|venda)$/.test(m[2]) ? 'venta' : 'gasto', ultima, filtro };
+  // "anula la venta de Marta de ayer" / "del 24/10": la fecha se separa del resto para no tomarla como nombre.
+  const f = extraerFechaDicha(resto, ahora);
+  const filtro = f.resto.split(' ').filter(p => p.length >= 3 && !RELLENO.has(p) && p !== 'desde');
+  return { tipo: /^(?:venta|veinta|benta|venda)$/.test(m[2]) ? 'venta' : 'gasto', ultima, filtro, ...(f.fecha ? { fecha: f.fecha } : {}), ...(f.invalida ? { fechaInvalida: true } : {}) };
 }
 
 /**
@@ -165,9 +190,17 @@ export function detectarAnularRegistro(texto) {
  * @returns {{tipo:'ok', registro} | {tipo:'sin_registros'|'sin_criterio'|'ninguno'} | {tipo:'ambiguo', candidatos: object[]}}
  */
 export function elegirRegistroAAnular(registros, pedido) {
-  const lista = registros || [];
+  let lista = registros || [];
   if (lista.length === 0) return { tipo: 'sin_registros' };
-  if (pedido.filtro.length === 0) return pedido.ultima ? { tipo: 'ok', registro: lista[0] } : { tipo: 'sin_criterio' };
+  if (pedido.fecha) {
+    lista = lista.filter(r => String(r.fecha) === pedido.fecha);
+    if (lista.length === 0) return { tipo: 'ninguno' };
+  }
+  if (pedido.filtro.length === 0) {
+    if (pedido.ultima || (pedido.fecha && lista.length === 1)) return { tipo: 'ok', registro: lista[0] };
+    if (pedido.fecha) return { tipo: 'ambiguo', candidatos: lista.slice(0, 5) };
+    return { tipo: 'sin_criterio' };
+  }
   const coinciden = lista.filter(r => {
     const base = sinTildes(`${r.descripcion ?? ''} ${r.cliente_nombre ?? ''} ${r.proveedor ?? ''}`);
     return pedido.filtro.every(p => base.includes(p));
@@ -191,12 +224,13 @@ export function textoPedirCriterioAnular(tipo) {
     ? 'Dime cuál: "anula la última venta" o "anula la venta de <producto o cliente>".'
     : 'Dime cuál: "anula el último gasto" o "anula el gasto de <concepto>".';
 }
-export function textoNingunoAnular(tipo) {
+export function textoNingunoAnular(tipo, fecha = null) {
+  if (fecha) return `No encontré ${tipo === 'venta' ? 'una venta' : 'un gasto'} vigente del ${fechaLegible(fecha)} con eso. Dime "anula ${tipo === 'venta' ? 'la venta' : 'el gasto'} de <producto o cliente> del ${fechaLegible(fecha).slice(0, 5)}" o "anula ${tipo === 'venta' ? 'la última venta' : 'el último gasto'}".`;
   return `No encontré ${tipo === 'venta' ? 'una venta' : 'un gasto'} con eso entre los vigentes. Prueba con "anula ${tipo === 'venta' ? 'la última venta' : 'el último gasto'}".`;
 }
 export function textoAmbiguoAnular(tipo, candidatos, describir) {
   return [`Hay varios ${tipo === 'venta' ? 'ventas' : 'gastos'} que encajan:`, ...candidatos.map(c => `* ${describir(c)} (${fechaLegible(c.fecha)})`),
-    `Dime "anula ${tipo === 'venta' ? 'la última venta' : 'el último gasto'} de ..." para quedarme con el más reciente.`].join('\n');
+    `Dime cuál: agrega el ${tipo === 'venta' ? 'producto o cliente' : 'concepto'} y la fecha, por ejemplo "anula ${tipo === 'venta' ? 'la venta' : 'el gasto'} de <nombre> del ${fechaLegible(candidatos[0].fecha).slice(0, 5)}", o "anula ${tipo === 'venta' ? 'la última venta' : 'el último gasto'} de ..." para el más reciente.`].join('\n');
 }
 
 // ── Consultas: "¿cuánto vendí hoy?", "gastos del mes" ─────────────────────────────────────────────
