@@ -3,7 +3,7 @@
 // (reportes.js, pagos.js, ventasGastos.js) para que una cifra tenga una sola verdad: lo que dice WhatsApp y
 // lo que dice la web coinciden. Todo se filtra por negocio_id, que sale de la sesión, nunca del navegador.
 
-import { redondear2, calcularSaldos, extraerPrestamosDeCuadros } from './pagos.js';
+import { redondear2, calcularSaldos, extraerPrestamosDeCuadros, agruparSaldosAFavor, mismoCliente } from './pagos.js';
 import { agruparDeudaVentas } from './ventasGastos.js';
 import { calcularReporte, detectarPedidoReporte, periodoAnterior } from './reportes.js';
 
@@ -133,5 +133,76 @@ export async function resumenInicio(db, negocioId, ahora = new Date()) {
     cobrado,
     gastado: { total: rep.gastosTotal, n: rep.gastosN },
     hayDatos,
+  };
+}
+
+export async function cargarPagosVigentes(db, negocioId) {
+  const { results } = await db.prepare(
+    `SELECT p.id, p.fecha, p.monto, p.tipo, p.documento_id, p.referencia, p.concepto, d.numero AS doc_numero
+     FROM pagos p LEFT JOIN documentos d ON d.id = p.documento_id
+     WHERE p.negocio_id = ? AND p.anulado = 0
+     ORDER BY p.fecha DESC, p.id DESC LIMIT 500`
+  ).bind(negocioId).all();
+  return results;
+}
+
+/**
+ * Pantalla Pagos: por cliente, lo que debe (préstamos + facturas proforma + ventas a crédito), su saldo a favor
+ * y sus pagos recientes. Mismas fuentes que "¿quién me debe?" del bot.
+ */
+export async function resumenPagos(db, negocioId, ahora = new Date()) {
+  const grupos = [];
+  const grupo = (nombre) => {
+    const n = String(nombre ?? '').trim() || '(sin nombre)';
+    let g = grupos.find(x => (n === '(sin nombre)' || x.nombre === '(sin nombre)') ? x.nombre === n : mismoCliente(x.nombre, n));
+    if (!g) { g = { nombre: n, deuda: 0, aFavor: 0, fuentes: [], pagos: [] }; grupos.push(g); }
+    else if (n !== '(sin nombre)' && n.length > g.nombre.length) g.nombre = n;
+    return g;
+  };
+  try {
+    const cuadros = (await db.prepare('SELECT * FROM cuadros WHERE negocio_id = ?').bind(negocioId).all()).results;
+    for (const it of extraerPrestamosDeCuadros(cuadros, normalizarClave).items) {
+      const g = grupo(it.persona); g.deuda += it.saldo;
+      g.fuentes.push({ tipo: 'prestamo', texto: `Préstamo · ${it.cuadro}`, fecha: null, saldo: it.saldo });
+    }
+  } catch (e) { console.log('[WEB] Pagos sin préstamos:', e?.message); }
+  try {
+    for (const d of (await cargarProformasConSaldo(db, negocioId)).filter(x => x.saldo > 0.005)) {
+      const g = grupo(d.cliente); g.deuda += d.saldo;
+      g.fuentes.push({ tipo: 'factura', texto: `Factura proforma ${d.numero}`, fecha: d.fecha, saldo: redondear2(d.saldo) });
+    }
+  } catch (e) { console.log('[WEB] Pagos sin facturas:', e?.message); }
+  try {
+    for (const v of await cargarVentasFiadasConSaldo(db, negocioId)) {
+      const g = grupo(v.cliente_nombre); g.deuda += v.saldo;
+      g.fuentes.push({ tipo: 'fiado', texto: `Venta a crédito${v.descripcion ? ' · ' + v.descripcion : ''}`, fecha: v.fecha, saldo: v.saldo });
+    }
+  } catch (e) { console.log('[WEB] Pagos sin ventas a crédito:', e?.message); }
+  let pagos = [];
+  try { pagos = await cargarPagosVigentes(db, negocioId); } catch (e) { console.log('[WEB] Pagos sin pagos:', e?.message); }
+  for (const f of agruparSaldosAFavor(pagos)) grupo(f.cliente).aFavor += f.monto;
+  for (const p of pagos) {
+    if (!String(p.referencia ?? '').trim()) continue;
+    const g = grupo(p.referencia);
+    if (g.pagos.length < 30) g.pagos.push({
+      fecha: p.fecha, monto: redondear2(Number(p.monto)), tipo: p.tipo,
+      concepto: p.tipo === 'cobro_documento' && p.doc_numero ? `Pago de la factura proforma ${p.doc_numero}` : (p.concepto || ''),
+    });
+  }
+  const clientes = grupos.map(g => {
+    const deuda = redondear2(g.deuda); const aFavor = redondear2(g.aFavor);
+    return { ...g, deuda, aFavor, estado: deuda > 0.005 ? 'Pendiente' : aFavor > 0.005 ? 'A favor' : 'Al día' };
+  }).sort((a, b) => b.deuda - a.deuda || b.aFavor - a.aFavor || a.nombre.localeCompare(b.nombre, 'es'))
+    .map((g, i) => ({ id: i, ...g }));
+  const p = detectarPedidoReporte('reporte de este mes', ahora).periodo;
+  const cobrado = await calcularCobrado(db, negocioId, p.desde, p.hasta);
+  return {
+    periodo: { desde: p.desde, hasta: p.hasta },
+    resumen: {
+      teDeben: redondear2(clientes.reduce((s, c) => s + c.deuda, 0)),
+      aFavor: redondear2(clientes.reduce((s, c) => s + c.aFavor, 0)),
+      cobradoMes: cobrado.total,
+    },
+    clientes,
   };
 }

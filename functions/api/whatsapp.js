@@ -25,6 +25,7 @@ import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleC
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
 import { detectarAyuda, textoAyuda } from '../lib/ayuda.js';
 import { responderCalculo } from '../lib/calculadora.js';
+import { calcularCobrado } from '../lib/datosNegocio.js';
 import { detectarPedidoOficina, esDuenoDelNegocio, crearEnlaceAcceso, textoEnlaceOficina, TEXTO_SOLO_DUENO, TEXTO_OFICINA_NO_LISTA } from '../lib/accesoWeb.js';
 import { identificadoresDelRemitente, buscarNegocioDelRemitente, atenderRemitenteDesconocido } from '../lib/accesoTelefonos.js';
 import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
@@ -3900,7 +3901,10 @@ async function responderReporte(env, negocio, pedido) {
     const pp = periodoAnterior(p);
     previo = { periodo: pp, ...(await leerVentasYGastos(db, negocio.id, pp.desde, pp.hasta)) };
   }
-  const rep = calcularReporte({ periodo: p, ventas, gastos, fichas, porCobrar, productos, previo });
+  // Cobrado = plata que entró en el período (misma cuenta que la oficina web, un solo código en datosNegocio.js)
+  let cobrado = null;
+  try { cobrado = await calcularCobrado(db, negocio.id, p.desde, p.hasta); } catch (e) { console.log('[WEBHOOK] Reporte: sin cobrado:', e?.message); }
+  const rep = calcularReporte({ periodo: p, ventas, gastos, fichas, porCobrar, productos, previo, cobrado });
   return {
     texto: textoReporte(rep),
     pdf: {

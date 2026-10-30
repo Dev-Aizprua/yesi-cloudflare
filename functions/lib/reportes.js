@@ -210,6 +210,7 @@ export function calcularReporte(d) {
     ganancia: gananciaDe(ventas, d.fichas),
     top: topProductos(ventas),
     porCobrar: null, inventario: null, comparacion: null,
+    cobrado: d.cobrado || null,
   };
   rep.diferencia = redondear2(rep.ventasTotal - rep.gastosTotal);
   if (d.porCobrar) {
@@ -265,6 +266,14 @@ export function textoReporte(rep) {
       if (rep.ganancia.sospechosos && rep.ganancia.sospechosos.length > 0) l.push(`   ⚠️ Revisa el costo de ${rep.ganancia.sospechosos.slice(0, 3).join(', ')}: sale más caro que lo vendido. Si es el total de una receta, guárdalo otra vez con "rinde N".`);
     }
   }
+  if (rep.cobrado && rep.cobrado.total > 0.005) {
+    const c = rep.cobrado;
+    const partes = [];
+    if (c.contado > 0.005) partes.push(`ventas de contado ${c.contado.toFixed(2)}`);
+    if (c.cobrosFiado > 0.005) partes.push(`fiados cobrados ${c.cobrosFiado.toFixed(2)}`);
+    if (c.pagos > 0.005) partes.push(`pagos y abonos ${c.pagos.toFixed(2)}`);
+    l.push(`💵 Cobrado (plata que entró): ${formatoMonto(c.total)} — ${partes.join(' · ')}`);
+  }
   if (rep.porCobrar) {
     const c = rep.porCobrar;
     if (c.total > 0.005) {
@@ -301,6 +310,13 @@ export function filasPdfReporte(rep) {
   fila('GANANCIA ESTIMADA', '');
   fila('Ganancia (productos con costo)', rep.ganancia && rep.ganancia.conCosto > 0 ? formatoMonto(rep.ganancia.ganancia) : 'sin costos guardados');
   if (rep.ganancia && rep.ganancia.sospechosos && rep.ganancia.sospechosos.length) fila('Aviso', `Revisa el costo de ${rep.ganancia.sospechosos.slice(0, 3).join(', ')} (sale más caro que lo vendido)`);
+  if (rep.cobrado && rep.cobrado.total > 0.005) {
+    fila('COBRADO (plata que entró)', '');
+    fila('Ventas de contado', formatoMonto(rep.cobrado.contado));
+    fila('Fiados cobrados', formatoMonto(rep.cobrado.cobrosFiado));
+    fila('Pagos y abonos', formatoMonto(rep.cobrado.pagos));
+    fila('Total cobrado', formatoMonto(rep.cobrado.total));
+  }
   if (rep.porCobrar) {
     fila('POR COBRAR (hoy)', '');
     fila('Ventas a crédito (fiados)', formatoMonto(rep.porCobrar.fiado));

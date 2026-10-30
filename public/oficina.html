@@ -181,6 +181,7 @@ tfoot td{border:0;font-weight:600}
 
 .chat-off .field{background:#f4f7fb}
 .vacio{color:var(--mut);font-size:14px;padding:6px 0}
+.list div b{white-space:nowrap}
 </style>
 </head>
 <body data-v="chat">
@@ -284,7 +285,7 @@ const money=n=>'B/. '+Number(n||0).toLocaleString('en-US',{minimumFractionDigits
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 /* menú: solo Inicio está conectado por ahora; las demás pantallas se irán abriendo una por una */
-const items=[['home','Inicio',1],['card','Pagos',0],['grid','Cuadros',0],['doc','Documentos',0],['box','Inventario',0],['chart','Informes',0]];
+const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',0],['doc','Documentos',0],['box','Inventario',0],['chart','Informes',0]];
 $('#nav').innerHTML=items.map((x,i)=>`<button class="nav${i?'':' on'}" data-nav="${x[1]}" data-ok="${x[2]}">${ico(x[0])}<span>${x[1]}</span></button>`).join('');
 $$('[data-bot]').forEach(e=>e.innerHTML=ROBOT);
 $$('[data-bot-big]').forEach(e=>e.innerHTML=ROBOT.replace('<svg','<svg style="width:92px;height:92px"'));
@@ -300,7 +301,7 @@ document.addEventListener('click',e=>{
   if(x.dataset.toast){e.preventDefault();return toast(x.dataset.toast)}
   if(x.dataset.nav){
     menu(false);
-    if(x.dataset.ok==='1') return;
+    if(x.dataset.ok==='1'){ $$('.nav').forEach(n=>n.classList.toggle('on',n===x)); return show(x.dataset.nav); }
     return toast('La pantalla de '+x.dataset.nav+' llega pronto a Mi oficina.');
   }
 });
@@ -345,6 +346,57 @@ async function cargar(){
   $('#b-debe').style.width=w(d.teDeben.total);
   $('#b-gast').style.width=w(d.gastado.total);
 }
+/* ---------- pantallas (solo lectura) ---------- */
+const scr=$('#screen'), S={v:'',d:0,sel:0,datos:null};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PILL={'Pendiente':'Pendiente','A favor':'Afavor','Al día':'Aldia'};
+const pill=t=>`<span class="pill ${PILL[t]||''}">${esc(t)}</span>`;
+const row=(a,b,bold)=>`<div${bold?' class="top-l"':''}><span>${bold?'<b>'+a+'</b>':a}</span><b>${b}</b></div>`;
+const fechaCorta=iso=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(iso||'');return m?(+m[3])+' '+MESES[+m[2]-1].slice(0,3)+' '+m[1]:''};
+
+async function show(name){
+  S.v=name;
+  if(name==='Inicio'){delete document.body.dataset.s;return}
+  document.body.dataset.s=name;S.d=0;S.sel=0;
+  scr.innerHTML='<p class="mut" style="padding:12px">Cargando…</p>';
+  if(name==='Pagos') await cargarPagos();
+}
+async function pedir(url){
+  let r;
+  try{ r=await fetch(url,{credentials:'same-origin',cache:'no-store'}); }
+  catch(e){ scr.innerHTML='<p class="mut" style="padding:12px">No pude conectar. Revisa tu internet e intenta de nuevo.</p>'; return null; }
+  if(r.status===401){ sesionCaida(); return null; }
+  const d=await r.json().catch(()=>null);
+  if(!r.ok||!d||!d.ok){ scr.innerHTML='<p class="mut" style="padding:12px">'+esc((d&&d.error)||'No pude leer los datos. Intenta de nuevo en un momento.')+'</p>'; return null; }
+  return d;
+}
+async function cargarPagos(){ const d=await pedir('/api/web/pagos'); if(d){S.datos=d;drawP()} }
+
+const TIPOS_FUENTE={prestamo:'Préstamo',factura:'Factura proforma',fiado:'Venta a crédito'};
+function etiquetaPago(p){
+  if(p.concepto) return p.concepto;
+  return p.tipo==='abono_prestamo'?'Abono de préstamo':p.tipo==='cobro_documento'?'Pago de factura':p.tipo==='saldo_a_favor'?'Saldo a favor':'Pago';
+}
+function drawP(){
+  const d=S.datos, c=d.clientes.find(x=>x.id===S.sel)||null;
+  const sub=x=>{const u=[...new Set(x.fuentes.map(f=>TIPOS_FUENTE[f.tipo]||'Deuda'))];return u.length?u.join(', '):(x.aFavor>0.005?'Saldo a favor':'Sin deuda')};
+  const lista=d.clientes.length?d.clientes.map(x=>`<button class="li${x.id===S.sel?' sel':''}" data-i="${x.id}"><div><b>${esc(x.nombre)}</b><small>${esc(sub(x))}</small></div><div class="r"><b>${money(x.deuda>0.005?x.deuda:x.aFavor)}</b>${pill(x.estado)}</div></button>`).join(''):'<p class="note" style="padding:12px">Todavía no hay clientes con saldo ni pagos registrados.</p>';
+  const det=c?`<div class="card dt"><button class="back" data-do="back">← Volver a la lista</button><h3>${esc(c.nombre)}</h3>
+    <p class="mut">${c.deuda>0.005?'Te debe: <b>'+money(c.deuda)+'</b>':'Está al día'}${c.aFavor>0.005?'<br>Saldo a favor: <b>'+money(c.aFavor)+'</b>':''}</p>
+    ${c.fuentes.length?`<div class="list" style="margin:12px 0">${c.fuentes.map(f=>row(esc(f.texto)+(f.fecha?' <small class="mut">('+esc(fechaCorta(f.fecha))+')</small>':''),money(f.saldo))).join('')}${c.fuentes.length>1?row('Total',money(c.deuda),1):''}</div>`:''}
+    <p class="mut top-l" style="margin-top:14px">Pagos anteriores</p>
+    ${c.pagos.length?`<div class="list">${c.pagos.map(p=>row(esc(fechaCorta(p.fecha))+' · '+esc(etiquetaPago(p)),money(p.monto))).join('')}</div>`:'<p class="note">Todavía no hay pagos registrados.</p>'}
+    <p class="note">Para registrar un pago, díselo a tu asistente por WhatsApp. Por ejemplo: "Juan pagó 100". Aquí lo verás reflejado.</p></div>`:'';
+  scr.innerHTML=`<div class="sh"><div><h2>Pagos</h2><p>Quién te debe y cuánto, y los pagos que ya recibiste.</p></div></div>
+  <div class="sum"><div class="stat" style="background:var(--red-soft)">Te deben<b style="color:var(--red)">${money(d.resumen.teDeben)}</b></div><div class="stat" style="background:var(--green-soft)">Cobrado este mes<b style="color:var(--green)">${money(d.resumen.cobradoMes)}</b></div></div>
+  <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
+}
+scr.addEventListener('click',e=>{
+  const x=e.target.closest('[data-i],[data-do]');if(!x)return;
+  if(x.dataset.i!==undefined){S.sel=+x.dataset.i;S.d=1;return drawP()}
+  if(x.dataset.do==='back'){S.d=0;drawP()}
+});
+
 cargar();
 </script>
 </body>
