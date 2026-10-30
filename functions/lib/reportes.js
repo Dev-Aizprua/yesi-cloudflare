@@ -58,7 +58,7 @@ export function detectarRango(texto, ahora = new Date()) {
     }
   }
   if (!desde) {
-    m = t.match(/\b(?:del|desde el|desde)\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(?:al|hasta el|hasta)\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+    m = t.match(/\b(?:del|desde el|desde|entre el|entre)\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(?:al|hasta el|hasta|y el|y)\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
     if (m) {
       const an = v => (v ? (v.length === 2 ? 2000 + Number(v) : Number(v)) : yh);
       desde = [an(m[3]), Number(m[2]), Number(m[1])]; hasta = [an(m[6]), Number(m[5]), Number(m[4])];
@@ -70,7 +70,7 @@ export function detectarRango(texto, ahora = new Date()) {
   if (d > h) return { error: 'La fecha de inicio es posterior a la final. Dímelo de nuevo, por ejemplo: "del 1 al 15 de octubre".' };
   if (d > hoy) return { error: 'Ese rango todavía no ha llegado. Dime uno que ya haya pasado.' };
   if (h > hoy) h = hoy;
-  return { desde: d, hasta: h, etiqueta: `del ${fechaLegible(d)} al ${fechaLegible(h)}` };
+  return { desde: d, hasta: h, etiqueta: 'período personalizado' };
 }
 
 /**
@@ -96,6 +96,9 @@ export function periodoAnterior(p) {
 // ── Detección ─────────────────────────────────────────────────────────────────────────────────────
 const RE_PERIODO = /\b(hoy|ayer|semana|mes|ano)\b/;
 const RE_MES_NOMBRE = new RegExp(`\\b(${Object.keys(MESES).join('|')})\\b`);
+const FECHA_RANGO = '\\d{1,2}(?:\\/\\d{1,2}(?:\\/\\d{2,4})?)?(?:\\s+de\\s+[a-z]+)?';
+// El mensaje ENTERO es un rango de fechas (nada más): "del 1 al 15 de octubre", "entre el 10/10 y el 20/10".
+const RE_SOLO_RANGO = new RegExp(`^(?:del|desde(?: el)?|entre(?: el)?)\\s+${FECHA_RANGO}\\s+(?:al|hasta(?: el)?|y(?: el)?)\\s+${FECHA_RANGO}(?:\\s+de\\s+\\d{4})?$`);
 const RE_OTRO_TEMA = /\b(excel|cuadro|cuadros|factura|facturas|cotizacion|cotizaciones|proforma|imagen|foto|deuda|deudas|cobros|cobrar|debe|deben|inventario|stock|costos|costo|ganancia|ganancias|carta|anul\w*|elimin\w*|borr\w*|registr\w*|agreg\w*|crea\w*)\b/;
 
 /**
@@ -118,6 +121,8 @@ export function detectarPedidoReporte(texto, ahora = new Date()) {
   else if (palabraReporte && (negocio || periodoDicho || /\bgeneral|mensual|semanal|diario\b/.test(t))) vale = true;
   else if (estado) vale = true;
   else if (compara && negocio) vale = true;
+  // Solo un rango de fechas ("del 1 al 15 de octubre", "entre el 10/10 y el 20/10"): no tiene otro significado posible aquí.
+  else if (RE_SOLO_RANGO.test(t) && detectarRango(texto, ahora)) vale = true;
   if (!vale) return null;
   const rango = detectarRango(texto, ahora);
   if (rango && rango.error) return { error: rango.error };
@@ -157,14 +162,21 @@ export function gananciaDe(ventas, fichas) {
   if (!fichas || fichas.length === 0) return null;
   let vendido = 0; let costo = 0; let sinCosto = 0;
   const sin = new Set();
+  const porFicha = new Map();
   for (const v of ventas || []) {
     const f = emparejarCosto(v.descripcion, fichas);
     if (!f) { sinCosto++; sin.add(claveProducto(v.descripcion)); continue; }
+    const c = Number(v.cantidad || 0) * Number(f.costo_unidad);
     vendido += Number(v.total || 0);
-    costo += Number(v.cantidad || 0) * Number(f.costo_unidad);
+    costo += c;
+    const g = porFicha.get(f.producto) || { vendido: 0, costo: 0 };
+    g.vendido += Number(v.total || 0); g.costo += c;
+    porFicha.set(f.producto, g);
   }
   vendido = redondear2(vendido); costo = redondear2(costo);
-  return { vendido, costo, ganancia: redondear2(vendido - costo), ventasSinCosto: sinCosto, productosSinCosto: sin.size, conCosto: (ventas || []).length - sinCosto };
+  // Costo mayor que lo vendido: casi siempre es el total de una receta que rinde varias unidades (mismo aviso que "cuánto gané").
+  const sospechosos = [...porFicha.entries()].filter(([, g]) => g.costo > g.vendido + 0.005).map(([producto]) => producto);
+  return { vendido, costo, ganancia: redondear2(vendido - costo), ventasSinCosto: sinCosto, productosSinCosto: sin.size, conCosto: (ventas || []).length - sinCosto, sospechosos };
 }
 
 /** Los 3 productos que más dinero dejaron en el período (agrupa singular/plural). */
@@ -248,7 +260,10 @@ export function textoReporte(rep) {
     l.push(`📈 Diferencia (ventas − gastos): ${formatoMonto(rep.diferencia)}`);
     if (rep.ganancia === null) l.push('🧾 Ganancia estimada: guarda el costo de tus productos para verla (ej. "El jugo cuesta: frutas 8, azúcar 2").');
     else if (rep.ganancia.conCosto === 0) l.push('🧾 Ganancia estimada: ninguna venta de este período tiene costo guardado.');
-    else l.push(`🧾 Ganancia estimada: ${formatoMonto(rep.ganancia.ganancia)}${rep.ganancia.productosSinCosto > 0 ? ` (sin contar ${rep.ganancia.productosSinCosto} ${plural(rep.ganancia.productosSinCosto, 'producto sin costo', 'productos sin costo')})` : ''}`);
+    else {
+      l.push(`🧾 Ganancia estimada: ${formatoMonto(rep.ganancia.ganancia)}${rep.ganancia.productosSinCosto > 0 ? ` (sin contar ${rep.ganancia.productosSinCosto} ${plural(rep.ganancia.productosSinCosto, 'producto sin costo', 'productos sin costo')})` : ''}`);
+      if (rep.ganancia.sospechosos && rep.ganancia.sospechosos.length > 0) l.push(`   ⚠️ Revisa el costo de ${rep.ganancia.sospechosos.slice(0, 3).join(', ')}: sale más caro que lo vendido. Si es el total de una receta, guárdalo otra vez con "rinde N".`);
+    }
   }
   if (rep.porCobrar) {
     const c = rep.porCobrar;
@@ -285,6 +300,7 @@ export function filasPdfReporte(rep) {
   fila('Diferencia (ventas − gastos)', formatoMonto(rep.diferencia));
   fila('GANANCIA ESTIMADA', '');
   fila('Ganancia (productos con costo)', rep.ganancia && rep.ganancia.conCosto > 0 ? formatoMonto(rep.ganancia.ganancia) : 'sin costos guardados');
+  if (rep.ganancia && rep.ganancia.sospechosos && rep.ganancia.sospechosos.length) fila('Aviso', `Revisa el costo de ${rep.ganancia.sospechosos.slice(0, 3).join(', ')} (sale más caro que lo vendido)`);
   if (rep.porCobrar) {
     fila('POR COBRAR (hoy)', '');
     fila('Ventas a crédito (fiados)', formatoMonto(rep.porCobrar.fiado));

@@ -232,7 +232,7 @@ export function textoNingunoAnular(tipo, fecha = null) {
   return `No encontré ${tipo === 'venta' ? 'una venta' : 'un gasto'} con eso entre los vigentes. Prueba con "anula ${tipo === 'venta' ? 'la última venta' : 'el último gasto'}".`;
 }
 export function textoAmbiguoAnular(tipo, candidatos, describir) {
-  return [`Hay varios ${tipo === 'venta' ? 'ventas' : 'gastos'} que encajan:`, ...candidatos.map(c => `* ${describir(c)} (${fechaLegible(c.fecha)})`),
+  return [`Hay ${tipo === 'venta' ? 'varias ventas' : 'varios gastos'} que encajan:`, ...candidatos.map(c => `* ${describir(c)} (${fechaLegible(c.fecha)})`),
     `Dime cuál: agrega el ${tipo === 'venta' ? 'producto o cliente' : 'concepto'} y la fecha, por ejemplo "anula ${tipo === 'venta' ? 'la venta' : 'el gasto'} de <nombre> del ${fechaLegible(candidatos[0].fecha).slice(0, 5)}", o "anula ${tipo === 'venta' ? 'la última venta' : 'el último gasto'} de ..." para el más reciente.`].join('\n');
 }
 
