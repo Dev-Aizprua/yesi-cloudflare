@@ -70,7 +70,7 @@ export const TEXTO_MENU = [
   '🧾 *Cotizaciones, facturas y pagos* — "Hazme una cotización para Juan", "Juan pagó 100"',
   '💳 *Préstamos y abonos* — "Yisel abonó 10", "Cóbrale a Yisel"',
   '🧮 *Calculadora* — "25 por 18", "el 7% de 85", "120 más ITBMS"',
-  '✉️ *Cartas en Word* — "Ayúdame con una carta" (te muestro las que tengo)',
+  '✉️ *Cartas en Word y PDF* — "Ayúdame con una carta" (te muestro las que tengo)',
   '',
   'Para ver más ejemplos de un tema escribe "ayuda" y el tema. Por ejemplo: "ayuda inventario".',
 ].join('\n');
@@ -104,6 +104,8 @@ const DETALLE = {
     '📦 *Inventario*',
     '• "Entraron 30 panes" o "compré 30 panes": suma al inventario',
     '• "Me quedan 12 jugos" o "ajusta el inventario de jugos a 12": corrige el conteo',
+    '• "Quita 8 jugos del inventario" o "Se vencieron 3 panes": descuenta esa cantidad',
+    '• Si vendes varios sabores o tipos, registra cada uno por separado (ej. "Tengo 10 jugos de fresa" y "Tengo 6 jugos de mango").',
     '• "Avísame si quedan menos de 5 panes": mínimo para el aviso de stock bajo',
     '• "Mi inventario" o "¿cuánto me queda de jugos?"',
     '• Cada venta de un producto del inventario se descuenta sola. Nunca bloqueo una venta: solo te aviso si no alcanzaba.',
@@ -142,7 +144,7 @@ const DETALLE = {
     '• "Pásame el Excel de préstamos"',
   ],
   calculadora: [
-    '🧮 *Calculadora* (sin gastar nada, siempre exacta)',
+    '🧮 *Calculadora* (rápida y siempre exacta)',
     '• Operaciones: "25 por 18", "250 + 45", "cuánto es 100 entre 8", "suma 145, 230 y 75"',
     '• Porcentajes: "el 7% de 85", "85 más 10%", "85 menos el 10%"',
     '• ITBMS (7%): "120 más ITBMS", "107 sin ITBMS", "el ITBMS de 200"',
@@ -150,10 +152,11 @@ const DETALLE = {
     'Solo funciona cuando todo el mensaje es el cálculo.',
   ],
   cartas: [
-    '✉️ *Cartas en Word*',
+    '✉️ *Cartas en Word y PDF*',
     '• "Ayúdame con una carta": te muestro los tipos de carta que tengo y los datos que necesito de cada una.',
-    '• Por ejemplo, "Hazme un poder simple" o "Hazme una carta de solicitud".',
-    '• Si me falta algún dato te lo pregunto, y te mando el documento en Word.',
+    '• Tengo: carta general (recomendación, aviso, agradecimiento, etc.), constancia de trabajo, recomendación laboral, renuncia, carta de cobro, poder simple y solicitud.',
+    '• Por ejemplo, "Hazme una carta de cobro para Juan Pérez por 150 dólares" o "Hazme una constancia de trabajo".',
+    '• Si me falta algún dato te lo pregunto, y te mando el documento en Word y también en PDF.',
   ],
 };
 

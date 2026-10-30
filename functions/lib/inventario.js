@@ -110,6 +110,20 @@ export function detectarRegistroInventario(texto) {
 
   if (CON_PRECIO.test(s)) return null;
 
+  // salida: "elimina del inventario los 8 jugos", "quita 8 jugos del inventario", "se vencieron 3 panes", "se dañaron 2 jugos".
+  // Descuenta esa cantidad (es un ajuste hacia abajo con vista previa). Sin "inventario" solo cuenta si el producto ya está en él.
+  m = s.match(new RegExp(`^(?:elimin\\w*|quit\\w*|sac\\w*|rest\\w*|descuent\\w*|borr\\w*)\\s+(?:(?:del|al|en el)\\s+(?:inventario|stock)\\s+)?(?:por favor\\s+)?(?:los\\s+|las\\s+)?${NUM}\\s+(.+)$`))
+    || s.match(new RegExp(`^(?:se\\s+)?(?:me\\s+)?(?:danaron|vencieron|perdieron|rompieron|echaron a perder|regalaron|dañaron)\\s+${NUM}\\s+(.+)$`));
+  if (m) {
+    const n = numeroCantidad(m[1]);
+    if (n !== null && n > 0) {
+      const producto = limpiarProducto(recortar(orig, s, m[2])).replace(/\s+(?:del|de|en)\s+(?:inventario|stock)$/i, '').trim();
+      if (producto && producto.split(' ').length <= 5 && !PALABRAS_NO_PRODUCTO.test(sinTildes(producto)) && !/^(?:fila|filas|columna|columnas|registro|registros|pedido|pedidos)\b/.test(sinTildes(producto))) {
+        return { accion: 'salida', producto, cantidad: n, ambiguo: !dice };
+      }
+    }
+  }
+
   // mínimo
   m = s.match(new RegExp(`^(?:avisame|avisa|alertame|avisarme)\\s+(?:si\\s+)?(?:quedan|bajan|baja|hay|tengo|me quedan)\\s+(?:menos de|menos que|bajo de)\\s+${NUM}\\s+(.+)$`));
   if (m) {
@@ -197,6 +211,7 @@ export function detectarEliminarProducto(texto) {
   if (/^(?:movimientos?|entradas?|ajustes?|conteos?|ultim)/.test(m[1]) || /\b(factura|cotizacion|proforma|cuadro|gasto|venta|cobro|pago|abono)\b/.test(m[1])) return null;
   const producto = limpiarProducto(recortar(orig, s, m[1]));
   if (!producto || producto.split(' ').length > 4 || PALABRAS_NO_PRODUCTO.test(sinTildes(producto))) return null;
+  if (/^\d/.test(producto) || numeroCantidad(producto.split(' ')[0]) !== null) return null; // "quita 8 jugos del inventario" es una salida, no borrar el producto
   return { producto };
 }
 
@@ -233,6 +248,21 @@ export function armarRegistroInventario(pedido, productos) {
     if (!exacto) return { ok: false, mensaje: `No tengo "${pedido.producto}" en tu inventario todavía. Primero dime cuántos hay, por ejemplo: "Tengo 20 ${pedido.producto}".` };
     const datos = { tipoPendiente: 'inventario', accion: 'minimo', producto: nombre, clave, minimo: pedido.minimo };
     return { ok: true, datos, texto: textoVistaPreviaInventario(datos, { stock, nuevo: false, parecido }) };
+  }
+  if (pedido.accion === 'salida') {
+    const p = exacto || parecido;
+    if (!p) return { ok: false, mensaje: `No tengo "${pedido.producto}" en tu inventario. Mira cuáles tienes con "mi inventario".` };
+    const hay = redondear2(Number(p.stock));
+    if (pedido.cantidad > hay + 0.0001) {
+      return { ok: false, mensaje: `De "${p.producto}" solo hay ${formatoCantidad(hay)}; no puedo quitar ${formatoCantidad(pedido.cantidad)}. Si contaste y hay otra cantidad, dime por ejemplo: "Tengo ${formatoCantidad(hay)} ${p.producto}".` };
+    }
+    const quedan = redondear2(hay - pedido.cantidad);
+    // Se guarda como un ajuste hacia abajo (mismo camino y mismo historial que los demás ajustes)
+    const datos = { tipoPendiente: 'inventario', accion: 'ajuste', producto: p.producto, clave: p.clave, objetivo: quedan, salida: pedido.cantidad };
+    const l = ['Voy a descontar del inventario:', '', `• Producto: ${p.producto}`, `• Salen: ${formatoCantidad(pedido.cantidad)}`, `• Stock: ${formatoCantidad(hay)} → ${formatoCantidad(quedan)}`];
+    if (!exacto) l.push('', `Ojo: tú dijiste "${pedido.producto}" y lo voy a descontar de "${p.producto}". Si no es ese producto, di "no".`);
+    l.push('', '¿Lo guardo? Responde "sí" o "no".');
+    return { ok: true, datos, texto: l.join('\n') };
   }
   if (pedido.accion === 'entrada') {
     if (!(pedido.cantidad > 0)) return { ok: false, mensaje: 'La cantidad tiene que ser mayor que cero.' };
