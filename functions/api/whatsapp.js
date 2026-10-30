@@ -25,12 +25,15 @@ import { armarFichaCosto, textoVistaPreviaCosto, textoListaCostos, textoDetalleC
 import { detectarPedidoArchivo, resolverCuadroDelPedido, detectarAgradecimiento, respuestaAgradecimiento } from '../lib/atajoArchivos.js';
 import { detectarAyuda, textoAyuda } from '../lib/ayuda.js';
 import { responderCalculo } from '../lib/calculadora.js';
+import { detectarPedidoOficina, esDuenoDelNegocio, crearEnlaceAcceso, textoEnlaceOficina, TEXTO_SOLO_DUENO, TEXTO_OFICINA_NO_LISTA } from '../lib/accesoWeb.js';
 import { identificadoresDelRemitente, buscarNegocioDelRemitente, atenderRemitenteDesconocido } from '../lib/accesoTelefonos.js';
 import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga, primeraColumnaEsFecha } from '../lib/cargaFilasTexto.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
 import { camposFaltantes, generarDocxCarta, capitalizarInicio } from '../lib/motorCartas.js';
+import { generarPdfCarta } from '../lib/pdfCarta.js';
+import { camposConFechasEnLetras } from '../lib/fechasCarta.js';
 import { validarReporteSecciones } from '../lib/reporteSecciones.js';
 import { generarImagenReporteSecciones } from '../lib/imagenReporteSecciones.js';
 import { generarExcelReporteSecciones } from '../lib/excelReporteSecciones.js';
@@ -282,6 +285,28 @@ export async function onRequestPost(context) {
       await guardarMensaje(env, negocio.id, 'asistente', respuestaGracias, 'texto');
       await marcarFlujoPagoCerrado(env, negocio.id);
       return Response.json({ ok: true, negocio: negocio.slug, atajo: 'agradecimiento' });
+    }
+
+    // ── 3.7b2. "Mi oficina": enlace de un solo uso a la oficina web (solo el dueño), en código, sin Groq ──
+    // El enlace NO se guarda en el historial (es un secreto) y no se menciona en la conversación.
+    if (detectarPedidoOficina(textoUsuario)) {
+      let textoOficina = TEXTO_OFICINA_NO_LISTA;
+      try {
+        if (!(await esDuenoDelNegocio(env.oficina_ia_db, negocio.id, phoneNumberId, identificadores))) {
+          textoOficina = TEXTO_SOLO_DUENO;
+        } else {
+          textoOficina = textoEnlaceOficina(await crearEnlaceAcceso(env.oficina_ia_db, negocio.id, new URL(request.url).origin));
+        }
+      } catch (e) {
+        console.log('[WEBHOOK] Error creando el enlace de la oficina web (¿falta la migración 4?):', e.message);
+      }
+      try {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, textoOficina);
+      } catch (e) {
+        console.log('[WEBHOOK] Error enviando el enlace de la oficina:', e.message);
+      }
+      await marcarFlujoPagoCerrado(env, negocio.id);
+      return Response.json({ ok: true, negocio: negocio.slug, atajo: 'oficina_web' });
     }
 
     // ── 3.7c. "Ayuda" / "¿qué puedes hacer?": menú en código, sin Groq ──
@@ -1119,7 +1144,7 @@ async function guardarCartaPendiente(env, negocioId, plantillaId, campos, estado
   await env.oficina_ia_db.prepare(
     `INSERT INTO cartas_pendientes (negocio_id, plantilla_id, campos_capturados, estado) VALUES (?, ?, ?, ?)
      ON CONFLICT(negocio_id) DO UPDATE SET plantilla_id = excluded.plantilla_id, campos_capturados = excluded.campos_capturados, estado = excluded.estado, creado_en = datetime('now')`
-  ).bind(negocioId, plantillaId, JSON.stringify(campos), estado).run();
+  ).bind(negocioId, plantillaId, JSON.stringify(camposConFechasEnLetras(campos)), estado).run();
 }
 
 // ── Nombre del negocio (membrete) — se pregunta UNA sola vez ─────
@@ -1254,7 +1279,7 @@ function lineaEncabezado(config, campos) {
 }
 
 function textoConfirmacionCarta(plantilla, campos, config = null, corregido = false) {
-  let bloque = construirResumenCarta(plantilla, campos);
+  let bloque = construirResumenCarta(plantilla, camposConFechasEnLetras(campos));
   const enc = lineaEncabezado(config, campos);
   if (enc) bloque += `\n${enc.texto}`;
 
@@ -1557,6 +1582,11 @@ async function interpretarCamposFaltantes(texto, plantilla, yaCapturados, groqAp
     ? otrosYaCapturados.map(c => `- "${c.id}" (${c.etiqueta}): valor actual "${yaCapturados[c.id]}"`).join('\n')
     : '(ninguno)';
 
+  // Hasta 2 intentos: a veces Groq falla al armar el JSON ("Failed to generate JSON") — sobre todo cuando
+  // el mensaje trae varios datos juntos — y sin reintento se perdía todo lo que el usuario acababa de dictar.
+  let ultimoError = null;
+  for (let intento = 0; intento < 2; intento++) {
+  try {
   const respuesta = await fetchGroq('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
@@ -1583,7 +1613,7 @@ async function interpretarCamposFaltantes(texto, plantilla, yaCapturados, groqAp
           `Mensaje del usuario: "${texto}"`,
       }],
       temperature: 0,
-      max_tokens: 600,
+      max_tokens: 1500, // antes 600: el razonamiento del modelo se comía el espacio y el JSON salía cortado
       response_format: { type: 'json_object' },
     }),
   });
@@ -1595,6 +1625,12 @@ async function interpretarCamposFaltantes(texto, plantilla, yaCapturados, groqAp
   const contenido = (mensaje?.content || mensaje?.reasoning_content || mensaje?.reasoning || '').trim();
   const limpio = contenido.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
   return JSON.parse(limpio);
+  } catch (e) {
+    ultimoError = e;
+    console.log(`[WEBHOOK] Intento ${intento + 1} de interpretar campos de carta falló: ${e.message}`);
+  }
+  }
+  throw ultimoError;
 }
 
 async function agregarFila(env, cuadro, columnas, filas, reglas, args) {
@@ -2497,7 +2533,7 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
     const describirCampos = (campos) => campos.map(c => `"${c.id}" (${c.etiqueta})`).join(', ');
     prompt += `\nCartas/documentos disponibles (usa el "id" EXACTO en tipo_carta de generar_carta):\n`;
     for (const p of cartasDisponibles) {
-      prompt += `- "${p.id}" — ${p.nombre}: campos requeridos [${describirCampos(p.camposRequeridos)}]`;
+      prompt += `- "${p.id}" — ${p.nombre}${p.categoria ? ` (${p.categoria})` : ''}: campos requeridos [${describirCampos(p.camposRequeridos)}]`;
       if (p.camposOpcionales.length > 0) prompt += `, opcionales [${describirCampos(p.camposOpcionales)}]`;
       prompt += `\n`;
     }
@@ -2507,6 +2543,7 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
   const REGLAS = [
     { g: null, t: `- NUNCA calcules montos, interés ni saldos tú mismo — solo extrae los valores crudos que el usuario mencionó.` },
     { g: null, t: `- NUNCA decidas a quién corresponde un nombre parecido o mal escrito — extrae el nombre TAL CUAL lo dijo el usuario.` },
+    { g: 'cuadro', t: `- Este asistente también lleva ventas, gastos, inventario, costos, deudas, reportes y cartas, y eso lo resuelve el sistema sin ti. NUNCA digas que algo del negocio "no se puede" ni afirmes qué funciones existen o no: si no entiendes el pedido o no tienes una herramienta para él, di que no lo entendiste bien y sugiere escribir "ayuda". No inventes datos, cifras ni pasos que no tengas.` },
     { g: 'cuadro', t: `- Si el usuario solo pregunta/consulta sin pedir un cambio, usa consultar_cuadro, nunca una herramienta de escritura.` },
     { g: ['documentos', 'archivos'], t: `- Si el usuario pide el PDF de un cuadro, cotización o factura proforma, usa enviar_pdf (NO enviar_excel ni generar_carta).` },
     { g: 'archivos', t: `- Si el usuario pide el Excel, la hoja de cálculo o el archivo del cuadro, usa enviar_excel (con_imagen=true solo si además pide la imagen). Si pide ver el cuadro o la imagen, usa consultar_cuadro.` },
@@ -2520,6 +2557,7 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
     { g: 'documentos', t: `- Si el usuario pide una COTIZACIÓN o presupuesto (ej. "hazme una cotización para Juan, 10 sillas a 25"), usa crear_cotizacion: una entrada en "lineas" por producto o servicio, con descripcion, cantidad y precio UNITARIO tal cual los dijo. NUNCA calcules totales, subtotal ni ITBMS. El campo itbms de una línea se llena SOLO si el usuario dijo una tasa para esa línea (ej. "10%", "exento"); si no la dijo, OMÍTELO (el sistema aplica 7%) y NUNCA la deduzcas por el tipo de producto. Si dijo "todo exento" o "todo al 10%", repítelo en cada línea. NO uses crear_cuadro ni generar_carta para una cotización.` },
     { g: 'documentos', t: `- Si el usuario pide una FACTURA, una factura proforma o una nota de cobro para un cliente (ej. "hazme una factura para Juan, 10 sillas a 25"), usa crear_factura_proforma (este sistema no emite facturas fiscales; todo pedido de factura se resuelve así). Las mismas reglas de crear_cotizacion: "lineas" con descripcion, cantidad y precio UNITARIO tal cual los dijo; NUNCA calcules totales, subtotal ni ITBMS; "itbms" de una línea SOLO si el usuario dijo una tasa; "condicion_pago" SOLO si la dijo. NO uses crear_cuadro ni generar_carta para una factura.` },
     { g: 'documentos', t: `- Si el usuario pide pasar, convertir o hacer la factura (o factura proforma / nota de cobro) DE UNA COTIZACIÓN QUE YA EXISTE (ej. "hazme la factura de la cotización 004", "pasa la cotización de Juan a factura"), usa convertir_cotizacion_en_factura con nombre_cuadro = la cotización tal cual la dijo ("la última" si dijo así, o null si no dijo cuál). NO uses crear_factura_proforma para eso: esa es para una factura desde cero con productos que dicta ahora.` },
+    { g: 'cartas', t: `- Si el usuario pide una carta que no tiene plantilla propia (recomendación, aviso, agradecimiento, invitación, reclamo, constancia de otro tipo, etc.), usa la plantilla "carta_general" si está en la lista: NO digas que no existe. Si tienes que listarle los documentos disponibles, usa los nombres normales (ej. "Carta de renuncia"), nunca los id internos ni los id de campo. Al llenar una carta, conserva los nombres y datos que el usuario dio para ESA misma carta en sus mensajes recientes (ej. de quién habla una carta de recomendación): inclúyelos en "asunto" y "contenido". NUNCA reutilices destinatario, remitente ni contenido de una carta anterior que ya se generó: cada carta nueva empieza de cero. Y si faltan datos obligatorios, llama igual a generar_carta con lo que sí dijo (el sistema pregunta lo que falte); no hagas tú las preguntas en texto. En carta_general, si el pedido ya dice el tipo de carta y a quién se refiere (ej. "carta de recomendación para María Gómez"), pon en "asunto" ese tipo y ese nombre (ej. "Recomendación de María Gómez") sin inventar nada más.` },
     { g: 'cartas', t: `- En generar_carta, usa EXACTAMENTE los "id" de campo listados arriba para esa plantilla como claves de "campos" — nunca inventes un id nuevo. Si el usuario no dio un dato, simplemente omítelo del objeto "campos", no lo dejes en blanco ni lo completes tú.` },
     { g: 'cartas', t: `- En generar_carta, el ÚLTIMO campo requerido de cada plantilla es su campo libre (ej. "motivo", "gestion"). ${REGLA_CAMPO_LIBRE} Esta regla tiene prioridad sobre "tal cual lo dijo" SOLO para ese último campo; todos los demás campos van tal cual.` },
   ];
@@ -3989,7 +4027,9 @@ async function guardarRegistroInventario(env, negocioId, d) {
   const hay = p ? formatoCantidad(p.stock) : '?';
   let t = d.accion === 'entrada'
     ? `Listo ✅ Entraron ${formatoCantidad(d.cantidad)} de ${d.producto}. Ahora hay ${hay}.`
-    : `Listo ✅ Ajusté el inventario de ${d.producto}: ahora hay ${hay}.`;
+    : d.salida
+      ? `Listo ✅ Descontaste ${formatoCantidad(d.salida)} de ${d.producto}. Ahora hay ${hay}.`
+      : `Listo ✅ Ajusté el inventario de ${d.producto}: ahora hay ${hay}.`;
   t += '\nCada venta de este producto se descuenta sola. Para ver todo: "mi inventario".';
   return t;
 }
@@ -5126,42 +5166,56 @@ async function enviarCartaGenerada(env, negocio, to, datosCarta, caption) {
 
   let archivo;
   try {
-    archivo = await generarDocxCarta(plantilla, datosCarta.campos, configNegocio);
+    archivo = await generarDocxCarta(plantilla, camposConFechasEnLetras(datosCarta.campos), configNegocio);
   } catch (e) {
     console.log('[WEBHOOK] Error generando el .docx:', e.message);
     return avisarError();
   }
 
-  const form = new FormData();
-  form.append('messaging_product', 'whatsapp');
-  form.append('type', archivo.mime);
-  form.append('file', new Blob([archivo.bytes], { type: archivo.mime }), archivo.nombreArchivo);
+  // Sube un archivo a Meta y lo manda como documento (Word y PDF usan el mismo camino)
+  const subirYEnviar = async (arch, leyenda) => {
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', arch.mime);
+    form.append('file', new Blob([arch.bytes], { type: arch.mime }), arch.nombreArchivo);
 
-  const subida = await fetch(`https://graph.facebook.com/v21.0/${negocio.phone_number_id}/media`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${negocio.wa_token}` },
-    body: form,
-  });
-  const subidaData = await subida.json();
-  if (!subidaData.id) {
-    console.log('[WEBHOOK] Error subiendo carta a Meta:', JSON.stringify(subidaData));
-    return avisarError();
+    const subida = await fetch(`https://graph.facebook.com/v21.0/${negocio.phone_number_id}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${negocio.wa_token}` },
+      body: form,
+    });
+    const subidaData = await subida.json();
+    if (!subidaData.id) {
+      console.log('[WEBHOOK] Error subiendo carta a Meta:', JSON.stringify(subidaData));
+      return null;
+    }
+
+    const res = await fetch(`https://graph.facebook.com/v21.0/${negocio.phone_number_id}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${negocio.wa_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        ...destinatarioWhatsApp(to),
+        type: 'document',
+        document: { id: subidaData.id, filename: arch.nombreArchivo, caption: (leyenda || '').slice(0, 1000) },
+      }),
+    });
+    return res.json();
+  };
+
+  const resultado = await subirYEnviar(archivo, caption);
+  if (!resultado) return avisarError();
+
+  // La misma carta en PDF (para enviarla ya lista). Si el PDF falla, el Word ya salió: no se avisa error.
+  try {
+    const pdfCarta = await generarPdfCarta(plantilla, camposConFechasEnLetras(datosCarta.campos), configNegocio);
+    await subirYEnviar(pdfCarta, 'La misma carta en PDF.');
+  } catch (e) {
+    console.log('[WEBHOOK] Error enviando la carta en PDF:', e.message);
   }
-
-  const res = await fetch(`https://graph.facebook.com/v21.0/${negocio.phone_number_id}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${negocio.wa_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      ...destinatarioWhatsApp(to),
-      type: 'document',
-      document: { id: subidaData.id, filename: archivo.nombreArchivo, caption: (caption || '').slice(0, 1000) },
-    }),
-  });
-  const resultado = await res.json();
 
   // Auditoría — no debe tumbar el envío si falla
   try {

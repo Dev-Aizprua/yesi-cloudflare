@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Tu oficina</title>
+<style>
+body{font:16px/1.5 system-ui,"Segoe UI",Roboto,sans-serif;background:#eef5fd;color:#14233b;display:grid;place-items:center;min-height:100dvh;margin:0;padding:16px}
+.c{background:#fff;border-radius:20px;padding:28px 24px;max-width:420px;width:100%;text-align:center;box-shadow:0 2px 14px rgba(29,111,232,.1)}
+h1{font-size:22px;margin:0 0 8px}p{color:#6b7c93;margin:0}
+</style>
+</head>
+<body>
+<div class="c"><h1 id="t">Un momento…</h1><p id="p"></p></div>
+<script>
+(async()=>{
+  const t=document.getElementById('t'),p=document.getElementById('p');
+  try{
+    const r=await fetch('/api/web/yo',{credentials:'same-origin',cache:'no-store'});
+    if(!r.ok) throw 0;
+    const d=await r.json();
+    t.textContent='Hola, '+d.negocio;
+    p.textContent='Entraste bien a tu oficina. Estamos terminando de armarla.';
+  }catch(e){
+    t.textContent='Tu sesión no está activa';
+    p.textContent='Escríbele "mi oficina" al asistente por WhatsApp y te mando un enlace nuevo.';
+  }
+})();
+</script>
+</body>
+</html>
