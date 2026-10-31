@@ -182,6 +182,26 @@ tfoot td{border:0;font-weight:600}
 .chat-off .field{background:#f4f7fb}
 .vacio{color:var(--mut);font-size:14px;padding:6px 0}
 .list div b{white-space:nowrap}
+.seg{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
+.seg button{border:1.5px solid var(--line);background:#fff;border-radius:30px;padding:8px 16px;font:inherit;font-size:14px;color:var(--ink);cursor:pointer}
+.seg button.on{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.rango{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 4px;font-size:14px;color:var(--mut)}
+.rango input{height:40px;border:1.5px solid var(--line);border-radius:12px;padding:0 10px;font:inherit;color:var(--ink);background:#fff}
+.rango button{height:40px;border:0;border-radius:30px;padding:0 18px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.lp div{flex-wrap:wrap}.lp div>span{white-space:nowrap}.lp div b{white-space:normal;font-size:14px}
+.err{color:var(--red);font-size:14px;margin:6px 0}
+.bars{display:flex;gap:14px;align-items:flex-end;height:170px;overflow-x:auto;padding-top:6px}
+.grp{flex:1 0 64px;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.pair{display:flex;align-items:flex-end;gap:5px;height:140px;width:100%;justify-content:center}
+.pair i{display:block;width:min(26px,42%);border-radius:6px 6px 2px 2px;min-height:2px}
+.grp small{font-size:11px;color:var(--mut);text-align:center;white-space:nowrap}
+.leyenda{display:flex;gap:16px;font-size:13px;color:var(--mut);margin-top:10px}
+.leyenda i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px}
+.tp{display:grid;gap:10px;margin-top:10px}
+.tp>div{display:grid;gap:4px}.tp>div>span{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.tp>div>span b{white-space:nowrap}.tp em{display:block;height:8px;border-radius:6px;background:var(--blue-soft)}.tp em i{display:block;height:100%;border-radius:6px}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+@media(max-width:760px){.g2{grid-template-columns:1fr}}
 .ms>*{min-width:0}
 @media(max-width:699px){.side:not(.open){box-shadow:none}}
 </style>
@@ -287,7 +307,7 @@ const money=n=>'B/. '+Number(n||0).toLocaleString('en-US',{minimumFractionDigits
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 /* menú: solo Inicio está conectado por ahora; las demás pantallas se irán abriendo una por una */
-const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',1],['doc','Documentos',0],['box','Inventario',1],['chart','Informes',0]];
+const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',1],['doc','Documentos',0],['box','Inventario',1],['chart','Informes',1]];
 $('#nav').innerHTML=items.map((x,i)=>`<button class="nav${i?'':' on'}" data-nav="${x[1]}" data-ok="${x[2]}">${ico(x[0])}<span>${x[1]}</span></button>`).join('');
 $$('[data-bot]').forEach(e=>e.innerHTML=ROBOT);
 $$('[data-bot-big]').forEach(e=>e.innerHTML=ROBOT.replace('<svg','<svg style="width:92px;height:92px"'));
@@ -364,6 +384,7 @@ async function show(name){
   if(name==='Pagos') await cargarPagos();
   if(name==='Cuadros') await cargarCuadros();
   if(name==='Inventario') await cargarInventario();
+  if(name==='Informes') await cargarInforme();
 }
 async function pedir(url){
   let r;
@@ -465,6 +486,54 @@ function drawI(){
   <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
 }
 
+/* ---------- Informes ---------- */
+S.inf={rango:'mes',desde:'',hasta:'',d:null,err:''};
+async function cargarInforme(){
+  const f=S.inf;let u='/api/web/informes?rango='+encodeURIComponent(f.rango);
+  if(f.rango==='personalizado') u+='&desde='+encodeURIComponent(f.desde)+'&hasta='+encodeURIComponent(f.hasta);
+  let r;
+  try{ r=await fetch(u,{credentials:'same-origin',cache:'no-store'}); }catch(e){ f.err='No pude conectar. Revisa tu internet e intenta de nuevo.'; return drawIn(); }
+  if(r.status===401) return sesionCaida();
+  const d=await r.json().catch(()=>null);
+  if(!r.ok||!d||!d.ok){ f.err=(d&&d.error)||'No pude leer los datos. Intenta de nuevo en un momento.'; return drawIn(); }
+  f.err='';f.d=d;drawIn();
+}
+const pctTxt=(p,antes,et)=>p===null||p===undefined?'<span class="mut">sin datos antes para comparar</span>':p===0?'<span class="mut">igual que '+esc(et)+'</span>':'<span style="color:'+(p>0?'var(--green)':'var(--red)')+'">'+(p>0?'↑ ':'↓ ')+Math.abs(p)+'%</span> <span class="mut">vs. '+esc(et)+' ('+money(antes)+')</span>';
+const dm=iso=>{const m=/^\d{4}-(\d{2})-(\d{2})$/.exec(iso||'');return m?(+m[2])+' '+MESES[+m[1]-1].slice(0,3):''};
+function etqPunto(pt,tipo){return tipo==='mes'?MESES[+pt.desde.slice(5,7)-1].slice(0,3)+' '+pt.desde.slice(2,4):(pt.desde===pt.hasta?dm(pt.desde):dm(pt.desde)+'–'+dm(pt.hasta))}
+function topes(l,color){
+  if(!l.length) return '<p class="note">Sin datos en este período.</p>';
+  const mx=Math.max(...l.map(x=>x.total),0.01);
+  return '<div class="tp">'+l.map(x=>`<div><span><span>${esc(x.nombre)}</span><b>${money(x.total)}</b></span><em><i style="width:${Math.max(3,Math.round(x.total/mx*100))}%;background:${color}"></i></em></div>`).join('')+'</div>';
+}
+function drawIn(){
+  const f=S.inf,d=f.d;
+  const hoy=new Date(Date.now()-5*3600*1000).toISOString().slice(0,10);
+  const botones=[['mes','Este mes'],['mes_pasado','Mes pasado'],['3meses','Últimos 3 meses'],['personalizado','Personalizado']].map(([k,n])=>`<button data-r="${k}" class="${f.rango===k?'on':''}">${n}</button>`).join('');
+  const sel=f.rango==='personalizado'?`<div class="rango"><label>Desde <input type="date" id="f-des" max="${hoy}" value="${esc(f.desde)}"></label><label>Hasta <input type="date" id="f-has" max="${hoy}" value="${esc(f.hasta)}"></label><button data-do="ver">Ver informe</button></div>`:'';
+  let cuerpo='';
+  if(f.err) cuerpo+='<p class="err">'+esc(f.err)+'</p>';
+  if(d&&!f.err){
+    const p=d.periodo, pt=d.serie.puntos, mx=Math.max(...pt.map(x=>Math.max(x.ventas,x.gastos)),0.01);
+    const hv=v=>Math.max(v>0?3:0,Math.round(v/mx*100));
+    cuerpo+=`<p class="mut" style="margin-top:10px">Del ${esc(fechaCorta(p.desde))} al ${esc(fechaCorta(p.hasta))} · comparado con ${esc(p.anterior)}</p>`;
+    if(!d.hayDatos) cuerpo+='<p class="note" style="margin-top:12px">Todavía no hay ventas ni gastos en este período.</p>';
+    cuerpo+=`<div class="sum" style="margin-top:12px"><div class="stat" style="background:var(--blue-soft)">Ventas<b style="color:var(--blue)">${money(d.ventas.total)}</b><small>${pctTxt(d.ventas.pct,d.ventas.antes,p.anterior)}</small></div>
+    <div class="stat" style="background:var(--amber-soft)">Gastos<b style="color:#b36b00">${money(d.gastos.total)}</b><small>${pctTxt(d.gastos.pct,d.gastos.antes,p.anterior)}</small></div>
+    <div class="stat" style="background:var(--green-soft)">Cobrado (plata que entró)<b style="color:var(--green)">${money(d.cobrado?d.cobrado.total:0)}</b></div>
+    <div class="stat" style="background:var(--red-soft)">Te deben hoy<b style="color:var(--red)">${money(d.porCobrar?d.porCobrar.total:0)}</b></div></div>
+    <div class="card" style="margin-top:12px"><b>Ventas y gastos ${d.serie.tipo==='mes'?'por mes':'por semana'}</b>
+      <div class="bars">${pt.map(x=>`<div class="grp"><div class="pair"><i title="Ventas ${money(x.ventas)}" style="height:${hv(x.ventas)}%;background:var(--blue)"></i><i title="Gastos ${money(x.gastos)}" style="height:${hv(x.gastos)}%;background:var(--amber)"></i></div><small>${esc(etqPunto(x,d.serie.tipo))}</small></div>`).join('')}</div>
+      <div class="leyenda"><span><i style="background:var(--blue)"></i>Ventas</span><span><i style="background:var(--amber)"></i>Gastos</span></div>
+      <div class="list lp">${pt.map(x=>row(esc(etqPunto(x,d.serie.tipo)),'Ventas '+money(x.ventas)+' · Gastos '+money(x.gastos))).join('')}</div></div>
+    <div class="card" style="margin-top:12px"><div class="list">${row('Ventas − gastos',money(d.diferencia))}${d.ganancia?row('Ganancia estimada (con tus costos)',money(d.ganancia.total)):''}${d.ventas.aCredito>0.005?row('Ventas a crédito en el período',money(d.ventas.aCredito)):''}</div>
+      ${d.ganancia&&d.ganancia.ventasSinCosto?'<p class="note">'+d.ganancia.ventasSinCosto+' venta(s) no tienen costo guardado y no entran en la ganancia.</p>':''}
+      ${d.inventarioBajo.length?'<p class="note">Poco inventario: '+d.inventarioBajo.map(x=>esc(x.producto)).join(', ')+'.</p>':''}</div>
+    <div class="g2"><div class="card"><b>Lo que más vendiste</b>${topes(d.topVentas,'var(--blue)')}</div><div class="card"><b>En qué más gastaste</b>${topes(d.topGastos,'var(--amber)')}</div></div>`;
+  }
+  scr.innerHTML=`<div class="sh"><div><h2>Informes</h2><p>Cómo va tu negocio, con las mismas cifras que te da tu asistente por WhatsApp.</p></div></div><div class="seg">${botones}</div>${sel}${cuerpo}`;
+}
+
 async function bajar(id,fmt){
   toast('Preparando tu archivo…');
   try{
@@ -478,7 +547,9 @@ async function bajar(id,fmt){
   }catch(e){ toast('No pude conectar. Intenta de nuevo.'); }
 }
 scr.addEventListener('click',e=>{
-  const x=e.target.closest('[data-i],[data-p],[data-do],[data-c],[data-fmt]');if(!x)return;
+  const x=e.target.closest('[data-i],[data-p],[data-do],[data-c],[data-fmt],[data-r]');if(!x)return;
+  if(x.dataset.r){S.inf.rango=x.dataset.r;S.inf.err='';if(S.inf.rango==='personalizado'){S.inf.d=null;return drawIn()}return cargarInforme()}
+  if(x.dataset.do==='ver'){S.inf.desde=($('#f-des')||{}).value||'';S.inf.hasta=($('#f-has')||{}).value||'';return cargarInforme()}
   if(x.dataset.i!==undefined){S.sel=+x.dataset.i;S.d=1;return drawP()}
   if(x.dataset.p!==undefined){S.sel=+x.dataset.p;S.d=1;return drawI()}
   if(x.dataset.c!==undefined){S.d=1;return abrirCuadro(+x.dataset.c)}

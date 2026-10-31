@@ -3,9 +3,10 @@
 // (reportes.js, pagos.js, ventasGastos.js) para que una cifra tenga una sola verdad: lo que dice WhatsApp y
 // lo que dice la web coinciden. Todo se filtra por negocio_id, que sale de la sesión, nunca del navegador.
 
-import { redondear2, calcularSaldos, extraerPrestamosDeCuadros, agruparSaldosAFavor, mismoCliente } from './pagos.js';
+import { redondear2, calcularSaldos, extraerPrestamosDeCuadros, agruparSaldosAFavor, mismoCliente, fechaIsoPanama } from './pagos.js';
 import { agruparDeudaVentas } from './ventasGastos.js';
-import { calcularReporte, detectarPedidoReporte, periodoAnterior } from './reportes.js';
+import { calcularReporte, detectarPedidoReporte, periodoAnterior, topProductos } from './reportes.js';
+import { claveProducto } from './costos.js';
 
 // Igual que normalizarClave de whatsapp.js (las claves de las columnas de los cuadros)
 export function normalizarClave(texto) {
@@ -242,4 +243,107 @@ export async function resumenInventario(db, negocioId) {
   }).sort((a, b) => (a.estado === 'Bien') - (b.estado === 'Bien') || a.nombre.localeCompare(b.nombre, 'es'))
     .map((p, i) => ({ id: i, ...p }));
   return { resumen: { productos: lista.length, bajos: lista.filter(p => p.estado !== 'Bien').length }, productos: lista };
+}
+
+// ── Pantalla Informes ─────────────────────────────────────────────────────────────────────────────
+const NOMBRES_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const isoDe = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const ultimoDia = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+const sumarDiasIso = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); const f = new Date(Date.UTC(y, m - 1, d + n)); return isoDe(f.getUTCFullYear(), f.getUTCMonth() + 1, f.getUTCDate()); };
+const diasEntreIso = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+const esFechaIso = s => ISO_RE.test(String(s ?? '')) && isoDe(...String(s).split('-').map(Number)) === s && Number(s.slice(5, 7)) >= 1 && Number(s.slice(5, 7)) <= 12 && Number(s.slice(8)) <= ultimoDia(Number(s.slice(0, 4)), Number(s.slice(5, 7)));
+
+/** Período pedido por la pantalla: 'mes' | 'mes_pasado' | '3meses' | 'personalizado' (con desde/hasta). {error} si no vale. */
+export function periodoInforme(rango, desde, hasta, ahora = new Date()) {
+  const hoy = fechaIsoPanama(ahora);
+  const [y, m] = hoy.split('-').map(Number);
+  if (rango === 'mes') return detectarPedidoReporte('reporte de este mes', ahora).periodo;
+  if (rango === 'mes_pasado') {
+    const pm = m === 1 ? 12 : m - 1; const py = m === 1 ? y - 1 : y;
+    return { desde: isoDe(py, pm, 1), hasta: isoDe(py, pm, ultimoDia(py, pm)), etiqueta: `${NOMBRES_MES[pm - 1]} ${py}` };
+  }
+  if (rango === '3meses') {
+    const d = new Date(Date.UTC(y, m - 3, 1));
+    return { desde: isoDe(d.getUTCFullYear(), d.getUTCMonth() + 1, 1), hasta: hoy, etiqueta: 'los últimos 3 meses' };
+  }
+  if (rango === 'personalizado') {
+    if (!esFechaIso(desde) || !esFechaIso(hasta)) return { error: 'Escoge la fecha inicial y la final.' };
+    if (desde > hasta) return { error: 'La fecha inicial es posterior a la final.' };
+    if (desde > hoy) return { error: 'Ese rango todavía no ha llegado. Escoge uno que ya haya pasado.' };
+    const h = hasta > hoy ? hoy : hasta;
+    if (diasEntreIso(desde, h) > 366) return { error: 'El rango máximo es de un año.' };
+    return { desde, hasta: h, etiqueta: 'período personalizado' };
+  }
+  return { error: 'Período no válido.' };
+}
+
+/** Ventas y gastos por semana (rangos de hasta 35 días: bloques de 7 días desde el inicio) o por mes. */
+export function serieInforme(ventas, gastos, p) {
+  const cortes = [];
+  if (diasEntreIso(p.desde, p.hasta) + 1 <= 35) {
+    for (let d = p.desde; d <= p.hasta; d = sumarDiasIso(d, 7)) { const h = sumarDiasIso(d, 6); cortes.push([d, h > p.hasta ? p.hasta : h]); }
+  } else {
+    let [y, m] = p.desde.split('-').map(Number);
+    for (;;) {
+      const ini = isoDe(y, m, 1); const fin = isoDe(y, m, ultimoDia(y, m));
+      if (ini > p.hasta) break;
+      cortes.push([ini < p.desde ? p.desde : ini, fin > p.hasta ? p.hasta : fin]);
+      if (m === 12) { y++; m = 1; } else m++;
+    }
+  }
+  const puntos = cortes.map(([desde, hasta]) => ({
+    desde, hasta,
+    ventas: suma(ventas.filter(v => v.fecha >= desde && v.fecha <= hasta), 'total'),
+    gastos: suma(gastos.filter(g => g.fecha >= desde && g.fecha <= hasta), 'monto'),
+  }));
+  return { tipo: cortes.length && diasEntreIso(p.desde, p.hasta) + 1 <= 35 ? 'semana' : 'mes', puntos };
+}
+
+function topGastos(gastos, n = 5) {
+  const g = new Map();
+  for (const x of gastos) {
+    const k = claveProducto(x.descripcion) || String(x.descripcion ?? '').trim().toLowerCase();
+    if (!k) continue;
+    const a = g.get(k) || { nombre: String(x.descripcion ?? '').trim(), total: 0 };
+    a.total += Number(x.monto || 0);
+    if (String(x.descripcion ?? '').trim().length > a.nombre.length) a.nombre = String(x.descripcion).trim();
+    g.set(k, a);
+  }
+  return [...g.values()].map(a => ({ nombre: a.nombre, total: redondear2(a.total) })).sort((a, b) => b.total - a.total).slice(0, n);
+}
+
+/**
+ * Pantalla Informes: las mismas cifras del reporte del bot (calcularReporte) para el período elegido,
+ * más la comparación con el período anterior, la serie para las barras y lo que más se vendió / gastó.
+ */
+export async function resumenInforme(db, negocioId, { rango, desde, hasta } = {}, ahora = new Date()) {
+  const p = periodoInforme(rango, desde, hasta, ahora);
+  if (p.error) return { error: p.error };
+  const { ventas, gastos } = await leerVentasYGastos(db, negocioId, p.desde, p.hasta);
+  let fichas = [];
+  try { fichas = await cargarFichasCosto(db, negocioId); } catch (e) { console.log('[WEB] Informe sin fichas de costo:', e?.message); }
+  let porCobrar = { fiado: 0, prestamos: 0, facturas: 0 };
+  try { porCobrar = await calcularPorCobrar(db, negocioId); } catch (e) { console.log('[WEB] Informe sin por cobrar:', e?.message); }
+  let productos = [];
+  try { productos = await cargarProductosInventario(db, negocioId); } catch (e) { console.log('[WEB] Informe sin inventario:', e?.message); }
+  const pp = periodoAnterior(p);
+  const previo = { periodo: pp, ...(await leerVentasYGastos(db, negocioId, pp.desde, pp.hasta)) };
+  let cobrado = null;
+  try { cobrado = await calcularCobrado(db, negocioId, p.desde, p.hasta); } catch (e) { console.log('[WEB] Informe sin cobrado:', e?.message); }
+  const rep = calcularReporte({ periodo: p, ventas, gastos, fichas, porCobrar, productos, previo, cobrado });
+  return {
+    periodo: { desde: p.desde, hasta: p.hasta, etiqueta: p.etiqueta, anterior: pp.etiqueta },
+    ventas: { total: rep.ventasTotal, n: rep.ventasN, aCredito: rep.aCredito, antes: rep.comparacion.ventas.antes, pct: rep.comparacion.ventas.pct },
+    gastos: { total: rep.gastosTotal, n: rep.gastosN, antes: rep.comparacion.gastos.antes, pct: rep.comparacion.gastos.pct },
+    diferencia: rep.diferencia,
+    ganancia: rep.ganancia ? { total: rep.ganancia.ganancia, pct: rep.comparacion.ganancia?.pct ?? null, ventasSinCosto: rep.ganancia.ventasSinCosto } : null,
+    cobrado,
+    porCobrar: rep.porCobrar,
+    inventarioBajo: rep.inventario ? rep.inventario.bajos : [],
+    serie: serieInforme(ventas, gastos, p),
+    topVentas: topProductos(ventas, 5),
+    topGastos: topGastos(gastos, 5),
+    hayDatos: rep.ventasN > 0 || rep.gastosN > 0 || (cobrado?.total ?? 0) > 0.005,
+  };
 }
