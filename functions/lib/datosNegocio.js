@@ -347,3 +347,38 @@ export async function resumenInforme(db, negocioId, { rango, desde, hasta } = {}
     hayDatos: rep.ventasN > 0 || rep.gastosN > 0 || (cobrado?.total ?? 0) > 0.005,
   };
 }
+
+// ── Pantalla Documentos: historial de cartas generadas (sin descarga: los archivos no se guardan todavía) ──
+const jsonSeguro = (s, defecto) => { try { const v = JSON.parse(s); return v ?? defecto; } catch { return defecto; } };
+
+export async function resumenDocumentos(db, negocioId, ahora = new Date()) {
+  let filas = [];
+  try {
+    filas = (await db.prepare(
+      'SELECT id, tipo, nombre, formato, solicitud, fecha FROM documentos_generados WHERE negocio_id = ? ORDER BY id DESC LIMIT 200'
+    ).bind(negocioId).all()).results;
+  } catch (e) { console.log('[WEB] Documentos sin historial:', e?.message); }
+  const etiquetas = new Map();
+  try {
+    for (const pl of (await db.prepare('SELECT id, campos_requeridos, campos_opcionales FROM plantillas_carta').all()).results) {
+      const m = new Map();
+      for (const c of [...jsonSeguro(pl.campos_requeridos, []), ...jsonSeguro(pl.campos_opcionales, [])]) if (c?.id) m.set(c.id, c.etiqueta || c.id);
+      etiquetas.set(pl.id, m);
+    }
+  } catch (e) { console.log('[WEB] Documentos sin plantillas:', e?.message); }
+  const recorta = (v, n) => { const s = String(v ?? '').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
+  const docs = filas.map((f, i) => {
+    const campos = jsonSeguro(f.solicitud, {});
+    const lista = (campos && typeof campos === 'object' ? Object.entries(campos) : [])
+      .filter(([k, v]) => !/cedula/i.test(k) && v !== null && v !== undefined && String(v).trim() !== '')
+      .map(([k, v]) => ({ etiqueta: etiquetas.get(f.tipo)?.get(k) || k.replace(/_/g, ' '), valor: recorta(v, 2000) }));
+    return {
+      id: i, nombre: String(f.nombre || f.tipo || 'Documento'), formato: String(f.formato || ''),
+      fecha: fechaPanamaDeCreado(f.fecha),
+      para: recorta(campos?.destinatario ?? '', 120), asunto: recorta(campos?.asunto ?? '', 160),
+      campos: lista,
+    };
+  });
+  const mes = fechaIsoPanama(ahora).slice(0, 7);
+  return { resumen: { total: docs.length, esteMes: docs.filter(d => (d.fecha || '').startsWith(mes)).length }, documentos: docs };
+}

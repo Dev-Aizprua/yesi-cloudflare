@@ -303,11 +303,11 @@ tfoot td{border:0;font-weight:600}
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const ico=n=>`<svg class="ic"><use href="#i-${n}"/></svg>`;
 const ROBOT=`<svg viewBox="0 0 48 48"><rect x="9" y="12" width="30" height="24" rx="11" fill="#1d6fe8"/><rect x="13" y="17" width="22" height="14" rx="7" fill="#fff"/><circle cx="19" cy="24" r="2.5" fill="#1d6fe8"/><circle cx="29" cy="24" r="2.5" fill="#1d6fe8"/><path d="M24 12V7" stroke="#1d6fe8" stroke-width="2.5" stroke-linecap="round"/><circle cx="24" cy="6" r="2.5" fill="#6fb1ff"/></svg>`;
-const money=n=>'B/. '+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const money=n=>{n=Number(n||0);return (n<-0.004?'-':'')+'B/. '+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})};
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 /* menú: solo Inicio está conectado por ahora; las demás pantallas se irán abriendo una por una */
-const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',1],['doc','Documentos',0],['box','Inventario',1],['chart','Informes',1]];
+const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',1],['doc','Documentos',1],['box','Inventario',1],['chart','Informes',1]];
 $('#nav').innerHTML=items.map((x,i)=>`<button class="nav${i?'':' on'}" data-nav="${x[1]}" data-ok="${x[2]}">${ico(x[0])}<span>${x[1]}</span></button>`).join('');
 $$('[data-bot]').forEach(e=>e.innerHTML=ROBOT);
 $$('[data-bot-big]').forEach(e=>e.innerHTML=ROBOT.replace('<svg','<svg style="width:92px;height:92px"'));
@@ -385,6 +385,7 @@ async function show(name){
   if(name==='Cuadros') await cargarCuadros();
   if(name==='Inventario') await cargarInventario();
   if(name==='Informes') await cargarInforme();
+  if(name==='Documentos') await cargarDocumentos();
 }
 async function pedir(url){
   let r;
@@ -486,6 +487,21 @@ function drawI(){
   <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
 }
 
+/* ---------- Documentos ---------- */
+S.doc=null;
+async function cargarDocumentos(){ const d=await pedir('/api/web/documentos'); if(d){S.doc=d;S.sel=d.documentos.length?d.documentos[0].id:null;drawD()} }
+function drawD(){
+  const d=S.doc, p=d.documentos.find(x=>x.id===S.sel)||null;
+  const lista=d.documentos.length?d.documentos.map(x=>`<button class="li${x.id===S.sel?' sel':''}" data-d="${x.id}"><div><b>${esc(x.nombre)}</b><small>${x.para?'Para '+esc(x.para):esc(x.asunto)||'&nbsp;'}</small></div><div class="r"><b style="white-space:nowrap">${esc(fechaCorta(x.fecha))}</b></div></button>`).join(''):'<p class="note" style="padding:12px">Todavía no has creado documentos. Pídele una carta a tu asistente por WhatsApp, por ejemplo: "hazme una carta de recomendación".</p>';
+  const det=p?`<div class="card dt"><button class="back" data-do="back">← Volver a la lista</button><h3>${esc(p.nombre)}</h3>
+    <p class="mut">Creado el ${esc(fechaCorta(p.fecha))}${p.formato?' · Formato '+esc(p.formato==='docx'?'Word':p.formato.toUpperCase()):''}</p>
+    <div class="list" style="margin-top:12px">${p.campos.length?p.campos.map(c=>`<div style="display:block"><span class="mut" style="display:block;font-size:12px">${esc(c.etiqueta)}</span><span style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(c.valor)}</span></div>`).join(''):'<p class="note">No quedó guardado el detalle de este documento.</p>'}</div>
+    <p class="note">Esto es el historial de lo que pediste. Para una carta nueva o para volver a recibirla, díselo a tu asistente por WhatsApp. La descarga desde aquí llegará más adelante.</p></div>`:'';
+  scr.innerHTML=`<div class="sh"><div><h2>Documentos</h2><p>Las cartas que has creado con tu asistente.</p></div></div>
+  <div class="sum"><div class="stat" style="background:var(--blue-soft)">Documentos creados<b style="color:var(--blue)">${d.resumen.total}</b></div><div class="stat" style="background:var(--green-soft)">Este mes<b style="color:var(--green)">${d.resumen.esteMes}</b></div></div>
+  <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
+}
+
 /* ---------- Informes ---------- */
 S.inf={rango:'mes',desde:'',hasta:'',d:null,err:''};
 async function cargarInforme(){
@@ -526,8 +542,8 @@ function drawIn(){
       <div class="bars">${pt.map(x=>`<div class="grp"><div class="pair"><i title="Ventas ${money(x.ventas)}" style="height:${hv(x.ventas)}%;background:var(--blue)"></i><i title="Gastos ${money(x.gastos)}" style="height:${hv(x.gastos)}%;background:var(--amber)"></i></div><small>${esc(etqPunto(x,d.serie.tipo))}</small></div>`).join('')}</div>
       <div class="leyenda"><span><i style="background:var(--blue)"></i>Ventas</span><span><i style="background:var(--amber)"></i>Gastos</span></div>
       <div class="list lp">${pt.map(x=>row(esc(etqPunto(x,d.serie.tipo)),'Ventas '+money(x.ventas)+' · Gastos '+money(x.gastos))).join('')}</div></div>
-    <div class="card" style="margin-top:12px"><div class="list">${row('Ventas − gastos',money(d.diferencia))}${d.ganancia?row('Ganancia estimada (con tus costos)',money(d.ganancia.total)):''}${d.ventas.aCredito>0.005?row('Ventas a crédito en el período',money(d.ventas.aCredito)):''}</div>
-      ${d.ganancia&&d.ganancia.ventasSinCosto?'<p class="note">'+d.ganancia.ventasSinCosto+' venta(s) no tienen costo guardado y no entran en la ganancia.</p>':''}
+    <div class="card" style="margin-top:12px"><div class="list">${row('Ventas − gastos',money(d.diferencia))}${d.ganancia&&d.ventas.n>0?row('Ganancia estimada (con tus costos)',money(d.ganancia.total)):''}${d.ventas.aCredito>0.005?row('Ventas a crédito en el período',money(d.ventas.aCredito)):''}</div>
+      ${d.ganancia&&d.ventas.n>0&&d.ganancia.ventasSinCosto?'<p class="note">'+d.ganancia.ventasSinCosto+' venta(s) no tienen costo guardado y no entran en la ganancia.</p>':''}
       ${d.inventarioBajo.length?'<p class="note">Poco inventario: '+d.inventarioBajo.map(x=>esc(x.producto)).join(', ')+'.</p>':''}</div>
     <div class="g2"><div class="card"><b>Lo que más vendiste</b>${topes(d.topVentas,'var(--blue)')}</div><div class="card"><b>En qué más gastaste</b>${topes(d.topGastos,'var(--amber)')}</div></div>`;
   }
@@ -547,14 +563,15 @@ async function bajar(id,fmt){
   }catch(e){ toast('No pude conectar. Intenta de nuevo.'); }
 }
 scr.addEventListener('click',e=>{
-  const x=e.target.closest('[data-i],[data-p],[data-do],[data-c],[data-fmt],[data-r]');if(!x)return;
+  const x=e.target.closest('[data-i],[data-p],[data-do],[data-c],[data-fmt],[data-r],[data-d]');if(!x)return;
+  if(x.dataset.d!==undefined){S.sel=+x.dataset.d;S.d=1;return drawD()}
   if(x.dataset.r){S.inf.rango=x.dataset.r;S.inf.err='';if(S.inf.rango==='personalizado'){S.inf.d=null;return drawIn()}return cargarInforme()}
   if(x.dataset.do==='ver'){S.inf.desde=($('#f-des')||{}).value||'';S.inf.hasta=($('#f-has')||{}).value||'';return cargarInforme()}
   if(x.dataset.i!==undefined){S.sel=+x.dataset.i;S.d=1;return drawP()}
   if(x.dataset.p!==undefined){S.sel=+x.dataset.p;S.d=1;return drawI()}
   if(x.dataset.c!==undefined){S.d=1;return abrirCuadro(+x.dataset.c)}
   if(x.dataset.fmt){return bajar(S.cu.sel,x.dataset.fmt)}
-  if(x.dataset.do==='back'){S.d=0;S.v==='Cuadros'?drawC():S.v==='Inventario'?drawI():drawP()}
+  if(x.dataset.do==='back'){S.d=0;S.v==='Cuadros'?drawC():S.v==='Inventario'?drawI():S.v==='Documentos'?drawD():drawP()}
 });
 
 cargar();
