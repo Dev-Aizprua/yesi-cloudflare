@@ -179,7 +179,12 @@ tfoot td{border:0;font-weight:600}
 .qs .act small{display:block;color:var(--mut);font-size:12px;line-height:1.35;margin-top:2px}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
-.chat-off .field{background:#f4f7fb}
+.chips-r{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chips-r button{border:1.5px solid var(--blue);color:var(--blue);background:#fff;border-radius:30px;padding:6px 14px;font:inherit;font-size:13px;cursor:pointer}
+.chips-r button.fill{background:var(--blue);color:#fff}
+.sug{display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px 0}
+.sug button{border:1.5px solid var(--line);background:#fff;border-radius:30px;padding:6px 14px;font:inherit;font-size:13px;color:var(--ink);cursor:pointer}
+.send:disabled{opacity:.5}
 .vacio{color:var(--mut);font-size:14px;padding:6px 0}
 .list div b{white-space:nowrap}
 .seg{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
@@ -190,11 +195,11 @@ tfoot td{border:0;font-weight:600}
 .rango button{height:40px;border:0;border-radius:30px;padding:0 18px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
 .lp div{flex-wrap:wrap}.lp div>span{white-space:nowrap}.lp div b{white-space:normal;font-size:14px}
 .err{color:var(--red);font-size:14px;margin:6px 0}
-.bars{display:flex;gap:14px;align-items:flex-end;height:170px;overflow-x:auto;padding-top:6px}
-.grp{flex:1 0 64px;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.gbars{display:flex;gap:14px;align-items:flex-end;height:170px;overflow-x:auto;padding-top:6px}
+.gg{flex:1 0 64px;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
 .pair{display:flex;align-items:flex-end;gap:5px;height:140px;width:100%;justify-content:center}
 .pair i{display:block;width:min(26px,42%);border-radius:6px 6px 2px 2px;min-height:2px}
-.grp small{font-size:11px;color:var(--mut);text-align:center;white-space:nowrap}
+.gg small{font-size:11px;color:var(--mut);text-align:center;white-space:nowrap}
 .leyenda{display:flex;gap:16px;font-size:13px;color:var(--mut);margin-top:10px}
 .leyenda i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px}
 .tp{display:grid;gap:10px;margin-top:10px}
@@ -230,15 +235,16 @@ tfoot td{border:0;font-weight:600}
     </div>
 
     <div class="grid">
-      <section class="chat chat-off" aria-label="Chat con tu asistente">
-        <div class="chat-h"><span class="av" data-bot></span><div><b>Tu asistente</b><span class="on-line">En WhatsApp</span></div></div>
+      <section class="chat" aria-label="Chat con tu asistente">
+        <div class="chat-h"><span class="av" data-bot></span><div><b>Tu asistente</b><span class="on-line">Consultas en la web</span></div></div>
         <div class="msgs" id="msgs">
-          <div class="row bot"><span class="av" data-bot></span><div><div class="bub">¡Hola! Por ahora yo te atiendo por <b>WhatsApp</b>, como siempre: registra ventas, gastos y cobros, pide tus cuadros y cartas.<br><br>Aquí en <b>Mi oficina</b> ves cómo va tu negocio. Muy pronto también podrás hablar conmigo desde esta página.</div></div></div>
+          <div class="row bot"><span class="av" data-bot></span><div><div class="bub">¡Hola! Aquí puedes <b>consultar</b> tu negocio: pregúntame, por ejemplo, quién te debe, cuánto vendiste o cómo va tu inventario.<br><br>Para <b>registrar</b> ventas, gastos, cobros o cartas, díselo a tu asistente por WhatsApp, como siempre.</div></div></div>
         </div>
         <div class="composer">
-          <div class="field"><input id="inp" placeholder="El chat en la web llega muy pronto" aria-label="Chat no disponible todavía" disabled></div>
+          <div class="field"><input id="inp" maxlength="500" autocomplete="off" placeholder="Pregunta, por ejemplo: ¿quién me debe?" aria-label="Escribe tu pregunta"></div><button class="send" id="enviar" aria-label="Enviar"><svg class="ic"><use href="#i-send"/></svg></button>
         </div>
-        <p class="trust">Nada se guarda sin que tú confirmes.</p>
+        <div class="sug" id="sug"></div>
+        <p class="trust">En la web solo consultas: nada se guarda ni se cambia desde aquí.</p>
       </section>
 
       <aside class="panel">
@@ -272,7 +278,7 @@ tfoot td{border:0;font-weight:600}
           </div>
           <button class="link" data-toast="Aquí verás tus archivos generados. Llega pronto."><svg class="ic"><use href="#i-folder"/></svg><div><b>Archivos y descargas</b><small>Descarga tus documentos, cuadros y reportes cuando los necesites.</small></div></button>
         </div>
-        <p class="soon">Próximamente: más pantallas y chat en la web</p>
+        <p class="soon">Próximamente: registrar desde la web, voz y fotos</p>
       </aside>
     </div>
 
@@ -502,6 +508,52 @@ function drawD(){
   <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
 }
 
+/* ---------- Chat (solo consultas) ---------- */
+const SUG=['¿Quién me debe?','¿Cuánto vendí hoy?','Cómo va mi negocio este mes','Mi inventario','¿Cuánto gané este mes?'];
+const CH={ultimo:'',espera:false};
+const fmtChat=s=>esc(s).replace(/\*([^*\n]+)\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
+const hora=()=>new Date().toLocaleTimeString('es-PA',{hour:'2-digit',minute:'2-digit',hour12:true});
+function addMsg(quien,html,extra){
+  const m=$('#msgs'),d=document.createElement('div');
+  d.className='row '+(quien==='yo'?'me':'bot');
+  d.innerHTML=(quien==='yo'?'':'<span class="av" data-bot></span>')+'<div><div class="bub">'+html+'</div>'+(extra||'')+'<div class="time">'+hora()+'</div></div>';
+  d.querySelectorAll('[data-bot]').forEach(e=>e.innerHTML=ROBOT);
+  m.appendChild(d);m.scrollTop=m.scrollHeight;return d;
+}
+async function enviarChat(texto){
+  texto=String(texto||'').trim();
+  if(!texto||CH.espera) return;
+  CH.espera=true;$('#enviar').disabled=true;$('#inp').value='';
+  addMsg('yo',esc(texto));
+  const pensando=addMsg('bot','<span class="dots"><span></span><span></span><span></span></span>');
+  let d=null,estado=0;
+  try{
+    const r=await fetch('/api/web/chat',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:texto,ultimo:CH.ultimo})});
+    estado=r.status; d=await r.json().catch(()=>null);
+  }catch(e){ estado=-1; }
+  pensando.remove();
+  CH.espera=false;$('#enviar').disabled=false;
+  if(estado===401) return sesionCaida();
+  if(estado===-1) addMsg('bot','No pude conectar. Revisa tu internet e intenta de nuevo.');
+  else if(!d||!d.ok) addMsg('bot',esc((d&&d.error)||'No pude responder en este momento. Intenta de nuevo en unos segundos.'));
+  else{
+    CH.ultimo=d.texto;
+    let b='';
+    if(d.archivos&&d.archivos.length) b+=d.archivos.map(a=>'<button class="fill" data-cf="'+(+a.id)+'" data-ff="'+(a.formato==='pdf'?'pdf':'xlsx')+'">'+esc(a.etiqueta)+'</button>').join('');
+    if(d.ir&&['Pagos','Inventario','Informes','Cuadros','Documentos'].includes(d.ir)) b+='<button data-ir="'+d.ir+'">Abrir '+d.ir+'</button>';
+    addMsg('bot',fmtChat(d.texto),b?'<div class="chips-r">'+b+'</div>':'');
+  }
+  $('#inp').focus();
+}
+$('#sug').innerHTML=SUG.map(s=>'<button data-s="'+esc(s)+'">'+esc(s)+'</button>').join('');
+$('#sug').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(b) enviarChat(b.dataset.s)});
+$('#enviar').addEventListener('click',()=>enviarChat($('#inp').value));
+$('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();enviarChat($('#inp').value)}});
+$('#msgs').addEventListener('click',e=>{
+  const f=e.target.closest('[data-cf]');if(f) return bajar(f.dataset.cf,f.dataset.ff);
+  const i=e.target.closest('[data-ir]');if(i){const n=$('.nav[data-nav="'+i.dataset.ir+'"]');if(n) n.click()}
+});
+
 /* ---------- Informes ---------- */
 S.inf={rango:'mes',desde:'',hasta:'',d:null,err:''};
 async function cargarInforme(){
@@ -539,7 +591,7 @@ function drawIn(){
     <div class="stat" style="background:var(--green-soft)">Cobrado (plata que entró)<b style="color:var(--green)">${money(d.cobrado?d.cobrado.total:0)}</b></div>
     <div class="stat" style="background:var(--red-soft)">Te deben hoy<b style="color:var(--red)">${money(d.porCobrar?d.porCobrar.total:0)}</b></div></div>
     <div class="card" style="margin-top:12px"><b>Ventas y gastos ${d.serie.tipo==='mes'?'por mes':'por semana'}</b>
-      <div class="bars">${pt.map(x=>`<div class="grp"><div class="pair"><i title="Ventas ${money(x.ventas)}" style="height:${hv(x.ventas)}%;background:var(--blue)"></i><i title="Gastos ${money(x.gastos)}" style="height:${hv(x.gastos)}%;background:var(--amber)"></i></div><small>${esc(etqPunto(x,d.serie.tipo))}</small></div>`).join('')}</div>
+      <div class="gbars">${pt.map(x=>`<div class="gg"><div class="pair"><i title="Ventas ${money(x.ventas)}" style="height:${hv(x.ventas)}%;background:var(--blue)"></i><i title="Gastos ${money(x.gastos)}" style="height:${hv(x.gastos)}%;background:var(--amber)"></i></div><small>${esc(etqPunto(x,d.serie.tipo))}</small></div>`).join('')}</div>
       <div class="leyenda"><span><i style="background:var(--blue)"></i>Ventas</span><span><i style="background:var(--amber)"></i>Gastos</span></div>
       <div class="list lp">${pt.map(x=>row(esc(etqPunto(x,d.serie.tipo)),'Ventas '+money(x.ventas)+' · Gastos '+money(x.gastos))).join('')}</div></div>
     <div class="card" style="margin-top:12px"><div class="list">${row('Ventas − gastos',money(d.diferencia))}${d.ganancia&&d.ventas.n>0?row('Ganancia estimada (con tus costos)',money(d.ganancia.total)):''}${d.ventas.aCredito>0.005?row('Ventas a crédito en el período',money(d.ventas.aCredito)):''}</div>

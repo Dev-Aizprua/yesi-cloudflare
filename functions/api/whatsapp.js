@@ -3882,6 +3882,97 @@ async function leerVentasYGastos(db, negocioId, desde, hasta) {
   return { ventas, gastos };
 }
 
+// ── CHAT DE LA OFICINA WEB (functions/api/web/chat.js): SOLO CONSULTAS, en código, 0 tokens de Groq ──
+// Usa los MISMOS detectores y respondedores que el webhook de arriba (una sola verdad: lo que dice WhatsApp y lo que dice la
+// web coinciden). No escribe nada: si el mensaje es registrar, anular o cambiar datos, responde que eso se hace por WhatsApp.
+// @returns {{ texto: string, atajo: string, ir?: string, archivos?: Array<{id:number, formato:'xlsx'|'pdf', etiqueta:string}> }}
+const TEXTO_ESCRITURA_WEB = 'Eso es registrar o cambiar datos, y por ahora se hace por WhatsApp ✍️ Aquí en la web puedo responder consultas: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o pedirte el Excel o PDF de un cuadro.';
+const TEXTO_SIN_ENTENDER_WEB = 'No estoy seguro de qué me pides 🤔 Aquí en la web puedo responder consultas, por ejemplo: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o "pásame el Excel de Préstamos". Para registrar ventas, gastos, cobros o cartas, díselo a tu asistente por WhatsApp.';
+export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente = '') {
+  const t = String(texto ?? '').trim();
+  if (!t) return { texto: TEXTO_SIN_ENTENDER_WEB, atajo: 'vacio' };
+  const solo = (texto2, atajo, ir) => ({ texto: texto2, atajo, ...(ir ? { ir } : {}) });
+
+  if (esSiNoPuro(t)) return solo('No tengo nada pendiente por confirmar. Dime qué necesitas y lo hago.', 'sin_pendiente');
+  if (detectarAgradecimiento(t)) return solo(respuestaAgradecimiento(), 'agradecimiento');
+  if (detectarPedidoOficina(t)) return solo('Ya estás en Mi oficina 😊 Aquí puedes consultar tus cifras, pagos, cuadros, inventario, informes y documentos.', 'oficina_web');
+  const pedidoAyuda = detectarAyuda(t);
+  if (pedidoAyuda) return solo(textoAyuda(pedidoAyuda.tema, pedidoAyuda.desconocido), 'ayuda');
+  const calculo = responderCalculo(t);
+  if (calculo) return solo(calculo.texto, 'calculadora');
+
+  // Mismo orden que el webhook (3.8 → 3.12). Lo que escribe o anula se rechaza antes de llegar a su respondedor.
+  const consultaDeudas = detectarConsultaDeudas(t);
+  if (consultaDeudas) {
+    const r = await armarReporteDeudasNegocio(env, negocio, consultaDeudas);
+    if (r) return solo(r, 'deudas', 'Pagos');
+  }
+  if (detectarAnularCobroVenta(t) || detectarAnularAbono(t) || detectarAnularRegistro(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+
+  const consultaVG = detectarConsultaVentasGastos(t);
+  if (consultaVG) {
+    const r = await armarResumenVentasGastosNegocio(env, negocio, consultaVG);
+    if (r) return solo(r, 'ventas_gastos', 'Informes');
+  }
+
+  {
+    const pedidoRep = detectarPedidoReporte(t);
+    if (pedidoRep && pedidoRep.error) return solo(pedidoRep.error, 'reporte_error');
+    if (pedidoRep) {
+      const r = await responderReporte(env, negocio, pedidoRep);
+      return solo(pedidoRep.pdf ? `${r.texto}\n\nEl PDF del informe lo puedes pedir por WhatsApp. Aquí lo ves con gráficas en Informes.` : r.texto, 'reporte', 'Informes');
+    }
+    const seg = detectarSeguimientoReporte(t);
+    if (seg) {
+      const per = periodoDelMensajeDeReporte(ultimoAsistente);
+      if (per) {
+        const r = await responderReporte(env, negocio, { periodo: per, comparar: !!seg.comparar || /\nComparado con /.test(String(ultimoAsistente)) });
+        return solo(seg.pdf ? 'El PDF del informe lo puedes pedir por WhatsApp ("mándamelo en PDF"). Aquí lo ves con gráficas en Informes.' : r.texto, 'reporte_seguimiento', 'Informes');
+      }
+    }
+  }
+
+  {
+    const anularInv = detectarAnularInventario(t);
+    const regInv = anularInv ? null : detectarRegistroInventario(t);
+    const elimProd = anularInv || regInv ? null : detectarEliminarProducto(t);
+    if (anularInv || regInv || elimProd) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+    const consInv = detectarConsultaInventario(t);
+    if (consInv) {
+      const r = await responderConsultaInventario(env, negocio, consInv);
+      if (r) return solo(r, 'consulta_inventario', 'Inventario');
+    }
+  }
+
+  {
+    if (detectarAnularCosto(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+    const consultaCostos = detectarConsultaCostos(t);
+    if (consultaCostos) {
+      const r = await responderConsultaCostos(env, negocio, consultaCostos);
+      if (r) return solo(r, 'costos');
+    }
+    const consultaGanancia = consultaCostos ? null : detectarConsultaGanancia(t);
+    if (consultaGanancia) return solo(await responderGanancia(env, negocio, consultaGanancia), 'ganancia', 'Informes');
+  }
+
+  // "Pásame el Excel/PDF de X": en la web se descarga con un botón (los mismos archivos del bot).
+  const atajoArchivo = await resolverAtajoArchivo(env, negocio, t);
+  if (atajoArchivo) {
+    const cuadros = await obtenerCuadros(env, negocio.id);
+    const c = cuadros.find(x => x.nombre_cuadro === atajoArchivo.args.nombre_cuadro);
+    let tipo = null;
+    try { tipo = JSON.parse(c?.estructura || '{}').tipo || null; } catch { tipo = null; }
+    if (c && tipo !== 'secciones') {
+      const formato = atajoArchivo.nombre === 'enviar_pdf' ? 'pdf' : 'xlsx';
+      return { texto: `Aquí tienes "${c.nombre_cuadro}" ${formato === 'pdf' ? 'en PDF' : 'en Excel'} 👇`, atajo: 'archivo', archivos: [{ id: c.id, formato, etiqueta: `Descargar ${formato === 'pdf' ? 'PDF' : 'Excel'}` }] };
+    }
+    if (c) return solo('Ese reporte se descarga por ahora desde WhatsApp. Pídeselo a tu asistente.', 'archivo_no_web');
+  }
+
+  if (esRegistroDirecto(t) || esRegistroCostoDirecto(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+  return solo(TEXTO_SIN_ENTENDER_WEB, 'sin_entender');
+}
+
 async function responderReporte(env, negocio, pedido) {
   const db = env.oficina_ia_db;
   const p = pedido.periodo;
