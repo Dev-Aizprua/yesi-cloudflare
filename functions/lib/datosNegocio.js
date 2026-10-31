@@ -373,7 +373,7 @@ export async function resumenDocumentos(db, negocioId, ahora = new Date()) {
       .filter(([k, v]) => !/cedula/i.test(k) && v !== null && v !== undefined && String(v).trim() !== '')
       .map(([k, v]) => ({ etiqueta: etiquetas.get(f.tipo)?.get(k) || k.replace(/_/g, ' '), valor: recorta(v, 2000) }));
     return {
-      id: i, nombre: String(f.nombre || f.tipo || 'Documento'), formato: String(f.formato || ''),
+      id: i, ref: f.id, nombre: String(f.nombre || f.tipo || 'Documento'), formato: String(f.formato || ''),
       fecha: fechaPanamaDeCreado(f.fecha),
       para: recorta(campos?.destinatario ?? '', 120), asunto: recorta(campos?.asunto ?? '', 160),
       campos: lista,
@@ -381,4 +381,16 @@ export async function resumenDocumentos(db, negocioId, ahora = new Date()) {
   });
   const mes = fechaIsoPanama(ahora).slice(0, 7);
   return { resumen: { total: docs.length, esteMes: docs.filter(d => (d.fecha || '').startsWith(mes)).length }, documentos: docs };
+}
+
+/** Una carta del historial (solo si es de este negocio) con lo necesario para volver a generarla. null si no existe. */
+export async function cargarDocumentoParaDescarga(db, negocioId, ref) {
+  const id = Number(ref);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const f = await db.prepare('SELECT id, tipo, nombre, solicitud, fecha FROM documentos_generados WHERE id = ? AND negocio_id = ?').bind(id, negocioId).first();
+  if (!f) return null;
+  const campos = jsonSeguro(f.solicitud, null);
+  if (!campos || typeof campos !== 'object' || Array.isArray(campos)) return null;
+  const t = Date.parse(String(f.fecha ?? '').replace(' ', 'T') + (String(f.fecha ?? '').includes('Z') ? '' : 'Z'));
+  return { id: f.id, plantillaId: f.tipo, nombre: f.nombre, campos, creado: Number.isFinite(t) ? new Date(t) : new Date() };
 }

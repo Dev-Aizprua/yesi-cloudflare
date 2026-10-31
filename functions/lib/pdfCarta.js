@@ -66,10 +66,10 @@ function nombreArchivo(nombrePlantilla) {
 }
 
 /**
- * Mismos parámetros que generarDocxCarta(plantilla, campos, configNegocio).
+ * Mismos parámetros que generarDocxCarta(plantilla, campos, configNegocio) + `fecha` opcional (Date) para volver a generar una carta con su fecha original.
  * @returns {Promise<{ bytes: Uint8Array, nombreArchivo: string, mime: string }>}
  */
-export async function generarPdfCarta(plantilla, campos, configNegocio) {
+export async function generarPdfCarta(plantilla, campos, configNegocio, fecha = new Date()) {
   let membreteNegocio = {};
   try {
     membreteNegocio = configNegocio?.membrete_carta ? JSON.parse(configNegocio.membrete_carta) : {};
@@ -93,7 +93,7 @@ export async function generarPdfCarta(plantilla, campos, configNegocio) {
     }
   }
 
-  const fechaHoy = FECHA_LARGA.format(new Date());
+  const fechaHoy = FECHA_LARGA.format(fecha); // por defecto hoy; la oficina web pasa la fecha en que se creó la carta
   const ciudad = membrete.direccion || '';
   const cuerpo = renderizarCuerpo(plantilla.cuerpo, camposParaMostrar);
 
