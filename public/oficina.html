@@ -182,6 +182,8 @@ tfoot td{border:0;font-weight:600}
 .chat-off .field{background:#f4f7fb}
 .vacio{color:var(--mut);font-size:14px;padding:6px 0}
 .list div b{white-space:nowrap}
+.ms>*{min-width:0}
+@media(max-width:699px){.side:not(.open){box-shadow:none}}
 </style>
 </head>
 <body data-v="chat">
@@ -285,7 +287,7 @@ const money=n=>'B/. '+Number(n||0).toLocaleString('en-US',{minimumFractionDigits
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 /* menú: solo Inicio está conectado por ahora; las demás pantallas se irán abriendo una por una */
-const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',0],['doc','Documentos',0],['box','Inventario',0],['chart','Informes',0]];
+const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',1],['doc','Documentos',0],['box','Inventario',0],['chart','Informes',0]];
 $('#nav').innerHTML=items.map((x,i)=>`<button class="nav${i?'':' on'}" data-nav="${x[1]}" data-ok="${x[2]}">${ico(x[0])}<span>${x[1]}</span></button>`).join('');
 $$('[data-bot]').forEach(e=>e.innerHTML=ROBOT);
 $$('[data-bot-big]').forEach(e=>e.innerHTML=ROBOT.replace('<svg','<svg style="width:92px;height:92px"'));
@@ -360,6 +362,7 @@ async function show(name){
   document.body.dataset.s=name;S.d=0;S.sel=0;
   scr.innerHTML='<p class="mut" style="padding:12px">Cargando…</p>';
   if(name==='Pagos') await cargarPagos();
+  if(name==='Cuadros') await cargarCuadros();
 }
 async function pedir(url){
   let r;
@@ -391,10 +394,75 @@ function drawP(){
   <div class="sum"><div class="stat" style="background:var(--red-soft)">Te deben<b style="color:var(--red)">${money(d.resumen.teDeben)}</b></div><div class="stat" style="background:var(--green-soft)">Cobrado este mes<b style="color:var(--green)">${money(d.resumen.cobradoMes)}</b></div></div>
   <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
 }
+
+/* ---------- Cuadros ---------- */
+S.cu={lista:[],sel:null,det:null};
+async function cargarCuadros(){
+  const d=await pedir('/api/web/cuadros'); if(!d) return;
+  S.cu={lista:d.cuadros,sel:d.cuadros.length?d.cuadros[0].id:null,det:null};
+  drawC();
+  if(S.cu.sel!==null) await abrirCuadro(S.cu.sel);
+}
+async function abrirCuadro(id){
+  S.cu.sel=id;S.cu.det=null;drawC();
+  let r;
+  try{ r=await fetch('/api/web/cuadros?id='+encodeURIComponent(id),{credentials:'same-origin',cache:'no-store'}); }catch(e){ return toast('No pude conectar. Intenta de nuevo.'); }
+  if(r.status===401) return sesionCaida();
+  const d=await r.json().catch(()=>null);
+  if(S.cu.sel!==id) return;
+  if(!r.ok||!d||!d.ok) return toast((d&&d.error)||'No pude abrir el cuadro.');
+  S.cu.det=d.cuadro;drawC();
+}
+const num=(v,dec)=>Number(v).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+function tablaCuadro(c){
+  const n=c.columnas.length;
+  const fmt=c.columnas.map((_,j)=>{
+    const vs=c.filas.map(f=>f[j]).concat(c.totales?[c.totales[j]]:[]).filter(v=>typeof v==='number');
+    return vs.length?{num:true,dec:vs.every(v=>Number.isInteger(v))?0:2}:{num:false};
+  });
+  const cel=(v,j)=>typeof v==='number'&&fmt[j].num?num(v,fmt[j].dec):esc(v);
+  const al=j=>fmt[j].num?' style="text-align:right"':'';
+  return `<div class="tw"><table><thead><tr>${c.columnas.map((h,j)=>`<th${al(j)}>${esc(h)}</th>`).join('')}</tr></thead>
+  <tbody>${c.filas.map(f=>`<tr>${f.map((v,j)=>`<td${al(j)}>${cel(v,j)}</td>`).join('')}</tr>`).join('')}</tbody>
+  ${c.totales?`<tfoot><tr>${c.totales.map((v,j)=>`<td${al(j)}>${cel(v,j)}</td>`).join('')}</tr></tfoot>`:''}</table></div>`;
+}
+function drawC(){
+  const L=S.cu.lista, sel=L.find(x=>x.id===S.cu.sel)||null, c=S.cu.det;
+  const lista=L.length?L.map(x=>`<button class="li${x.id===S.cu.sel?' sel':''}" data-c="${x.id}"><div><b>${esc(x.nombre)}</b><small>${x.actualizado?'Actualizado '+esc(fechaCorta(x.actualizado)):''}</small></div><div class="r">${x.tipo==='secciones'?'<span class="pill Enviada">Reporte</span>':'<b>'+x.nFilas+(x.nFilas===1?' fila':' filas')+'</b>'}</div></button>`).join(''):'<p class="note" style="padding:12px">Todavía no tienes cuadros. Pídele a tu asistente por WhatsApp que arme uno.</p>';
+  let det='';
+  if(sel){
+    if(!c) det=`<div class="card dt"><button class="back" data-do="back">← Volver a la lista</button><h3>${esc(sel.nombre)}</h3><p class="mut">Cargando…</p></div>`;
+    else if(c.tipo==='secciones') det=`<div class="card dt"><button class="back" data-do="back">← Volver a la lista</button><h3>${esc(c.nombre)}</h3><p class="mut">Este reporte se ve y se descarga desde WhatsApp por ahora. Pídeselo a tu asistente.</p></div>`;
+    else det=`<div class="card dt"><button class="back" data-do="back">← Volver a la lista</button><h3>${esc(c.nombre)}</h3>
+      <p class="mut">${c.subtitulo?esc(c.subtitulo)+'. ':''}${c.nFilas} ${c.nFilas===1?'registro':'registros'}${c.actualizado?'. Actualizado '+esc(fechaCorta(c.actualizado)):''}.</p>
+      ${c.encabezado.length?`<div class="list" style="margin:12px 0">${c.encabezado.map(e=>row(esc(e.etiqueta),e.valor===null?'<span class="mut">por completar</span>':esc(e.valor))).join('')}</div>`:''}
+      ${tablaCuadro(c)}
+      ${c.pie&&c.pie.length?`<div class="list" style="margin:8px 0">${c.pie.map((p,i)=>row(esc(p.etiqueta),p.valor===null?'<span class="mut">por completar</span>':money(p.valor),i===c.pie.length-1)).join('')}</div>`:''}
+      ${c.recortado?'<p class="note">Se muestran los primeros 500 registros. El archivo descargable trae todos.</p>':''}
+      <div class="chips"><button class="chip fill" data-fmt="xlsx">Descargar Excel</button><button class="chip" data-fmt="pdf">Descargar PDF</button></div>
+      <p class="note">Los totales los calcula el sistema. Para cambiar el cuadro, díselo a tu asistente por WhatsApp.</p></div>`;
+  }
+  scr.innerHTML=`<div class="sh"><div><h2>Cuadros</h2><p>Tus cuadros en un solo lugar, listos para descargar.</p></div></div>
+  <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
+}
+async function bajar(id,fmt){
+  toast('Preparando tu archivo…');
+  try{
+    const r=await fetch('/api/web/cuadro_archivo?id='+encodeURIComponent(id)+'&formato='+fmt,{credentials:'same-origin'});
+    if(r.status===401) return sesionCaida();
+    if(!r.ok){ const d=await r.json().catch(()=>null); return toast((d&&d.error)||'No pude generar el archivo.'); }
+    const nombre=(/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition')||'')||[])[1]||('cuadro.'+fmt);
+    const u=URL.createObjectURL(await r.blob());
+    const a=document.createElement('a');a.href=u;a.download=nombre;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+  }catch(e){ toast('No pude conectar. Intenta de nuevo.'); }
+}
 scr.addEventListener('click',e=>{
-  const x=e.target.closest('[data-i],[data-do]');if(!x)return;
+  const x=e.target.closest('[data-i],[data-do],[data-c],[data-fmt]');if(!x)return;
   if(x.dataset.i!==undefined){S.sel=+x.dataset.i;S.d=1;return drawP()}
-  if(x.dataset.do==='back'){S.d=0;drawP()}
+  if(x.dataset.c!==undefined){S.d=1;return abrirCuadro(+x.dataset.c)}
+  if(x.dataset.fmt){return bajar(S.cu.sel,x.dataset.fmt)}
+  if(x.dataset.do==='back'){S.d=0;S.v==='Cuadros'?drawC():drawP()}
 });
 
 cargar();
