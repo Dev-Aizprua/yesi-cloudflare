@@ -95,9 +95,10 @@ function nombreArchivo(nombrePlantilla) {
  * @param {Object} plantilla   de obtenerPlantilla()
  * @param {Object} campos      { [id]: valor } ya completos (sin faltantes)
  * @param {Object} configNegocio  fila de configuracion_negocio (puede ser null si el negocio no la configuró aún)
+ * @param {Date} [fecha]       fecha que lleva la carta (por defecto hoy)
  * @returns {Promise<{ bytes: Uint8Array, nombreArchivo: string, mime: string }>}
  */
-export async function generarDocxCarta(plantilla, campos, configNegocio) {
+export async function generarDocxCarta(plantilla, campos, configNegocio, fecha = new Date()) {
   let membreteNegocio = {};
   try {
     membreteNegocio = configNegocio?.membrete_carta ? JSON.parse(configNegocio.membrete_carta) : {};
@@ -135,7 +136,7 @@ export async function generarDocxCarta(plantilla, campos, configNegocio) {
     }
   }
 
-  const fechaHoy = FECHA_LARGA.format(new Date());
+  const fechaHoy = FECHA_LARGA.format(fecha); // por defecto hoy; la oficina web pasa la fecha en que se creó la carta
   const ciudad = membrete.direccion || '';
 
   const cuerpoRenderizado = renderizarCuerpo(plantilla.cuerpo, camposParaMostrar);

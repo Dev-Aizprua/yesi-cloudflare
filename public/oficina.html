@@ -496,7 +496,7 @@ function drawD(){
   const det=p?`<div class="card dt"><button class="back" data-do="back">← Volver a la lista</button><h3>${esc(p.nombre)}</h3>
     <p class="mut">Creado el ${esc(fechaCorta(p.fecha))}${p.formato?' · Formato '+esc(p.formato==='docx'?'Word':p.formato.toUpperCase()):''}</p>
     <div class="list" style="margin-top:12px">${p.campos.length?p.campos.map(c=>`<div style="display:block"><span class="mut" style="display:block;font-size:12px">${esc(c.etiqueta)}</span><span style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(c.valor)}</span></div>`).join(''):'<p class="note">No quedó guardado el detalle de este documento.</p>'}</div>
-    <div class="chips" style="margin-top:14px"><button class="chip fill" data-dl="${p.ref}">Descargar PDF</button></div>\n    <p class="note">El PDF se arma con lo que dictaste y la fecha en que creaste la carta. Para una carta nueva o en Word, díselo a tu asistente por WhatsApp.</p></div>`:'';
+    <div class="chips" style="margin-top:14px"><button class="chip fill" data-dl="${p.ref}" data-f="pdf">Descargar PDF</button><button class="chip" data-dl="${p.ref}" data-f="docx">Descargar Word</button></div>\n    <p class="note">El archivo se arma con lo que dictaste y la fecha en que creaste la carta. Para una carta nueva, díselo a tu asistente por WhatsApp.</p></div>`:'';
   scr.innerHTML=`<div class="sh"><div><h2>Documentos</h2><p>Las cartas que has creado con tu asistente.</p></div></div>
   <div class="sum"><div class="stat" style="background:var(--blue-soft)">Documentos creados<b style="color:var(--blue)">${d.resumen.total}</b></div><div class="stat" style="background:var(--green-soft)">Este mes<b style="color:var(--green)">${d.resumen.esteMes}</b></div></div>
   <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
@@ -553,7 +553,7 @@ function drawIn(){
 async function bajar(id,fmt,base){
   toast('Preparando tu archivo…');
   try{
-    const r=await fetch(base?base+'?id='+encodeURIComponent(id):'/api/web/cuadro_archivo?id='+encodeURIComponent(id)+'&formato='+fmt,{credentials:'same-origin'});
+    const r=await fetch(base?base+'?id='+encodeURIComponent(id)+'&formato='+fmt:'/api/web/cuadro_archivo?id='+encodeURIComponent(id)+'&formato='+fmt,{credentials:'same-origin'});
     if(r.status===401) return sesionCaida();
     if(!r.ok){ const d=await r.json().catch(()=>null); return toast((d&&d.error)||'No pude generar el archivo.'); }
     const nombre=(/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition')||'')||[])[1]||('cuadro.'+fmt);
@@ -564,7 +564,7 @@ async function bajar(id,fmt,base){
 }
 scr.addEventListener('click',e=>{
   const x=e.target.closest('[data-i],[data-p],[data-do],[data-c],[data-fmt],[data-r],[data-d],[data-dl]');if(!x)return;
-  if(x.dataset.dl!==undefined){return bajar(x.dataset.dl,'pdf','/api/web/documento_archivo')}
+  if(x.dataset.dl!==undefined){return bajar(x.dataset.dl,x.dataset.f,'/api/web/documento_archivo')}
   if(x.dataset.d!==undefined){S.sel=+x.dataset.d;S.d=1;return drawD()}
   if(x.dataset.r){S.inf.rango=x.dataset.r;S.inf.err='';if(S.inf.rango==='personalizado'){S.inf.d=null;return drawIn()}return cargarInforme()}
   if(x.dataset.do==='ver'){S.inf.desde=($('#f-des')||{}).value||'';S.inf.hasta=($('#f-has')||{}).value||'';return cargarInforme()}
