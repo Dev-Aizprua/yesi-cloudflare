@@ -206,3 +206,40 @@ export async function resumenPagos(db, negocioId, ahora = new Date()) {
     clientes,
   };
 }
+
+// Fecha (YYYY-MM-DD) en Panamá (UTC-5) de un created_at de D1 (UTC, "YYYY-MM-DD HH:MM:SS")
+export function fechaPanamaDeCreado(creado) {
+  const t = Date.parse(String(creado ?? '').replace(' ', 'T') + (String(creado ?? '').includes('Z') ? '' : 'Z'));
+  return Number.isFinite(t) ? new Date(t - 5 * 3600 * 1000).toISOString().slice(0, 10) : null;
+}
+
+/**
+ * Pantalla Inventario: cada producto con su stock (suma de movimientos vigentes), su mínimo y sus últimos
+ * movimientos. Misma fuente y misma regla de "poco inventario" que el reporte del bot.
+ */
+export async function resumenInventario(db, negocioId) {
+  const productos = await cargarProductosInventario(db, negocioId);
+  let movs = [];
+  try {
+    movs = (await db.prepare(
+      `SELECT producto_id, tipo, cantidad, created_at FROM inventario_movimientos
+        WHERE negocio_id = ? AND anulado = 0 ORDER BY created_at DESC, id DESC LIMIT 600`
+    ).bind(negocioId).all()).results;
+  } catch (e) { console.log('[WEB] Inventario sin movimientos:', e?.message); }
+  const porProducto = new Map();
+  for (const m of movs) {
+    const l = porProducto.get(m.producto_id) || [];
+    if (l.length < 15) l.push({ fecha: fechaPanamaDeCreado(m.created_at), tipo: m.tipo, cantidad: redondear2(Number(m.cantidad)) });
+    porProducto.set(m.producto_id, l);
+  }
+  const lista = productos.map(p => {
+    const bajo = p.stock < -0.0001 || (p.minimo !== null && p.stock <= p.minimo + 0.0001);
+    return {
+      nombre: p.producto, stock: p.stock, minimo: p.minimo,
+      estado: p.stock < -0.0001 ? 'Revisar' : bajo ? 'Poco inventario' : 'Bien',
+      movimientos: porProducto.get(p.id) || [],
+    };
+  }).sort((a, b) => (a.estado === 'Bien') - (b.estado === 'Bien') || a.nombre.localeCompare(b.nombre, 'es'))
+    .map((p, i) => ({ id: i, ...p }));
+  return { resumen: { productos: lista.length, bajos: lista.filter(p => p.estado !== 'Bien').length }, productos: lista };
+}

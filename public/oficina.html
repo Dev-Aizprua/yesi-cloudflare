@@ -287,7 +287,7 @@ const money=n=>'B/. '+Number(n||0).toLocaleString('en-US',{minimumFractionDigits
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 /* menú: solo Inicio está conectado por ahora; las demás pantallas se irán abriendo una por una */
-const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',1],['doc','Documentos',0],['box','Inventario',0],['chart','Informes',0]];
+const items=[['home','Inicio',1],['card','Pagos',1],['grid','Cuadros',1],['doc','Documentos',0],['box','Inventario',1],['chart','Informes',0]];
 $('#nav').innerHTML=items.map((x,i)=>`<button class="nav${i?'':' on'}" data-nav="${x[1]}" data-ok="${x[2]}">${ico(x[0])}<span>${x[1]}</span></button>`).join('');
 $$('[data-bot]').forEach(e=>e.innerHTML=ROBOT);
 $$('[data-bot-big]').forEach(e=>e.innerHTML=ROBOT.replace('<svg','<svg style="width:92px;height:92px"'));
@@ -351,7 +351,7 @@ async function cargar(){
 /* ---------- pantallas (solo lectura) ---------- */
 const scr=$('#screen'), S={v:'',d:0,sel:0,datos:null};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const PILL={'Pendiente':'Pendiente','A favor':'Afavor','Al día':'Aldia'};
+const PILL={'Pendiente':'Pendiente','A favor':'Afavor','Al día':'Aldia','Poco inventario':'Pendiente','Revisar':'Pendiente','Bien':'Aldia'};
 const pill=t=>`<span class="pill ${PILL[t]||''}">${esc(t)}</span>`;
 const row=(a,b,bold)=>`<div${bold?' class="top-l"':''}><span>${bold?'<b>'+a+'</b>':a}</span><b>${b}</b></div>`;
 const fechaCorta=iso=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(iso||'');return m?(+m[3])+' '+MESES[+m[2]-1].slice(0,3)+' '+m[1]:''};
@@ -363,6 +363,7 @@ async function show(name){
   scr.innerHTML='<p class="mut" style="padding:12px">Cargando…</p>';
   if(name==='Pagos') await cargarPagos();
   if(name==='Cuadros') await cargarCuadros();
+  if(name==='Inventario') await cargarInventario();
 }
 async function pedir(url){
   let r;
@@ -445,6 +446,25 @@ function drawC(){
   scr.innerHTML=`<div class="sh"><div><h2>Cuadros</h2><p>Tus cuadros en un solo lugar, listos para descargar.</p></div></div>
   <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
 }
+/* ---------- Inventario ---------- */
+S.inv=null;
+async function cargarInventario(){ const d=await pedir('/api/web/inventario'); if(d){S.inv=d;S.sel=d.productos.length?d.productos[0].id:null;drawI()} }
+const cant=v=>Number(v).toLocaleString('en-US',{maximumFractionDigits:2});
+function drawI(){
+  const d=S.inv, p=d.productos.find(x=>x.id===S.sel)||null;
+  const lista=d.productos.length?d.productos.map(x=>`<button class="li${x.id===S.sel?' sel':''}" data-p="${x.id}"><div><b>${esc(x.nombre)}</b><small>${x.minimo!==null?'Mínimo '+cant(x.minimo):'Sin mínimo definido'}</small></div><div class="r"><b style="white-space:nowrap">${cant(x.stock)} ${x.stock===1?'unidad':'unidades'}</b>${pill(x.estado)}</div></button>`).join(''):'<p class="note" style="padding:12px">Todavía no tienes productos en el inventario. Dile a tu asistente por WhatsApp, por ejemplo: "Entraron 30 panes".</p>';
+  const tipoMov=m=>m.tipo==='entrada'?'Entrada':m.tipo==='venta'?'Venta':(m.cantidad<0?'Salida o ajuste':'Ajuste');
+  const det=p?`<div class="card dt"><button class="back" data-do="back">← Volver a la lista</button><h3>${esc(p.nombre)}</h3>
+    <p class="mut">Hay <b>${cant(p.stock)}</b> ${p.stock===1?'unidad':'unidades'}${p.minimo!==null?'. Mínimo: '+cant(p.minimo):''}.</p>
+    ${p.estado==='Revisar'?'<p class="note">Salió más de lo que registraste como entrada. Dile a tu asistente cuántas tienes y lo ajusta.</p>':''}
+    <p class="mut top-l" style="margin-top:14px">Últimos movimientos</p>
+    ${p.movimientos.length?`<div class="list">${p.movimientos.map(m=>row(esc(fechaCorta(m.fecha))+' · '+tipoMov(m),(m.cantidad>0?'+':'')+cant(m.cantidad))).join('')}</div>`:'<p class="note">Todavía no hay movimientos.</p>'}
+    <p class="note">Para registrar entradas, salidas o ajustes, díselo a tu asistente por WhatsApp. Aquí lo verás reflejado.</p></div>`:'';
+  scr.innerHTML=`<div class="sh"><div><h2>Inventario</h2><p>Qué tienes y qué se te está acabando.</p></div></div>
+  <div class="sum"><div class="stat" style="background:var(--blue-soft)">Productos<b style="color:var(--blue)">${d.resumen.productos}</b></div><div class="stat" style="background:${d.resumen.bajos?'var(--amber-soft)':'var(--green-soft)'}">Con poco inventario<b style="color:${d.resumen.bajos?'#b36b00':'var(--green)'}">${d.resumen.bajos}</b></div></div>
+  <div class="ms${S.d?' det':''}"><div class="card lst">${lista}</div>${det}</div>`;
+}
+
 async function bajar(id,fmt){
   toast('Preparando tu archivo…');
   try{
@@ -458,11 +478,12 @@ async function bajar(id,fmt){
   }catch(e){ toast('No pude conectar. Intenta de nuevo.'); }
 }
 scr.addEventListener('click',e=>{
-  const x=e.target.closest('[data-i],[data-do],[data-c],[data-fmt]');if(!x)return;
+  const x=e.target.closest('[data-i],[data-p],[data-do],[data-c],[data-fmt]');if(!x)return;
   if(x.dataset.i!==undefined){S.sel=+x.dataset.i;S.d=1;return drawP()}
+  if(x.dataset.p!==undefined){S.sel=+x.dataset.p;S.d=1;return drawI()}
   if(x.dataset.c!==undefined){S.d=1;return abrirCuadro(+x.dataset.c)}
   if(x.dataset.fmt){return bajar(S.cu.sel,x.dataset.fmt)}
-  if(x.dataset.do==='back'){S.d=0;S.v==='Cuadros'?drawC():drawP()}
+  if(x.dataset.do==='back'){S.d=0;S.v==='Cuadros'?drawC():S.v==='Inventario'?drawI():drawP()}
 });
 
 cargar();
