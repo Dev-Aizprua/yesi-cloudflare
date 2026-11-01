@@ -534,6 +534,8 @@ export async function onRequestPost(context) {
     // ── 4b. Atajo: "pásame el Excel/PDF de X" se resuelve en código, sin Groq ──
     let mensajeModelo;
     let llamada;
+    // Texto con el que el CÓDIGO decide si la venta es fiada: incluye lo dicho antes si el bot acababa de preguntar algo de esa venta.
+    let textoParaVenta = textoUsuario;
     const atajoArchivo = await resolverAtajoArchivo(env, negocio, textoUsuario);
     if (atajoArchivo) {
       console.log('[WEBHOOK] Atajo de archivo (sin Groq):', atajoArchivo.nombre, JSON.stringify(atajoArchivo.args));
@@ -545,6 +547,7 @@ export async function onRequestPost(context) {
     const { results: historialReciente } = await env.oficina_ia_db.prepare(
       'SELECT rol, mensaje FROM conversaciones WHERE negocio_id = ? ORDER BY id DESC LIMIT 6'
     ).bind(negocio.id).all();
+    textoParaVenta = textoVentaConContexto(historialReciente, textoUsuario);
 
     const { results: cuadrosDelNegocio } = await env.oficina_ia_db.prepare(
       'SELECT nombre_cuadro, estructura FROM cuadros WHERE negocio_id = ?'
@@ -698,7 +701,7 @@ export async function onRequestPost(context) {
       console.log('[WEBHOOK] Llamada corregida por código:', corregida.corregida, JSON.stringify(corregida.args));
     }
     // _mensajeId lo pone SIEMPRE el código (pisa lo que mande Groq): evita sumar dos veces un abono si Meta reenvía el mensaje.
-    const resultado = await aplicarAccion(env, negocio, corregida.nombre, { ...corregida.args, _mensajeId: mensajeEntrante.id || null, _texto: textoUsuario });
+    const resultado = await aplicarAccion(env, negocio, corregida.nombre, { ...corregida.args, _mensajeId: mensajeEntrante.id || null, _texto: corregida.nombre === 'registrar_venta' ? textoParaVenta : textoUsuario });
 
     await guardarMensaje(env, negocio.id, 'asistente', resultado.mensaje, 'texto');
     // Un abono directo (o su rechazo) no deja nada pendiente: un "sí" suelto después no debe llegar a Groq.
@@ -3929,6 +3932,26 @@ export async function responderReporte(env, negocio, pedido) {
 // una vista previa en texto, y a veces lo imita en vez de llamar a la herramienta (error 400 tool_use_failed). Se quitan
 // del historial la vista previa y el mensaje del usuario que la originó (ya lo resolvió el código); el mensaje actual, siempre.
 const RE_VISTA_PREVIA = /Responde "s[ií]" o "no"\.?\s*$/i;
+// Si el último mensaje del bot fue una pregunta por datos que faltaban de una venta ("¿A cuánto vendiste…?", "¿A quién le fiaste…?"),
+// la respuesta del dueño continúa ESA venta: se le antepone lo que dijo antes, para que el código lea ahí el "fiado" / "a crédito".
+// historialDesc viene del más reciente al más antiguo: [0] = el mensaje actual, [1] = lo último que respondió el bot, [2] = lo que el dueño había dicho...
+// Si la respuesta dice "de contado", no se arrastra nada. Solo se usa para decidir fiado; los datos (precio, cliente) los extrae Groq como siempre.
+const RE_PREGUNTA_VENTA_PENDIENTE = /(a cu[aá]nto vendiste|a qui[eé]n (le fiaste|se la fiaste))/i;
+function textoVentaConContexto(historialDesc, textoActual) {
+  try {
+    if (/\b(de\s+contado|en\s+efectivo)\b/i.test(String(textoActual ?? ''))) return textoActual;
+    const h = Array.isArray(historialDesc) ? historialDesc : [];
+    let texto = String(textoActual ?? '');
+    for (let i = 1; i + 1 < h.length && i <= 4; i += 2) {
+      const bot = h[i]; const dueno = h[i + 1];
+      if (!bot || bot.rol === 'usuario' || !RE_PREGUNTA_VENTA_PENDIENTE.test(String(bot.mensaje ?? ''))) break;
+      if (!dueno || dueno.rol !== 'usuario') break;
+      texto = `${String(dueno.mensaje ?? '').slice(0, 600)} ${texto}`;
+    }
+    return texto;
+  } catch (e) { return textoActual; }
+}
+
 function sinVistasPreviasDelCodigo(historial) {
   const quitar = new Set();
   historial.forEach((m, i) => {
