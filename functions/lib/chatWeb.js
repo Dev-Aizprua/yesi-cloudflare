@@ -9,7 +9,7 @@ import { detectarAgradecimiento, respuestaAgradecimiento } from './atajoArchivos
 import { detectarAyuda, textoAyuda } from './ayuda.js';
 import { responderCalculo } from './calculadora.js';
 import { detectarPedidoOficina } from './accesoWeb.js';
-import { detectarAnularRegistro, detectarConsultaVentasGastos, armarResumenVentasGastos, esRegistroDirecto, detectarAnularCobroVenta } from './ventasGastos.js';
+import { detectarAnularRegistro, detectarConsultaVentasGastos, armarResumenVentasGastos, esRegistroDirecto, detectarAnularCobroVenta, coincideFiltroVG } from './ventasGastos.js';
 import { fechaIsoPanama, fechaLegible, esSiNoPuro, detectarConsultaDeudas, detectarAnularAbono } from './pagos.js';
 import { armarReporteDeudasNegocio, armarResumenVentasGastosNegocio, fetchGroq, normalizarClave, obtenerCuadros, resolverAtajoArchivo, responderConsultaCostos, responderConsultaInventario, responderGanancia, responderReporte, responderPendienteWeb, iniciarAnulacionWeb, interpretarEscrituraWeb } from '../api/whatsapp.js';
 
@@ -146,8 +146,8 @@ function rangoWeb(desde, hasta, hoy) {
   return { desde, hasta: h, etiqueta: desde === h ? fechaLegible(desde) : `${fechaLegible(desde)} al ${fechaLegible(h)}` };
 }
 const textoCorto = (v, max = 60) => (typeof v === 'string' && v.trim() && v.trim().length <= max ? v.trim() : null);
-const rad = s => normalizarClave(String(s ?? '')).split('_').filter(Boolean).map(w => (w.length > 3 ? w.replace(/(es|s)$/, '') : w));
-const coincideTexto = (campo, consulta) => { const c = normalizarClave(String(campo ?? '')); return rad(consulta).every(w => c.includes(w)); };
+// Palabras completas ("Ana" no atrapa a "Diana"): la misma función que usa WhatsApp.
+const coincideTexto = coincideFiltroVG;
 
 async function consultaWebConGroq(env, negocio, texto) {
   if (!env.GROQ_API_KEY || String(env.WEB_CHAT_GROQ || '').toLowerCase() === 'off') return null;

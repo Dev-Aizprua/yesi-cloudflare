@@ -28,7 +28,7 @@ import { responderCalculo } from '../lib/calculadora.js';
 import { calcularCobrado } from '../lib/datosNegocio.js';
 import { detectarPedidoOficina, esDuenoDelNegocio, crearEnlaceAcceso, textoEnlaceOficina, TEXTO_SOLO_DUENO, TEXTO_OFICINA_NO_LISTA } from '../lib/accesoWeb.js';
 import { identificadoresDelRemitente, buscarNegocioDelRemitente, atenderRemitenteDesconocido } from '../lib/accesoTelefonos.js';
-import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
+import { armarVentas, armarGastos, lineaVenta, lineaGasto, textoVistaPreviaVenta, textoVistaPreviaGasto, detectarAnularRegistro, elegirRegistroAAnular, textoPrevioAnularRegistro, textoSinRegistrosAnular, textoPedirCriterioAnular, textoNingunoAnular, textoAmbiguoAnular, detectarConsultaVentasGastos, armarResumenVentasGastos, unirLlamadasVentasGastos, esRegistroDirecto, coincideFiltroVG, detectarVentaACredito, textoPedirClienteCredito, repartirCobroVentas, textoVistaPreviaCobroVenta, agruparDeudaVentas, detectarAnularCobroVenta, textoPrevioAnularCobro } from '../lib/ventasGastos.js';
 import { analizarSospechosos, aplicarPropuestas, textoPropuestas, clasificarAccionPropuesta } from '../lib/sospechososCuadro.js';
 import { MAX_FILAS_CARGA, extraerFilasDeTexto, armarFilasNuevas, columnasNumericasDe, textoVistaPreviaCarga, detectarCorreccionCarga, reencaminarACargaFilas, parsearValorCarga, primeraColumnaEsFecha } from '../lib/cargaFilasTexto.js';
 import { listarPlantillasParaPrompt, obtenerPlantilla } from '../lib/plantillasCartas.js';
@@ -40,7 +40,7 @@ import { generarImagenReporteSecciones } from '../lib/imagenReporteSecciones.js'
 import { generarExcelReporteSecciones } from '../lib/excelReporteSecciones.js';
 import { validarPie, validarEncabezado, avisosEncabezado, recalcularPie } from '../lib/tablaExtendida.js';
 import { construirDatosCotizacion, siguienteNumeroDocumento, nombreDocumento, elegirCotizacion, buscarDocumentoGuardado, lineasDesdeCuadro, aplicarCorreccionDocumento, describirParaCorreccion, clasificarRespuestaPendiente, filaIndiceDocumento } from '../lib/cotizacion.js';
-import { redondear2, parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDocumento, mismoCliente, calcularSaldos, repartirPago, ordenarMasAntiguoPrimero, textoVistaPrevia, textoElegirDocumento, clasificarRespuestaConfirmacion, clasificarRespuestaElegir, formatoMonto, fechaLegible,
+import { redondear2, parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDocumento, mismoCliente, calcularSaldos, repartirPago, ordenarMasAntiguoPrimero, textoVistaPrevia, textoElegirDocumento, clasificarRespuestaConfirmacion, clasificarRespuestaElegir, formatoMonto, fechaLegible, nombreLegible,
   filtrarPagos, textoElegirPago, clasificarRespuestaElegirIndice, planAnularPago, textoPrevioAnularPago, planAnularDocumento, textoPrevioAnularDocumento, planAplicarSaldo, textoPrevioAplicarSaldo,
   corregirLlamadaPago, esSiNoPuro, columnaDePago, acumularAbono, esCorreccionDeAbono,
   detectarConsultaDeudas, extraerPrestamosDeCuadros, agruparSaldosAFavor, armarReporteDeudas, unirCuadrosDePrestamo,
@@ -3451,7 +3451,18 @@ export async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
       'SELECT fecha, descripcion, categoria, monto, proveedor FROM gastos WHERE negocio_id = ? AND anulado = 0 AND fecha >= ? AND fecha <= ? ORDER BY fecha DESC, id DESC LIMIT 5000'
     ).bind(negocio.id, p.desde, p.hasta).all()).results;
   }
-  return armarResumenVentasGastos({ que: consulta.que, periodo: p, ventas, gastos });
+  // Cliente o producto dicho en la pregunta ("¿cuánto le vendí a Ana en octubre?"): se filtra en código; nunca se responde con el total de todo.
+  const filtro = consulta.filtro ? String(consulta.filtro) : null;
+  if (filtro) {
+    ventas = ventas.filter(v => coincideFiltroVG(v.cliente_nombre, filtro) || coincideFiltroVG(v.descripcion, filtro));
+    gastos = gastos.filter(g => coincideFiltroVG(g.descripcion, filtro) || coincideFiltroVG(g.proveedor, filtro) || coincideFiltroVG(g.categoria, filtro));
+  }
+  const periodo = filtro ? { ...p, etiqueta: `${p.etiqueta} · \"${nombreLegible(filtro)}\"` } : p;
+  let texto = armarResumenVentasGastos({ que: consulta.que, periodo, ventas, gastos });
+  if (filtro && ventas.length === 0 && gastos.length === 0) {
+    texto += `\n\nNo encontré nada de \"${nombreLegible(filtro)}\" en ese período. Si no es un cliente ni un producto, pídeme por ejemplo \"cuánto vendí este mes\".`;
+  }
+  return texto;
 }
 
 // "sí / no" a la vista previa de una venta, un gasto o una anulación. Se reclama el pendiente con DELETE
@@ -4215,7 +4226,7 @@ async function iniciarAnularCobroVenta(env, negocio, pedido) {
   ).bind(negocio.id).all();
   const lista = pedido.nombre ? results.filter(c => mismoCliente(pedido.nombre, c.cliente_nombre)) : results;
   if (lista.length === 0) {
-    return { tipo: 'aviso', mensaje: pedido.nombre ? `No encontré cobros de ventas a crédito de ${pedido.nombre}.` : 'No tienes cobros de ventas a crédito para anular.' };
+    return { tipo: 'aviso', mensaje: pedido.nombre ? `No encontré cobros de ventas a crédito de ${nombreLegible(pedido.nombre)}.` : 'No tienes cobros de ventas a crédito para anular.' };
   }
   const c = lista[0];
   const cobro = { cliente: c.cliente_nombre, monto: Number(c.monto), descripcion: c.descripcion };

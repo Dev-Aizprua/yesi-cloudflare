@@ -997,11 +997,15 @@ export function textoSinAbonosParaAnular() {
 export function textoPedirNombreAnularAbono() {
   return '¿De quién es el abono que quieres anular? Dime por ejemplo: "anula el último abono de Yisel".';
 }
+// El detector entrega los nombres en minúscula y sin tilde ("sofia"): para mostrarlos se pone la inicial en mayúscula.
+export function nombreLegible(nombre) {
+  return String(nombre ?? '').trim().split(/\s+/).map(w => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+}
 export function textoNingunoAnularAbono(nombre) {
-  return `No encuentro abonos registrados de "${nombre}". Revisa el nombre, por ejemplo: "anula el último abono de Yisel".`;
+  return `No encuentro abonos registrados de "${nombreLegible(nombre)}". Revisa el nombre, por ejemplo: "anula el último abono de Yisel".`;
 }
 export function textoAmbiguoAnularAbono(nombre, nombres) {
-  return [`"${nombre}" se parece a más de una persona con abonos:`, ...nombres.slice(0, 5).map(n => `• ${n}`), '', 'Dime el nombre exacto, por ejemplo: "anula el último abono de ' + nombres[0] + '".'].join('\n');
+  return [`"${nombreLegible(nombre)}" se parece a más de una persona con abonos:`, ...nombres.slice(0, 5).map(n => `• ${n}`), '', 'Dime el nombre exacto, por ejemplo: "anula el último abono de ' + nombres[0] + '".'].join('\n');
 }
 export function textoMontoDistintoAnularAbono(nombre, montoUltimo, montoDicho) {
   return `El último abono de ${nombre} fue de ${formatoMonto(montoUltimo)}, no de ${formatoMonto(montoDicho)}. Solo puedo anular el último. No cambié nada.`;

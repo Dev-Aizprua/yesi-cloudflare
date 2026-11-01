@@ -282,12 +282,40 @@ export function periodoDesdeTexto(texto, ahora = new Date()) {
   return { desde: hoy, hasta: hoy, etiqueta: `hoy (${fechaLegible(hoy)})` };
 }
 
-const RE_EXCLUIR_CONSULTA = /\b(excel|pdf|cuadro|cuadros|factura|facturas|cotizacion|cotizaciones|proforma|imagen|foto|anul\w*|elimin\w*|borr\w*|agreg\w*|crea\w*|carga\w*|registr\w*|manda\w*|envia\w*|pasa\w*|hazme|haz|apunta\w*|anota\w*)\b/;
+const RE_EXCLUIR_CONSULTA = /\b(excel|pdf|cuadro|cuadros|factura|facturas|cotizacion|cotizaciones|proforma|imagen|foto|anul\w*|elimin\w*|borr\w*|agreg\w*|crea\w*|carga\w*|registr\w*|manda\w*|envia\w*|pasa(?:me|nos|melo|mela|lo|la|le|r)?|hazme|haz|apunta\w*|anota\w*)\b/;
+
+// Palabras de una pregunta "pura" de ventas/gastos ("cuánto vendí este mes"). Lo que sobre es un CLIENTE o un PRODUCTO/CONCEPTO por el que
+// hay que filtrar ("cuánto le vendí a Ana en octubre" → "ana"): el total de TODAS las ventas NO responde esa pregunta.
+const PALABRAS_PURAS_VG = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'mi', 'mis', 'me', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'vendi', 'vendido', 'vendimos', 'venta', 'ventas',
+  'gaste', 'gastado', 'gastamos', 'gasto', 'gastos', 'hoy', 'ayer', 'este', 'esta', 'mes', 'semana', 'ano', 'pasado', 'pasada', 'anterior', 'dime', 'dame', 'muestrame', 'ver', 'resumen',
+  'total', 'totales', 'como', 'fue', 'fueron', 'va', 'he', 'hemos', 'llevo', 'y', 'en', 'lo', 'que', 'cual', 'cuales', 'son', 'es', 'a', 'al', 'le', 'les', 'para', 'por', 'con', 'un', 'una',
+  'cliente', 'clientes', 'favor', 'porfa', 'porfavor', 'gracias', 'hola', 'todo', 'todos', 'todas', 'ahora', 'dia', 'dias', 'ultimo', 'ultima', 'ultimos', 'ultimas', 'han', 'sido', 'tengo',
+  'registrado', 'registrados', 'registrada', 'registradas', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre']);
+
+/**
+ * Cliente o producto por el que se pregunta, o null si la pregunta es "pura".
+ * @returns {{ filtro: string|null, multiple: boolean }}  multiple = pidió varios ("a Ana y a Sofía") o demasiadas palabras: no se adivina.
+ */
+export function extraerFiltroVentasGastos(texto) {
+  const tokens = plano(texto).split(' ').filter(Boolean);
+  const idx = []; tokens.forEach((w, i) => { if (!PALABRAS_PURAS_VG.has(w)) idx.push(i); });
+  if (idx.length === 0) return { filtro: null, multiple: false };
+  const hayY = tokens.some((w, i) => w === 'y' && i > idx[0] && i < idx[idx.length - 1]);
+  return { filtro: idx.map(i => tokens[i]).join(' '), multiple: hayY || idx.length > 4 };
+}
+
+const raizPalabra = w => (w.length > 3 ? w.replace(/(es|s)$/, '') : w);
+/** ¿El campo tiene TODAS las palabras de la consulta, completas ("ana" no es "Diana" ni "banana"; "jugo" sí es "jugos")? */
+export function coincideFiltroVG(campo, consulta) {
+  const delCampo = plano(campo).split(' ').filter(Boolean).map(raizPalabra);
+  const pedidas = plano(consulta).split(' ').filter(Boolean).map(raizPalabra);
+  return pedidas.length > 0 && pedidas.every(w => delCampo.includes(w));
+}
 
 /**
  * ¿Es una consulta de ventas/gastos? ("¿cuánto vendí hoy?", "gastos del mes", "dame las ventas de ayer").
  * Solo si NO trae números ni verbos de escribir: "vendí 3 jugos" es un registro, no una consulta.
- * @returns {{ que: 'ventas'|'gastos'|'ambos', periodo: object } | null}
+ * @returns {{ que: 'ventas'|'gastos'|'ambos', periodo: object, filtro: string|null } | null}
  */
 export function detectarConsultaVentasGastos(texto, ahora = new Date()) {
   const t = plano(texto);
@@ -300,7 +328,10 @@ export function detectarConsultaVentasGastos(texto, ahora = new Date()) {
   if (!pregunta) return null;
   // "como me fue / como va mi negocio" (reporte general) es otra cosa: no se inventa aquí.
   if (/\b(negocio|ganancia|ganancias|utilidad|balance)\b/.test(t)) return null;
-  return { que: venta && gasto ? 'ambos' : venta ? 'ventas' : 'gastos', periodo: periodoDesdeTexto(t, ahora) };
+  // Con cliente o producto de por medio ("¿cuánto le vendí a Ana en octubre?") se devuelve el filtro: responder con el total de todo sería un error.
+  const f = extraerFiltroVentasGastos(t);
+  if (f.multiple) return null;
+  return { que: venta && gasto ? 'ambos' : venta ? 'ventas' : 'gastos', periodo: periodoDesdeTexto(t, ahora), filtro: f.filtro };
 }
 
 const MAX_DETALLE = 10;
