@@ -24,13 +24,15 @@ export async function onRequestPost({ request, env }) {
   if (!texto) return responder({ ok: false, error: 'Escribe tu pregunta.' }, 400);
   if (texto.length > MAX_TEXTO) return responder({ ok: false, error: `Tu mensaje es muy largo (máximo ${MAX_TEXTO} caracteres).` }, 400);
   const ultimo = typeof cuerpo?.ultimo === 'string' ? cuerpo.ultimo.slice(0, 4000) : '';
+  // Si la respuesta anterior fue una pregunta de una escritura, el navegador devuelve esa pareja {u, a} para continuarla.
+  const previo = cuerpo?.previo && typeof cuerpo.previo.u === 'string' && typeof cuerpo.previo.a === 'string' && cuerpo.previo.u.trim() && cuerpo.previo.u.length <= 1500 && cuerpo.previo.a.length <= 1500 ? { u: cuerpo.previo.u, a: cuerpo.previo.a } : null;
 
   try {
     const fila = await env.oficina_ia_db.prepare('SELECT * FROM negocios WHERE id = ? AND activo = 1').bind(sesion.negocioId).first();
     if (!fila) return responder({ ok: false }, 401);
     const negocio = { ...fila };
     delete negocio.wa_token; delete negocio.token; // las funciones de consulta no necesitan credenciales
-    const r = await responderConsultaWeb(env, negocio, texto, ultimo);
+    const r = await responderConsultaWeb(env, negocio, texto, ultimo, previo);
     if (r.atajo === 'sin_entender') console.log('[WEB-CHAT] sin entender:', JSON.stringify(texto.slice(0, 200)));
     return responder({ ok: true, texto: r.texto, atajo: r.atajo, ir: r.ir || null, archivos: r.archivos || [], confirmar: !!r.confirmar, cancelar: !!r.cancelar, elegir: !!r.elegir, actualizar: !!r.actualizar });
   } catch (e) {

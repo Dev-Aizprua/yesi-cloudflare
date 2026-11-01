@@ -511,7 +511,7 @@ function drawD(){
 
 /* ---------- Chat (consultas y registro con vista previa) ---------- */
 const SUG=['¿Quién me debe?','¿Cuánto vendí hoy?','Cómo va mi negocio este mes','Mi inventario','¿Cuánto gané este mes?'];
-const CH={ultimo:'',espera:false};
+const CH={ultimo:'',espera:false,prev:null}; // prev: pregunta pendiente de una escritura ({u: lo escrito, a: la pregunta})
 const fmtChat=s=>esc(s).replace(/\*([^*\n]+)\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
 const hora=()=>new Date().toLocaleTimeString('es-PA',{hour:'2-digit',minute:'2-digit',hour12:true});
 function addMsg(quien,html,extra){
@@ -530,7 +530,7 @@ async function enviarChat(texto,mostrar){
   const pensando=addMsg('bot','<span class="dots"><span></span><span></span><span></span></span>');
   let d=null,estado=0;
   try{
-    const r=await fetch('/api/web/chat',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:texto,ultimo:CH.ultimo})});
+    const r=await fetch('/api/web/chat',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:texto,ultimo:CH.ultimo,previo:CH.prev})});
     estado=r.status; d=await r.json().catch(()=>null);
   }catch(e){ estado=-1; }
   pensando.remove();
@@ -540,6 +540,9 @@ async function enviarChat(texto,mostrar){
   else if(!d||!d.ok) addMsg('bot',esc((d&&d.error)||'No pude responder en este momento. Intenta de nuevo en unos segundos.'));
   else{
     CH.ultimo=d.texto;
+    // Una escritura que quedó a medias (pidió precio o cliente): lo que escriba después la continúa; todo lo demás reinicia.
+    const u=((CH.prev?CH.prev.u+' ':'')+texto).slice(-1400);
+    CH.prev=(d.atajo==='escritura'&&!d.confirmar&&!d.cancelar&&!d.elegir&&!d.actualizar)?{u:u,a:String(d.texto).slice(0,1400)}:null;
     let b='';
     if(d.archivos&&d.archivos.length) b+=d.archivos.map(a=>'<button class="fill" data-cf="'+(+a.id)+'" data-ff="'+(a.formato==='pdf'?'pdf':'xlsx')+'">'+esc(a.etiqueta)+'</button>').join('');
     if(d.confirmar) b+='<button class="fill" data-acc="si">Guardar</button>';

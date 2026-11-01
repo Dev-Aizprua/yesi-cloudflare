@@ -3346,7 +3346,11 @@ async function guardarCargaFilas(env, negocio, numeroCliente, datos) {
 
 async function iniciarRegistroVenta(env, negocio, args) {
   const r = armarVentas(args);
-  if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
+  if (!r.ok) {
+    // Si además es fiada y no dijo a quién, se pide TODO lo que falta de una vez (no el cliente en un segundo mensaje).
+    const fiadaSinCliente = detectarVentaACredito(args._texto) && !String(args.cliente ?? '').trim();
+    return { tipo: 'aviso', mensaje: fiadaSinCliente ? `${r.mensaje}\n\nComo es a crédito, dime también a quién se la fiaste.` : r.mensaje };
+  }
   // ¿Es fiada? Lo decide el CÓDIGO leyendo lo que dijo el usuario ("fiado", "a crédito", "me debe"), no Groq.
   const credito = detectarVentaACredito(args._texto);
   if (credito && !r.cliente) return { tipo: 'aviso', mensaje: textoPedirClienteCredito() };
@@ -5259,18 +5263,24 @@ async function leerPendienteWeb(env, negocioId) {
   return { datos, soportado: !!datos && TIPOS_PENDIENTE_WEB.has(datos.tipoPendiente) };
 }
 
+// En la web las vistas previas llevan botones: se quita la instrucción de responder "sí" o "no" por texto.
+const paraWeb = t => String(t)
+  .replace(/ ?Responde "s[ií]" o "no"\.?/g, '')
+  .replace('Si es otro igual, responde "sí"; si lo mandaste dos veces, responde "no".', 'Si es otro igual, pulsa Guardar; si lo mandaste dos veces, pulsa Cancelar.')
+  .replace(/[ \t]+$/gm, '');
+
 // Lo que la web muestra tras cada paso: el texto, y si queda una vista previa abierta, los botones Guardar / Cancelar.
-async function salidaEscrituraWeb(env, negocio, salida, atajo) {
+async function salidaEscrituraWeb(env, negocio, salida, atajo, resolvio = false) {
   const p = await leerPendienteWeb(env, negocio.id);
   const abierto = !!(p && p.soportado);
   const eligiendo = abierto && p.datos.tipoPendiente === 'pago' && p.datos.fase === 'eligiendo';
   return {
-    texto: salida.filter(Boolean).join('\n\n') || 'Listo.',
+    texto: (abierto && !eligiendo ? paraWeb : String)(salida.filter(Boolean).join('\n\n')) || 'Listo.',
     atajo,
     ...(abierto && !eligiendo ? { confirmar: true } : {}),
     ...(eligiendo ? { elegir: true } : {}),
     ...(abierto ? { cancelar: true } : {}),
-    ...(!abierto ? { actualizar: true } : {}),
+    ...(!abierto && resolvio ? { actualizar: true } : {}), // se guardó (o se canceló) algo: la web recarga su resumen
   };
 }
 
@@ -5289,14 +5299,16 @@ export async function responderPendienteWeb(env, negocio, texto) {
   const { neg, salida } = negocioParaWeb(negocio);
   if (d.tipoPendiente === 'pago') await procesarRespuestaPago(env, neg, 'web', texto, d);
   else await procesarRespuestaRegistro(env, neg, 'web', texto, d);
-  return salidaEscrituraWeb(env, negocio, salida, 'escritura');
+  return salidaEscrituraWeb(env, negocio, salida, 'escritura', true);
 }
 
 /**
  * Interpreta con Groq un mensaje de escritura ("vendí 15 jugos a 2", "Ana pagó 5") y deja la vista previa lista.
  * @returns {Promise<{texto:string, atajo:string, confirmar?:boolean, cancelar?:boolean, elegir?:boolean, actualizar?:boolean}|null>} null = Groq apagado o sin clave
  */
-export async function interpretarEscrituraWeb(env, negocio, texto) {
+export async function interpretarEscrituraWeb(env, negocio, texto, previo = null) {
+  // previo = {u, a}: lo que el dueño escribió y la pregunta que se le hizo ("¿a cuánto vendiste…?"); su respuesta continúa esa escritura.
+  if (previo && !(typeof previo.u === 'string' && typeof previo.a === 'string' && previo.u.trim() && previo.u.length <= 1500 && previo.a.length <= 1500)) previo = null;
   if (!env.GROQ_API_KEY || env.WEB_CHAT_GROQ === 'off') return null;
   const pend = await leerPendienteWeb(env, negocio.id);
   if (pend) {
@@ -5311,13 +5323,15 @@ export async function interpretarEscrituraWeb(env, negocio, texto) {
   const permitidas = herramientas.filter(h => HERRAMIENTAS_ESCRITURA_WEB.has(h.function.name) && (h.function.name !== 'registrar_pago' || conPagos));
   const sistema = construirSystemPrompt(negocio, cuadros, [], conPagos, false, grupos)
     + `\nIMPORTANTE (chat web): solo puedes usar ${permitidas.map(h => h.function.name).join(', ')}. Si el usuario pide otra cosa, no llames a ninguna herramienta.`;
-  const directo = esRegistroDirecto(texto) && permitidas.some(h => h.function.name === 'registrar_venta' || h.function.name === 'registrar_gasto');
+  const directo = (previo || esRegistroDirecto(texto)) && permitidas.some(h => h.function.name === 'registrar_venta' || h.function.name === 'registrar_gasto');
   const pedir = (mensajes, choice) => fetchGroq('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: 'openai/gpt-oss-120b', messages: mensajes, tools: permitidas, tool_choice: choice }),
   });
-  const mensajes = [{ role: 'system', content: sistema }, { role: 'user', content: texto }];
+  const mensajes = [{ role: 'system', content: sistema }, ...(previo ? [{ role: 'user', content: previo.u }, { role: 'assistant', content: previo.a }] : []), { role: 'user', content: texto }];
+  // Lo que dijo en todo el hilo ("fiado", "a crédito") lo lee el CÓDIGO para decidir si es a crédito.
+  const textoCompleto = previo ? `${previo.u} ${texto}` : texto;
   let res; let data;
   try {
     res = await pedir(mensajes, directo ? 'required' : 'auto');
@@ -5349,7 +5363,7 @@ export async function interpretarEscrituraWeb(env, negocio, texto) {
   }
   console.log('[WEB-CHAT] Escritura: Groq eligió', nombre);
   const { neg, salida } = negocioParaWeb(negocio);
-  const r = await aplicarAccion(env, neg, nombre, { ...args, _mensajeId: null, _texto: texto });
+  const r = await aplicarAccion(env, neg, nombre, { ...args, _mensajeId: null, _texto: textoCompleto });
   if (r?.tipo !== 'aviso' && r?.tipo !== 'pago_pendiente') return { texto: TEXTO_ESCRITURA_NO_WEB, atajo: 'sin_herramienta' };
   salida.unshift(r.mensaje);
   return salidaEscrituraWeb(env, negocio, salida, 'escritura');

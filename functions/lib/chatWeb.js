@@ -21,7 +21,7 @@ const TEXTO_ESCRITURA_WEB = 'Eso todavía no lo hago desde la web ✍️ Aquí p
 const TEXTO_SIN_ENTENDER_WEB = 'No estoy seguro de qué me pides 🤔 Aquí en la web puedo responder consultas, por ejemplo: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o "pásame el Excel de Préstamos". Para registrar ventas, gastos, cobros o cartas, díselo a tu asistente por WhatsApp.';
 const PALABRAS_VG_PURAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'mi', 'mis', 'me', 'cuanto', 'cuantos', 'cuantas', 'vendi', 'vendido', 'vendimos', 'venta', 'ventas', 'gaste', 'gastado', 'gastamos', 'gasto', 'gastos', 'hoy', 'ayer', 'este', 'esta', 'mes', 'semana', 'ano', 'pasado', 'pasada', 'anterior', 'dime', 'dame', 'muestrame', 'ver', 'resumen', 'total', 'totales', 'como', 'fue', 'va', 'he', 'hemos', 'llevo', 'y', 'en', 'lo', 'que', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre']);
 const sinCalificativosVG = (t) => normalizarClave(t).split('_').filter(Boolean).every(w => PALABRAS_VG_PURAS.has(w));
-export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente = '') {
+export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente = '', previo = null) {
   const t = String(texto ?? '').trim();
   if (!t) return { texto: TEXTO_SIN_ENTENDER_WEB, atajo: 'vacio' };
   const solo = (texto2, atajo, ir) => ({ texto: texto2, atajo, ...(ir ? { ir } : {}) });
@@ -109,7 +109,9 @@ export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente 
 
   if (esRegistroCostoDirecto(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
   // Vendí / gasté: Groq extrae los valores, el código valida y deja la vista previa con Guardar / Cancelar.
-  if (esRegistroDirecto(t)) return (await interpretarEscrituraWeb(env, negocio, t)) ?? solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+  if (esRegistroDirecto(t)) return (await interpretarEscrituraWeb(env, negocio, t, previo)) ?? solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+  // Si la respuesta anterior fue una pregunta de una escritura ("¿a cuánto vendiste…?"), lo que el código no entendió continúa esa escritura.
+  if (previo) { const w = await interpretarEscrituraWeb(env, negocio, t, previo); if (w) return w; }
   // El código no entendió la pregunta: Groq solo la interpreta (elige una consulta de una lista cerrada, de solo lectura).
   const deGroq = await consultaWebConGroq(env, negocio, t);
   if (deGroq) return deGroq;
