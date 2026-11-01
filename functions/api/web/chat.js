@@ -34,7 +34,7 @@ export async function onRequestPost({ request, env }) {
     delete negocio.wa_token; delete negocio.token; // las funciones de consulta no necesitan credenciales
     const r = await responderConsultaWeb(env, negocio, texto, ultimo, previo);
     if (r.atajo === 'sin_entender') console.log('[WEB-CHAT] sin entender:', JSON.stringify(texto.slice(0, 200)));
-    return responder({ ok: true, texto: r.texto, atajo: r.atajo, ir: r.ir || null, archivos: r.archivos || [], confirmar: !!r.confirmar, cancelar: !!r.cancelar, elegir: !!r.elegir, actualizar: !!r.actualizar });
+    return responder({ ok: true, texto: r.texto, atajo: r.atajo, ir: r.ir || null, archivos: r.archivos || [], confirmar: !!r.confirmar, anular: !!r.anular, cancelar: !!r.cancelar, elegir: !!r.elegir, actualizar: !!r.actualizar });
   } catch (e) {
     console.log('[WEB] chat (respuesta):', e?.message);
     return responder({ ok: false, error: 'No pude responder en este momento. Intenta de nuevo en unos segundos.' }, 500);

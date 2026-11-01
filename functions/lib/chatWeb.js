@@ -11,13 +11,13 @@ import { responderCalculo } from './calculadora.js';
 import { detectarPedidoOficina } from './accesoWeb.js';
 import { detectarAnularRegistro, detectarConsultaVentasGastos, armarResumenVentasGastos, esRegistroDirecto, detectarAnularCobroVenta } from './ventasGastos.js';
 import { fechaIsoPanama, fechaLegible, esSiNoPuro, detectarConsultaDeudas, detectarAnularAbono } from './pagos.js';
-import { armarReporteDeudasNegocio, armarResumenVentasGastosNegocio, fetchGroq, normalizarClave, obtenerCuadros, resolverAtajoArchivo, responderConsultaCostos, responderConsultaInventario, responderGanancia, responderReporte, responderPendienteWeb, interpretarEscrituraWeb } from '../api/whatsapp.js';
+import { armarReporteDeudasNegocio, armarResumenVentasGastosNegocio, fetchGroq, normalizarClave, obtenerCuadros, resolverAtajoArchivo, responderConsultaCostos, responderConsultaInventario, responderGanancia, responderReporte, responderPendienteWeb, iniciarAnulacionWeb, interpretarEscrituraWeb } from '../api/whatsapp.js';
 
 // ── CHAT DE LA OFICINA WEB (functions/api/web/chat.js): SOLO CONSULTAS, en código, 0 tokens de Groq ──
 // Usa los MISMOS detectores y respondedores que el webhook de arriba (una sola verdad: lo que dice WhatsApp y lo que dice la
 // web coinciden). No escribe nada: si el mensaje es registrar, anular o cambiar datos, responde que eso se hace por WhatsApp.
 // @returns {{ texto: string, atajo: string, ir?: string, archivos?: Array<{id:number, formato:'xlsx'|'pdf', etiqueta:string}> }}
-const TEXTO_ESCRITURA_WEB = 'Eso todavía no lo hago desde la web ✍️ Aquí puedo registrar ventas, gastos y cobros ("vendí 3 jugos a 2.50", "gasté 45 en luz", "Ana pagó 5") y responder consultas. Lo demás (anular, inventario, costos, cartas) se hace por WhatsApp.';
+const TEXTO_ESCRITURA_WEB = 'Eso todavía no lo hago desde la web ✍️ Aquí puedo registrar ventas, gastos y cobros ("vendí 3 jugos a 2.50", "gasté 45 en luz", "Ana pagó 5"), anular lo que registraste ("anula la última venta") y responder consultas. Lo demás (inventario, costos, cartas, facturas) se hace por WhatsApp.';
 const TEXTO_SIN_ENTENDER_WEB = 'No estoy seguro de qué me pides 🤔 Aquí en la web puedo responder consultas, por ejemplo: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o "pásame el Excel de Préstamos". Para registrar ventas, gastos, cobros o cartas, díselo a tu asistente por WhatsApp.';
 const PALABRAS_VG_PURAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'mi', 'mis', 'me', 'cuanto', 'cuantos', 'cuantas', 'vendi', 'vendido', 'vendimos', 'venta', 'ventas', 'gaste', 'gastado', 'gastamos', 'gasto', 'gastos', 'hoy', 'ayer', 'este', 'esta', 'mes', 'semana', 'ano', 'pasado', 'pasada', 'anterior', 'dime', 'dame', 'muestrame', 'ver', 'resumen', 'total', 'totales', 'como', 'fue', 'va', 'he', 'hemos', 'llevo', 'y', 'en', 'lo', 'que', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre']);
 const sinCalificativosVG = (t) => normalizarClave(t).split('_').filter(Boolean).every(w => PALABRAS_VG_PURAS.has(w));
@@ -43,7 +43,11 @@ export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente 
     const r = await armarReporteDeudasNegocio(env, negocio, consultaDeudas);
     if (r) return solo(r, 'deudas', 'Pagos');
   }
-  if (detectarAnularCobroVenta(t) || detectarAnularAbono(t) || detectarAnularRegistro(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+  // Anular venta, gasto, cobro de venta a crédito o abono de préstamo: en código (0 tokens), con vista previa Anular / Cancelar.
+  if (detectarAnularCobroVenta(t) || detectarAnularAbono(t) || detectarAnularRegistro(t)) {
+    const anulacion = await iniciarAnulacionWeb(env, negocio, t);
+    if (anulacion) return anulacion;
+  }
 
   // Solo si la pregunta es "pura" (sin cliente ni producto): "¿cuánto le vendí a Ana en octubre?" NO se responde con el total de
   // todas las ventas; esa pregunta con filtro la interpreta Groq y la calcula el código con el filtro aplicado.

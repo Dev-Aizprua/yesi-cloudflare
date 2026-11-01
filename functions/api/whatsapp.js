@@ -5267,11 +5267,13 @@ async function enviarCartaGenerada(env, negocio, to, datosCarta, caption) {
 // Mismas reglas que WhatsApp: Groq solo extrae los valores; el CÓDIGO valida (armarVentas, armarGastos, iniciarRegistroPago…),
 // muestra la vista previa y NO guarda nada hasta el "sí" (botón Guardar). El guardado, el reclamo del pendiente y los avisos
 // de repetido son las funciones del bot. La salida que el bot enviaría por WhatsApp se captura y se devuelve a la web
-// (enviarMensaje detecta el canal web por el objeto en wa_token). Anular, inventario, costos y cartas siguen solo en WhatsApp.
-const TIPOS_PENDIENTE_WEB = new Set(['venta', 'gasto', 'cobro_venta', 'pago']);
+// (enviarMensaje detecta el canal web por el objeto en wa_token). Anular venta, gasto, cobro y abono de préstamo también va por aquí (iniciarAnulacionWeb); inventario, costos, cartas y facturas siguen solo en WhatsApp.
+// Anular venta/gasto, cobro de venta a crédito y abono de préstamo también se confirman desde la web (botón Anular / Cancelar).
+const TIPOS_ANULAR_WEB = new Set(['anular_registro', 'anular_cobro', 'anular_abono']);
+const TIPOS_PENDIENTE_WEB = new Set(['venta', 'gasto', 'cobro_venta', 'pago', ...TIPOS_ANULAR_WEB]);
 const HERRAMIENTAS_ESCRITURA_WEB = new Set(['registrar_venta', 'registrar_gasto', 'registrar_pago']);
 const TEXTO_PENDIENTE_AJENO_WEB = 'Tienes algo esperando confirmación que se abrió en WhatsApp. Respóndele allá con "sí" o "no" y después seguimos aquí.';
-const TEXTO_ESCRITURA_NO_WEB = 'Eso todavía no lo hago desde la web ✍️ Aquí puedo registrar ventas, gastos y cobros ("vendí 3 jugos a 2.50", "gasté 45 en luz", "Ana pagó 5"). Lo demás (anular, inventario, costos, cartas) se hace por WhatsApp.';
+const TEXTO_ESCRITURA_NO_WEB = 'Eso todavía no lo hago desde la web ✍️ Aquí puedo registrar ventas, gastos y cobros ("vendí 3 jugos a 2.50", "gasté 45 en luz", "Ana pagó 5") y anular lo que registraste ("anula la última venta"). Lo demás (inventario, costos, cartas, facturas) se hace por WhatsApp.';
 
 function negocioParaWeb(negocio) {
   const salida = [];
@@ -5297,10 +5299,12 @@ async function salidaEscrituraWeb(env, negocio, salida, atajo, resolvio = false)
   const p = await leerPendienteWeb(env, negocio.id);
   const abierto = !!(p && p.soportado);
   const eligiendo = abierto && p.datos.tipoPendiente === 'pago' && p.datos.fase === 'eligiendo';
+  const anulando = abierto && TIPOS_ANULAR_WEB.has(p.datos.tipoPendiente);
   return {
     texto: (abierto && !eligiendo ? paraWeb : String)(salida.filter(Boolean).join('\n\n')) || 'Listo.',
     atajo,
     ...(abierto && !eligiendo ? { confirmar: true } : {}),
+    ...(anulando ? { anular: true } : {}), // la web rotula el botón "Anular" en vez de "Guardar"
     ...(eligiendo ? { elegir: true } : {}),
     ...(abierto ? { cancelar: true } : {}),
     ...(!abierto && resolvio ? { actualizar: true } : {}), // se guardó (o se canceló) algo: la web recarga su resumen
@@ -5321,8 +5325,45 @@ export async function responderPendienteWeb(env, negocio, texto) {
   if (!eligiendo && clasificarRespuestaConfirmacion(texto) === 'otra') return null;
   const { neg, salida } = negocioParaWeb(negocio);
   if (d.tipoPendiente === 'pago') await procesarRespuestaPago(env, neg, 'web', texto, d);
+  else if (d.tipoPendiente === 'anular_abono') await procesarRespuestaAnularAbono(env, neg, 'web', texto, d);
   else await procesarRespuestaRegistro(env, neg, 'web', texto, d);
   return salidaEscrituraWeb(env, negocio, salida, 'escritura', true);
+}
+
+// Hay una vista previa abierta: no se acepta otra escritura hasta resolverla (las consultas sí funcionan).
+function respuestaPendienteAbiertoWeb(pend) {
+  if (!pend.soportado) return { texto: TEXTO_PENDIENTE_AJENO_WEB, atajo: 'pendiente_abierto' };
+  const anula = TIPOS_ANULAR_WEB.has(pend.datos.tipoPendiente);
+  return { texto: `Primero responde la vista previa que tienes abierta: pulsa ${anula ? 'Anular' : 'Guardar'} o Cancelar.`, atajo: 'pendiente_abierto', confirmar: true, cancelar: true, ...(anula ? { anular: true } : {}) };
+}
+
+/**
+ * "Anula la última venta" / "anula el último gasto" / "anula el cobro de Ana" / "anula el último abono de Yisel", desde la web.
+ * Sin Groq (0 tokens): los mismos detectores e iniciadores del bot, en el mismo orden que el webhook (cobro de venta → abono de
+ * préstamo → venta/gasto). Deja la vista previa con Anular / Cancelar; no se anula nada hasta confirmar (se reutiliza el "sí" del bot).
+ * @returns {Promise<object|null>} null si el texto no es un pedido de anular de estos tres tipos
+ */
+export async function iniciarAnulacionWeb(env, negocio, texto) {
+  const pedidoCobro = detectarAnularCobroVenta(texto);
+  const pedidoAbono = pedidoCobro ? null : detectarAnularAbono(texto);
+  const pedidoRegistro = pedidoCobro || pedidoAbono ? null : detectarAnularRegistro(texto);
+  if (!pedidoCobro && !pedidoAbono && !pedidoRegistro) return null;
+  // Con otra vista previa abierta no se abre una segunda (el bot guarda UN pendiente por negocio y lo reemplazaría).
+  const pend = await leerPendienteWeb(env, negocio.id);
+  if (pend) return respuestaPendienteAbiertoWeb(pend);
+  const { neg, salida } = negocioParaWeb(negocio);
+  let r = null;
+  try {
+    r = pedidoCobro ? await iniciarAnularCobroVenta(env, neg, pedidoCobro)
+      : pedidoAbono ? await iniciarAnularAbono(env, neg, pedidoAbono)
+        : await iniciarAnularRegistro(env, neg, pedidoRegistro);
+  } catch (e) {
+    console.log('[WEB-CHAT] Anular: error iniciando:', e?.message);
+    return { texto: 'No pude preparar la anulación en este momento. No cambié nada; inténtalo de nuevo en unos segundos.', atajo: 'anulacion' };
+  }
+  if (r?.tipo === 'pago_pendiente') { salida.unshift(r.mensaje); return salidaEscrituraWeb(env, negocio, salida, 'anulacion'); }
+  if (r?.tipo === 'aviso') return { texto: r.mensaje, atajo: 'anulacion' };
+  return { texto: 'No pude preparar la anulación. No cambié nada.', atajo: 'anulacion' };
 }
 
 /**
@@ -5334,11 +5375,7 @@ export async function interpretarEscrituraWeb(env, negocio, texto, previo = null
   if (previo && !(typeof previo.u === 'string' && typeof previo.a === 'string' && previo.u.trim() && previo.u.length <= 1500 && previo.a.length <= 1500)) previo = null;
   if (!env.GROQ_API_KEY || env.WEB_CHAT_GROQ === 'off') return null;
   const pend = await leerPendienteWeb(env, negocio.id);
-  if (pend) {
-    return { texto: pend.soportado
-      ? 'Primero responde la vista previa que tienes abierta: pulsa Guardar o Cancelar.'
-      : TEXTO_PENDIENTE_AJENO_WEB, atajo: 'pendiente_abierto', ...(pend.soportado ? { confirmar: true, cancelar: true } : {}) };
-  }
+  if (pend) return respuestaPendienteAbiertoWeb(pend);
   const db = env.oficina_ia_db;
   const conPagos = (await negocioTieneProformas(env, negocio.id)) || (await negocioTieneVentasACredito(env, negocio.id));
   const { results: cuadros } = await db.prepare('SELECT nombre_cuadro, estructura FROM cuadros WHERE negocio_id = ?').bind(negocio.id).all();

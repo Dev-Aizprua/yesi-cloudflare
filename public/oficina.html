@@ -239,13 +239,13 @@ tfoot td{border:0;font-weight:600}
       <section class="chat" aria-label="Chat con tu asistente">
         <div class="chat-h"><span class="av" data-bot></span><div><b>Tu asistente</b><span class="on-line">Consultas y registro</span></div></div>
         <div class="msgs" id="msgs">
-          <div class="row bot"><span class="av" data-bot></span><div><div class="bub">¡Hola! Aquí puedes <b>consultar</b> tu negocio: pregúntame, por ejemplo, quién te debe, cuánto vendiste o cómo va tu inventario.<br><br>También puedes <b>registrar</b> ventas, gastos y cobros, por ejemplo: <i>vendí 3 jugos a 2.50</i>. Antes de guardar te muestro una vista previa y tú decides con <b>Guardar</b> o <b>Cancelar</b>. Cartas, anulaciones e inventario siguen por WhatsApp.</div></div></div>
+          <div class="row bot"><span class="av" data-bot></span><div><div class="bub">¡Hola! Aquí puedes <b>consultar</b> tu negocio: pregúntame, por ejemplo, quién te debe, cuánto vendiste o cómo va tu inventario.<br><br>También puedes <b>registrar</b> ventas, gastos y cobros, por ejemplo: <i>vendí 3 jugos a 2.50</i>. Antes de guardar te muestro una vista previa y tú decides con <b>Guardar</b> o <b>Cancelar</b>. También puedes <b>anular</b> lo que registraste, por ejemplo: <i>anula la última venta</i>. Cartas, facturas e inventario siguen por WhatsApp.</div></div></div>
         </div>
         <div class="composer">
           <div class="field"><input id="inp" maxlength="500" autocomplete="off" placeholder="Pregunta o registra: ¿quién me debe? · vendí 3 jugos a 2.50" aria-label="Escribe tu pregunta"></div><button class="send" id="enviar" aria-label="Enviar"><svg class="ic"><use href="#i-send"/></svg></button>
         </div>
         <div class="sug" id="sug"></div>
-        <p class="trust">Nada se guarda sin que pulses Guardar: antes ves una vista previa.</p>
+        <p class="trust">Nada se guarda ni se anula sin que lo confirmes: antes ves una vista previa.</p>
       </section>
 
       <aside class="panel">
@@ -545,7 +545,7 @@ async function enviarChat(texto,mostrar){
     CH.prev=(d.atajo==='escritura'&&!d.confirmar&&!d.cancelar&&!d.elegir&&!d.actualizar)?{u:u,a:String(d.texto).slice(0,1400)}:null;
     let b='';
     if(d.archivos&&d.archivos.length) b+=d.archivos.map(a=>'<button class="fill" data-cf="'+(+a.id)+'" data-ff="'+(a.formato==='pdf'?'pdf':'xlsx')+'">'+esc(a.etiqueta)+'</button>').join('');
-    if(d.confirmar) b+='<button class="fill" data-acc="si">Guardar</button>';
+    if(d.confirmar) b+='<button class="fill" data-acc="si" data-lbl="'+(d.anular?'Anular':'Guardar')+'">'+(d.anular?'Anular':'Guardar')+'</button>';
     if(d.cancelar) b+='<button data-acc="no">Cancelar</button>';
     if(d.ir&&['Pagos','Inventario','Informes','Cuadros','Documentos'].includes(d.ir)) b+='<button data-ir="'+d.ir+'">Abrir '+d.ir+'</button>';
     addMsg('bot',fmtChat(d.texto),b?'<div class="chips-r">'+b+'</div>':'');
@@ -558,7 +558,7 @@ $('#sug').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(b
 $('#enviar').addEventListener('click',()=>enviarChat($('#inp').value));
 $('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();enviarChat($('#inp').value)}});
 $('#msgs').addEventListener('click',e=>{
-  const a=e.target.closest('[data-acc]');if(a){if(a.disabled) return; return a.dataset.acc==='si'?enviarChat('sí','Guardar'):enviarChat('no','Cancelar')}
+  const a=e.target.closest('[data-acc]');if(a){if(a.disabled) return; return a.dataset.acc==='si'?enviarChat('sí',a.dataset.lbl==='Anular'?'Anular':'Guardar'):enviarChat('no','Cancelar')}
   const f=e.target.closest('[data-cf]');if(f) return bajar(f.dataset.cf,f.dataset.ff);
   const i=e.target.closest('[data-ir]');if(i){const n=$('.nav[data-nav="'+i.dataset.ir+'"]');if(n) n.click()}
 });
