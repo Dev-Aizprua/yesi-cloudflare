@@ -19,8 +19,6 @@ import { armarReporteDeudasNegocio, armarResumenVentasGastosNegocio, fetchGroq, 
 // @returns {{ texto: string, atajo: string, ir?: string, archivos?: Array<{id:number, formato:'xlsx'|'pdf', etiqueta:string}> }}
 const TEXTO_ESCRITURA_WEB = 'Eso todavía no lo hago desde la web ✍️ Aquí puedo registrar ventas, gastos y cobros ("vendí 3 jugos a 2.50", "gasté 45 en luz", "Ana pagó 5"), anular lo que registraste ("anula la última venta") y responder consultas. Lo demás (inventario, costos, cartas, facturas) se hace por WhatsApp.';
 const TEXTO_SIN_ENTENDER_WEB = 'No estoy seguro de qué me pides 🤔 Aquí en la web puedo responder consultas, por ejemplo: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o "pásame el Excel de Préstamos". Para registrar ventas, gastos, cobros o cartas, díselo a tu asistente por WhatsApp.';
-const PALABRAS_VG_PURAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'mi', 'mis', 'me', 'cuanto', 'cuantos', 'cuantas', 'vendi', 'vendido', 'vendimos', 'venta', 'ventas', 'gaste', 'gastado', 'gastamos', 'gasto', 'gastos', 'hoy', 'ayer', 'este', 'esta', 'mes', 'semana', 'ano', 'pasado', 'pasada', 'anterior', 'dime', 'dame', 'muestrame', 'ver', 'resumen', 'total', 'totales', 'como', 'fue', 'va', 'he', 'hemos', 'llevo', 'y', 'en', 'lo', 'que', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre']);
-const sinCalificativosVG = (t) => normalizarClave(t).split('_').filter(Boolean).every(w => PALABRAS_VG_PURAS.has(w));
 export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente = '', previo = null) {
   const t = String(texto ?? '').trim();
   if (!t) return { texto: TEXTO_SIN_ENTENDER_WEB, atajo: 'vacio' };
@@ -52,7 +50,7 @@ export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente 
   // Solo si la pregunta es "pura" (sin cliente ni producto): "¿cuánto le vendí a Ana en octubre?" NO se responde con el total de
   // todas las ventas; esa pregunta con filtro la interpreta Groq y la calcula el código con el filtro aplicado.
   const consultaVG = detectarConsultaVentasGastos(t);
-  if (consultaVG && sinCalificativosVG(t)) {
+  if (consultaVG) { // con o sin cliente/producto: el código filtra y suma (sin Groq)
     const r = await armarResumenVentasGastosNegocio(env, negocio, consultaVG);
     if (r) return solo(r, 'ventas_gastos', 'Informes');
   }
@@ -129,7 +127,7 @@ const HERRAMIENTAS_WEB = [
   { type: 'function', function: { name: 'ventas_gastos', description: 'Lista y suma ventas y/o gastos de un rango de fechas, con filtro opcional por cliente (solo ventas) o por producto/concepto.', parameters: { type: 'object', properties: {
     que: { type: 'string', enum: ['ventas', 'gastos', 'ambos'] },
     desde: { type: 'string', description: 'Fecha inicial AAAA-MM-DD' }, hasta: { type: 'string', description: 'Fecha final AAAA-MM-DD' },
-    cliente: { type: 'string', description: 'Nombre del cliente (solo para ventas)' }, texto: { type: 'string', description: 'Producto o concepto, por ejemplo "hielo" o "jugos"' } }, required: ['que', 'desde', 'hasta'] } } },
+    cliente: { type: 'string', description: 'Nombre del cliente (solo para ventas). Si no aplica, omite el campo: no envíes null.' }, texto: { type: 'string', description: 'Producto o concepto, por ejemplo "hielo" o "jugos". Si no aplica, omite el campo: no envíes null.' } }, required: ['que', 'desde', 'hasta'] } } },
   { type: 'function', function: { name: 'deuda_cliente', description: 'Cuánto debe un cliente concreto (préstamos, facturas y ventas a crédito).', parameters: { type: 'object', properties: { cliente: { type: 'string' } }, required: ['cliente'] } } },
   { type: 'function', function: { name: 'stock_producto', description: 'Cuánto hay en inventario de un producto.', parameters: { type: 'object', properties: { producto: { type: 'string' } }, required: ['producto'] } } },
   { type: 'function', function: { name: 'costo_producto', description: 'Cuánto cuesta producir o comprar un producto (su costo guardado).', parameters: { type: 'object', properties: { producto: { type: 'string' } }, required: ['producto'] } } },
