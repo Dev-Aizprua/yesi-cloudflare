@@ -945,6 +945,8 @@ export function detectarAnularAbono(texto) {
   if (!RE_VERBO_ANULAR.test(antes) && !RE_VERBO_ANULAR.test(m[1])) return null;
 
   let resto = m[1].replace(RE_VERBO_ANULAR, ' ');
+  // "…cuadro Prestamos 2": el nombre del cuadro (y sus números) ni es el nombre de la persona ni es el monto del abono.
+  resto = resto.replace(/\b(?:(?:en|de|del)\s+)?(?:(?:el|la)\s+)?(?:cuadro|tabla)\b.*$/, ' ');
   let monto = null;
   const mm = resto.match(/(?:b\/\s*|\$\s*)?(\d+(?:\.\d+)?)/);
   if (mm) { monto = parsearMonto(mm[1]); resto = resto.replace(mm[0], ' '); }
