@@ -1,8 +1,8 @@
 // functions/api/web/chat.js
 // POST /api/web/chat {texto, ultimo?} → responde CONSULTAS del dueño con el mismo código que el bot de WhatsApp
-// (responderConsultaWeb, en whatsapp.js). Sin Groq (0 tokens) y sin escribir nada. El negocio sale de la sesión.
+// (responderConsultaWeb, en lib/chatWeb.js). Sin Groq (0 tokens) y sin escribir nada. El negocio sale de la sesión.
 import { sesionDeRequest } from '../../lib/accesoWeb.js';
-import { responderConsultaWeb } from '../whatsapp.js';
+import { responderConsultaWeb } from '../../lib/chatWeb.js';
 
 const CABECERAS = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const responder = (obj, estado = 200) => new Response(JSON.stringify(obj), { status: estado, headers: CABECERAS });

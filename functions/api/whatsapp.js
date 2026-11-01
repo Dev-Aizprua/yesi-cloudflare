@@ -51,7 +51,7 @@ import { llamarGroqConReintento } from '../lib/groqReintento.js';
 
 // Todas las llamadas a Groq pasan por aquí: si Groq responde 429 (límite por minuto) se espera
 // lo que él indica y se reintenta UNA vez, en vez de perder el mensaje del usuario.
-const fetchGroq = (url, init) => llamarGroqConReintento(fetch, url, init);
+export const fetchGroq = (url, init) => llamarGroqConReintento(fetch, url, init);
 
 // ── VERIFICACIÓN DEL WEBHOOK (GET) — la pide Meta al configurar ──
 export async function onRequestGet(context) {
@@ -2359,7 +2359,7 @@ async function guardarCuadro(env, cuadroId, filas, filasAntesJson, sentenciasExt
   return resultados[1].meta.last_row_id;
 }
 
-async function obtenerCuadros(env, negocioId) {
+export async function obtenerCuadros(env, negocioId) {
   const { results } = await env.oficina_ia_db.prepare(
     'SELECT * FROM cuadros WHERE negocio_id = ?'
   ).bind(negocioId).all();
@@ -2454,7 +2454,7 @@ async function acortarEnlace(env, urlLarga) {
   }
 }
 
-function normalizarClave(texto) {
+export function normalizarClave(texto) {
   return String(texto)
     .toLowerCase()
     .normalize('NFD')
@@ -3422,7 +3422,7 @@ async function iniciarAnularRegistro(env, negocio, pedido) {
 }
 
 // "¿Cuánto vendí hoy?": se responde en código (0 tokens). Los totales los suma el código sobre lo vigente.
-async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
+export async function armarResumenVentasGastosNegocio(env, negocio, consulta) {
   const db = env.oficina_ia_db;
   const p = consulta.periodo;
   let ventas = [];
@@ -3581,7 +3581,7 @@ async function textoTotalDelDia(db, negocioId, tabla, columna, fecha, etiqueta) 
 // Pedido inequívoco + cuadro resuelto con certeza → se entrega por la misma ruta de enviar_excel / enviar_pdf
 // sin llamar a Groq. Cualquier duda (varios cuadros sin nombre, nombre que no encaja) devuelve null y el
 // mensaje sigue por Groq como siempre.
-async function resolverAtajoArchivo(env, negocio, texto) {
+export async function resolverAtajoArchivo(env, negocio, texto) {
   try {
     const pedido = detectarPedidoArchivo(texto);
     if (!pedido) return null;
@@ -3847,7 +3847,7 @@ async function cargarProformasConSaldo(env, negocioId) {
 
 // "¿Quién me debe?": préstamos de los cuadros + proformas por cobrar (saldo derivado) + saldo a favor.
 // Reutiliza las mismas fuentes que el registro de pagos, así hay una sola verdad por cifra.
-async function armarReporteDeudasNegocio(env, negocio, consulta) {
+export async function armarReporteDeudasNegocio(env, negocio, consulta) {
   const cuadros = await obtenerCuadros(env, negocio.id);
   const prestamos = extraerPrestamosDeCuadros(cuadros, normalizarClave);
   const proformas = await cargarProformasConSaldo(env, negocio.id);
@@ -3882,98 +3882,8 @@ async function leerVentasYGastos(db, negocioId, desde, hasta) {
   return { ventas, gastos };
 }
 
-// ── CHAT DE LA OFICINA WEB (functions/api/web/chat.js): SOLO CONSULTAS, en código, 0 tokens de Groq ──
-// Usa los MISMOS detectores y respondedores que el webhook de arriba (una sola verdad: lo que dice WhatsApp y lo que dice la
-// web coinciden). No escribe nada: si el mensaje es registrar, anular o cambiar datos, responde que eso se hace por WhatsApp.
-// @returns {{ texto: string, atajo: string, ir?: string, archivos?: Array<{id:number, formato:'xlsx'|'pdf', etiqueta:string}> }}
-const TEXTO_ESCRITURA_WEB = 'Eso es registrar o cambiar datos, y por ahora se hace por WhatsApp ✍️ Aquí en la web puedo responder consultas: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o pedirte el Excel o PDF de un cuadro.';
-const TEXTO_SIN_ENTENDER_WEB = 'No estoy seguro de qué me pides 🤔 Aquí en la web puedo responder consultas, por ejemplo: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o "pásame el Excel de Préstamos". Para registrar ventas, gastos, cobros o cartas, díselo a tu asistente por WhatsApp.';
-export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente = '') {
-  const t = String(texto ?? '').trim();
-  if (!t) return { texto: TEXTO_SIN_ENTENDER_WEB, atajo: 'vacio' };
-  const solo = (texto2, atajo, ir) => ({ texto: texto2, atajo, ...(ir ? { ir } : {}) });
 
-  if (esSiNoPuro(t)) return solo('No tengo nada pendiente por confirmar. Dime qué necesitas y lo hago.', 'sin_pendiente');
-  if (detectarAgradecimiento(t)) return solo(respuestaAgradecimiento(), 'agradecimiento');
-  if (detectarPedidoOficina(t)) return solo('Ya estás en Mi oficina 😊 Aquí puedes consultar tus cifras, pagos, cuadros, inventario, informes y documentos.', 'oficina_web');
-  const pedidoAyuda = detectarAyuda(t);
-  if (pedidoAyuda) return solo(textoAyuda(pedidoAyuda.tema, pedidoAyuda.desconocido), 'ayuda');
-  const calculo = responderCalculo(t);
-  if (calculo) return solo(calculo.texto, 'calculadora');
-
-  // Mismo orden que el webhook (3.8 → 3.12). Lo que escribe o anula se rechaza antes de llegar a su respondedor.
-  const consultaDeudas = detectarConsultaDeudas(t);
-  if (consultaDeudas) {
-    const r = await armarReporteDeudasNegocio(env, negocio, consultaDeudas);
-    if (r) return solo(r, 'deudas', 'Pagos');
-  }
-  if (detectarAnularCobroVenta(t) || detectarAnularAbono(t) || detectarAnularRegistro(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
-
-  const consultaVG = detectarConsultaVentasGastos(t);
-  if (consultaVG) {
-    const r = await armarResumenVentasGastosNegocio(env, negocio, consultaVG);
-    if (r) return solo(r, 'ventas_gastos', 'Informes');
-  }
-
-  {
-    const pedidoRep = detectarPedidoReporte(t);
-    if (pedidoRep && pedidoRep.error) return solo(pedidoRep.error, 'reporte_error');
-    if (pedidoRep) {
-      const r = await responderReporte(env, negocio, pedidoRep);
-      return solo(pedidoRep.pdf ? `${r.texto}\n\nEl PDF del informe lo puedes pedir por WhatsApp. Aquí lo ves con gráficas en Informes.` : r.texto, 'reporte', 'Informes');
-    }
-    const seg = detectarSeguimientoReporte(t);
-    if (seg) {
-      const per = periodoDelMensajeDeReporte(ultimoAsistente);
-      if (per) {
-        const r = await responderReporte(env, negocio, { periodo: per, comparar: !!seg.comparar || /\nComparado con /.test(String(ultimoAsistente)) });
-        return solo(seg.pdf ? 'El PDF del informe lo puedes pedir por WhatsApp ("mándamelo en PDF"). Aquí lo ves con gráficas en Informes.' : r.texto, 'reporte_seguimiento', 'Informes');
-      }
-    }
-  }
-
-  {
-    const anularInv = detectarAnularInventario(t);
-    const regInv = anularInv ? null : detectarRegistroInventario(t);
-    const elimProd = anularInv || regInv ? null : detectarEliminarProducto(t);
-    if (anularInv || regInv || elimProd) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
-    const consInv = detectarConsultaInventario(t);
-    if (consInv) {
-      const r = await responderConsultaInventario(env, negocio, consInv);
-      if (r) return solo(r, 'consulta_inventario', 'Inventario');
-    }
-  }
-
-  {
-    if (detectarAnularCosto(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
-    const consultaCostos = detectarConsultaCostos(t);
-    if (consultaCostos) {
-      const r = await responderConsultaCostos(env, negocio, consultaCostos);
-      if (r) return solo(r, 'costos');
-    }
-    const consultaGanancia = consultaCostos ? null : detectarConsultaGanancia(t);
-    if (consultaGanancia) return solo(await responderGanancia(env, negocio, consultaGanancia), 'ganancia', 'Informes');
-  }
-
-  // "Pásame el Excel/PDF de X": en la web se descarga con un botón (los mismos archivos del bot).
-  const atajoArchivo = await resolverAtajoArchivo(env, negocio, t);
-  if (atajoArchivo) {
-    const cuadros = await obtenerCuadros(env, negocio.id);
-    const c = cuadros.find(x => x.nombre_cuadro === atajoArchivo.args.nombre_cuadro);
-    let tipo = null;
-    try { tipo = JSON.parse(c?.estructura || '{}').tipo || null; } catch { tipo = null; }
-    if (c && tipo !== 'secciones') {
-      const formato = atajoArchivo.nombre === 'enviar_pdf' ? 'pdf' : 'xlsx';
-      return { texto: `Aquí tienes "${c.nombre_cuadro}" ${formato === 'pdf' ? 'en PDF' : 'en Excel'} 👇`, atajo: 'archivo', archivos: [{ id: c.id, formato, etiqueta: `Descargar ${formato === 'pdf' ? 'PDF' : 'Excel'}` }] };
-    }
-    if (c) return solo('Ese reporte se descarga por ahora desde WhatsApp. Pídeselo a tu asistente.', 'archivo_no_web');
-  }
-
-  if (esRegistroDirecto(t) || esRegistroCostoDirecto(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
-  return solo(TEXTO_SIN_ENTENDER_WEB, 'sin_entender');
-}
-
-async function responderReporte(env, negocio, pedido) {
+export async function responderReporte(env, negocio, pedido) {
   const db = env.oficina_ia_db;
   const p = pedido.periodo;
   const { ventas, gastos } = await leerVentasYGastos(db, negocio.id, p.desde, p.hasta);
@@ -4079,7 +3989,7 @@ async function iniciarAnularInventario(env, negocio, pedido) {
   return textoPrevioAnularInventario(m, m.producto, stock);
 }
 
-async function responderConsultaInventario(env, negocio, consulta) {
+export async function responderConsultaInventario(env, negocio, consulta) {
   const productos = await cargarProductosInventario(env, negocio.id);
   if (consulta.tipo === 'lista') return textoListaInventario(productos);
   // Sin inventario, "¿cuánto me queda de gasolina?" no es de este módulo: sigue por Groq.
@@ -4181,7 +4091,7 @@ async function iniciarAnularCosto(env, negocio, pedido) {
   return `Voy a anular el costo de "${f.producto}" (${formatoMonto(Number(f.costo_unidad))} por unidad).\n\nNo se borra: queda en el historial y deja de usarse para la ganancia. ¿Lo anulo? Responde "sí" o "no".`;
 }
 
-async function responderConsultaCostos(env, negocio, consulta) {
+export async function responderConsultaCostos(env, negocio, consulta) {
   const fichas = await cargarFichasCosto(env, negocio.id);
   if (consulta.tipo === 'lista') return textoListaCostos(fichas);
   const f = emparejarCosto(consulta.producto, fichas);
@@ -4192,7 +4102,7 @@ async function responderConsultaCostos(env, negocio, consulta) {
   return textoSinCosto(consulta.producto);
 }
 
-async function responderGanancia(env, negocio, consulta) {
+export async function responderGanancia(env, negocio, consulta) {
   const db = env.oficina_ia_db;
   const p = consulta.periodo;
   const fichas = await cargarFichasCosto(env, negocio.id);
