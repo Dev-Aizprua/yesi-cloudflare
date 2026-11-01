@@ -137,6 +137,68 @@ export function recalcularPie(pie, columnasInternas, filas) {
   });
 }
 
+// ── Datos del encabezado que MÁS se leen mal en una foto (fecha, teléfono, RUC, D.V.) ─────────────
+// Los montos los suma y verifica el código; estos datos son texto y nada los verifica. Por eso:
+//   - un teléfono de dígitos repetidos (0000-0000, 5555-5555) es relleno o una lectura inventada → queda PENDIENTE;
+//   - una fecha de emisión futura o de hace más de un año se MUESTRA pero con aviso (puede ser un año mal leído);
+//   - RUC, D.V. y teléfono siempre llevan un "revísalos contra tu factura" antes del "sí".
+const sinTildes = x => String(x ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const claveEtiqueta = e => sinTildes(e).replace(/[^a-z0-9]+/g, ' ').trim().replace(/\br u c\b/, 'ruc');
+const esEtiquetaTelefono = e => /\b(telefono|tel|tlf|celular|cel)\b/.test(claveEtiqueta(e));
+const esEtiquetaRuc = e => /\bruc\b/.test(claveEtiqueta(e));
+const esEtiquetaDv = e => /\b(dv|d v|digito verificador)\b/.test(claveEtiqueta(e));
+const esEtiquetaFechaEmision = e => { const c = claveEtiqueta(e); return c.startsWith('fecha') && !c.includes('venc'); };
+
+function telefonoRelleno(texto) {
+  const digitos = String(texto ?? '').replace(/\D/g, '');
+  return digitos.length >= 6 && /^(\d)\1+$/.test(digitos);
+}
+
+// Fecha escrita como día/mes/año (formato de Panamá) o AAAA-MM-DD. null si no se reconoce ninguna.
+function leerFechaFactura(texto) {
+  const s = String(texto ?? '');
+  let d, mo, y;
+  let m = s.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4}|\d{2})\b/);
+  if (m) { d = Number(m[1]); mo = Number(m[2]); y = Number(m[3]); if (m[3].length === 2) y += 2000; }
+  else {
+    m = s.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+    if (!m) return null;
+    y = Number(m[1]); mo = Number(m[2]); d = Number(m[3]);
+  }
+  const f = new Date(Date.UTC(y, mo - 1, d));
+  const existe = f.getUTCFullYear() === y && f.getUTCMonth() === mo - 1 && f.getUTCDate() === d;
+  const dos = n => String(n).padStart(2, '0');
+  return { existe, ms: f.getTime(), texto: `${dos(d)}/${dos(mo)}/${y}` };
+}
+
+/**
+ * Avisos de REVISIÓN del encabezado leído de una foto (se recalculan cada vez que se muestra la vista previa,
+ * así que si el usuario corrige la fecha, el aviso de la fecha desaparece solo).
+ * @param {Array} encabezado  el que devolvió validarEncabezado
+ * @param {Date} [ahora]
+ * @returns {string[]}
+ */
+export function avisosRevisionEncabezado(encabezado, ahora = new Date()) {
+  const lista = Array.isArray(encabezado) ? encabezado : [];
+  const avisos = [];
+  const p = new Date(ahora.getTime() - 5 * 3600 * 1000); // hora de Panamá (UTC-5)
+  const hoy = Date.UTC(p.getUTCFullYear(), p.getUTCMonth(), p.getUTCDate());
+  const DIA = 86400000;
+  for (const c of lista) {
+    if (c?.valor === null || c?.valor === undefined || !esEtiquetaFechaEmision(c.etiqueta)) continue;
+    const f = leerFechaFactura(c.valor);
+    if (!f) continue;
+    if (!f.existe) avisos.push(`${c.etiqueta}: "${c.valor}" no es una fecha que exista — revísala y dime la correcta.`);
+    else if (f.ms > hoy + DIA) avisos.push(`${c.etiqueta}: leí ${f.texto}, que es una fecha futura — ¿se leyó mal? Dime la correcta.`);
+    else if (f.ms < hoy - 365 * DIA) avisos.push(`${c.etiqueta}: leí ${f.texto}, de hace más de un año — ¿se leyó mal? Dime la correcta.`);
+  }
+  const identificacion = lista
+    .filter(c => c?.valor !== null && c?.valor !== undefined && (esEtiquetaRuc(c.etiqueta) || esEtiquetaDv(c.etiqueta) || esEtiquetaTelefono(c.etiqueta)))
+    .map(c => c.etiqueta);
+  if (identificacion.length > 0) avisos.push(`Revisa contra tu factura: ${identificacion.join(', ')} (son los datos que más se leen mal en una foto).`);
+  return avisos;
+}
+
 /**
  * Limpia el encabezado tal como lo transcribió Groq. Un valor null,
  * vacío o solo espacios queda PENDIENTE: no se inventa nada.
@@ -148,7 +210,8 @@ export function validarEncabezado(encabezadoCrudo) {
   return (Array.isArray(encabezadoCrudo) ? encabezadoCrudo : [])
     .map(c => {
       const etiqueta = String(c?.etiqueta ?? '').trim().replace(/:\s*$/, '');
-      const texto = c?.valor === null || c?.valor === undefined ? '' : String(c.valor).trim();
+      let texto = c?.valor === null || c?.valor === undefined ? '' : String(c.valor).trim();
+      if (texto !== '' && esEtiquetaTelefono(etiqueta) && telefonoRelleno(texto)) texto = ''; // 0000-0000 / 5555-5555: relleno o lectura inventada
       return { etiqueta, valor: texto === '' ? null : texto, pendiente: texto === '' };
     })
     .filter(c => c.etiqueta);

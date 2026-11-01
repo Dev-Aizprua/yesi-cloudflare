@@ -38,7 +38,7 @@ import { camposConFechasEnLetras } from '../lib/fechasCarta.js';
 import { validarReporteSecciones } from '../lib/reporteSecciones.js';
 import { generarImagenReporteSecciones } from '../lib/imagenReporteSecciones.js';
 import { generarExcelReporteSecciones } from '../lib/excelReporteSecciones.js';
-import { validarPie, validarEncabezado, avisosEncabezado, recalcularPie } from '../lib/tablaExtendida.js';
+import { validarPie, validarEncabezado, avisosEncabezado, avisosRevisionEncabezado, recalcularPie } from '../lib/tablaExtendida.js';
 import { construirDatosCotizacion, siguienteNumeroDocumento, nombreDocumento, elegirCotizacion, buscarDocumentoGuardado, lineasDesdeCuadro, aplicarCorreccionDocumento, describirParaCorreccion, clasificarRespuestaPendiente, filaIndiceDocumento } from '../lib/cotizacion.js';
 import { redondear2, parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDocumento, mismoCliente, calcularSaldos, repartirPago, ordenarMasAntiguoPrimero, textoVistaPrevia, textoElegirDocumento, clasificarRespuestaConfirmacion, clasificarRespuestaElegir, formatoMonto, fechaLegible, nombreLegible,
   filtrarPagos, textoElegirPago, clasificarRespuestaElegirIndice, planAnularPago, textoPrevioAnularPago, planAnularDocumento, textoPrevioAnularDocumento, planAplicarSaldo, textoPrevioAplicarSaldo,
@@ -2882,8 +2882,10 @@ function construirTextoConfirmacion(datos) {
 
   // Campos que no se leyeron con seguridad (encabezado o pie) — se avisa,
   // nunca se bloquea: el cuadro se puede crear igual y completarlos después.
-  const avisoPendientes = (datos.avisosPendientes || []).length > 0
-    ? `\n\n⚠️ ${(datos.avisosPendientes || []).join('\n⚠️ ')}`
+  // Más los avisos de REVISIÓN (fecha dudosa; RUC, D.V. y teléfono leídos de una foto): se recalculan en cada vista previa.
+  const avisosTodos = [...(datos.avisosPendientes || []), ...(datos.origen === 'texto' ? [] : avisosRevisionEncabezado(datos.encabezado))];
+  const avisoPendientes = avisosTodos.length > 0
+    ? `\n\n⚠️ ${avisosTodos.join('\n⚠️ ')}`
     : '';
 
   const bloqueEncabezado = lineasEncabezado.length > 0 ? `${lineasEncabezado.join('\n')}\n\n` : '';

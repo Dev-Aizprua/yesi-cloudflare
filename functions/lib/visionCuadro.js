@@ -132,6 +132,10 @@ Reglas para "encabezado" (datos sueltos ARRIBA de la tabla: nombre del negocio, 
 - Copia cada dato tal como aparece. Si un dato no trae etiqueta (ej. el nombre del negocio en una línea sola), ponle una etiqueta corta y descriptiva ("Negocio").
 - Si una etiqueta está en la imagen pero su valor está en blanco, borroso o no lo puedes leer con SEGURIDAD: pon "valor": null. NUNCA inventes ni completes un valor dudoso — es preferible null, el sistema se lo pregunta al usuario.
 - No inventes campos que no aparezcan en la imagen. Si no hay nada de esto, usa [].
+- Fecha: copia día, mes y AÑO completo (4 dígitos) tal como se ven. Si el año o algún número de la fecha no se distingue con seguridad, pon null.
+- Teléfono: si dice 0000-0000, está en blanco, o todos sus dígitos son iguales, es relleno de la factura: pon null.
+- RUC y D.V.: copia dígito por dígito, sin completar ni "corregir". Si un dígito no se distingue, pon null en ese dato.
+- Nombres de negocio y de productos: copia las letras tal como se ven, sin "arreglarlas".
 
 Reglas para "pie" (líneas de cálculo DEBAJO de la tabla, cada una con UNA etiqueta y UN solo valor: Subtotal, Descuento, ITBMS/impuesto, Total a pagar...):
 - Van en orden, tal como aparecen de arriba a abajo. NO las pongas en "fila_totales" ni en "filas".

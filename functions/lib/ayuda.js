@@ -33,6 +33,7 @@ const TEMAS = {
   documentos: /^(?:cotizaciones?|facturas?|proformas?|pagos?|documentos?)$/,
   prestamos: /^(?:prestamos?|abonos?|financistas?)$/,
   cartas: /^(?:cartas?|word|constancias?|plantillas?)$/,
+  oficina: /^(?:oficina|mi oficina|web|pagina|pagina web|sitio|sitio web|panel|enlace|link)$/,
   calculadora: /^(?:calculadoras?|calcular|calculos?|cuentas?|operaciones|sumas?|sumar|restas?|multiplicar|multiplicaciones|dividir|porcentajes?|itbms|impuestos?|matematicas?)$/,
 };
 
@@ -71,6 +72,7 @@ export const TEXTO_MENU = [
   '💳 *Préstamos y abonos* — "Yisel abonó 10", "Cóbrale a Yisel"',
   '🧮 *Calculadora* — "25 por 18", "el 7% de 85", "120 más ITBMS"',
   '✉️ *Cartas en Word y PDF* — "Ayúdame con una carta" (te muestro las que tengo)',
+  '🖥️ *Mi oficina (web)* — escribe "mi oficina" y te mando un enlace para ver y manejar tu negocio desde el navegador',
   '',
   'Para ver más ejemplos de un tema escribe "ayuda" y el tema. Por ejemplo: "ayuda inventario".',
 ].join('\n');
@@ -150,6 +152,13 @@ const DETALLE = {
     '• ITBMS (7%): "120 más ITBMS", "107 sin ITBMS", "el ITBMS de 200"',
     '• Por voz también: "veinte por doce". Si el audio sale raro, dilo con números: "20 por 12".',
     'Solo funciona cuando todo el mensaje es el cálculo.',
+  ],
+  oficina: [
+    '🖥️ *Mi oficina (web)*',
+    '• Escribe "mi oficina" y te mando un enlace de un solo uso para entrar desde el navegador (la sesión dura 8 horas). Solo el dueño puede pedirlo.',
+    '• Ahí ves tu Inicio, Pagos, Cuadros, Inventario, Informes y los Documentos (cartas en PDF y Word).',
+    '• En el chat de la web puedes consultar ("¿quién me debe?", "¿cuánto vendí de pasteles este mes?"), registrar ventas, gastos y cobros, y anular lo que registraste, siempre con vista previa y botones.',
+    '• Las consultas largas se leen mejor en la web. Cartas, facturas e inventario siguen por WhatsApp.',
   ],
   cartas: [
     '✉️ *Cartas en Word y PDF*',
