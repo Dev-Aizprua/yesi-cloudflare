@@ -11,13 +11,13 @@ import { responderCalculo } from './calculadora.js';
 import { detectarPedidoOficina } from './accesoWeb.js';
 import { detectarAnularRegistro, detectarConsultaVentasGastos, armarResumenVentasGastos, esRegistroDirecto, detectarAnularCobroVenta } from './ventasGastos.js';
 import { fechaIsoPanama, fechaLegible, esSiNoPuro, detectarConsultaDeudas, detectarAnularAbono } from './pagos.js';
-import { armarReporteDeudasNegocio, armarResumenVentasGastosNegocio, fetchGroq, normalizarClave, obtenerCuadros, resolverAtajoArchivo, responderConsultaCostos, responderConsultaInventario, responderGanancia, responderReporte } from '../api/whatsapp.js';
+import { armarReporteDeudasNegocio, armarResumenVentasGastosNegocio, fetchGroq, normalizarClave, obtenerCuadros, resolverAtajoArchivo, responderConsultaCostos, responderConsultaInventario, responderGanancia, responderReporte, responderPendienteWeb, interpretarEscrituraWeb } from '../api/whatsapp.js';
 
 // ── CHAT DE LA OFICINA WEB (functions/api/web/chat.js): SOLO CONSULTAS, en código, 0 tokens de Groq ──
 // Usa los MISMOS detectores y respondedores que el webhook de arriba (una sola verdad: lo que dice WhatsApp y lo que dice la
 // web coinciden). No escribe nada: si el mensaje es registrar, anular o cambiar datos, responde que eso se hace por WhatsApp.
 // @returns {{ texto: string, atajo: string, ir?: string, archivos?: Array<{id:number, formato:'xlsx'|'pdf', etiqueta:string}> }}
-const TEXTO_ESCRITURA_WEB = 'Eso es registrar o cambiar datos, y por ahora se hace por WhatsApp ✍️ Aquí en la web puedo responder consultas: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o pedirte el Excel o PDF de un cuadro.';
+const TEXTO_ESCRITURA_WEB = 'Eso todavía no lo hago desde la web ✍️ Aquí puedo registrar ventas, gastos y cobros ("vendí 3 jugos a 2.50", "gasté 45 en luz", "Ana pagó 5") y responder consultas. Lo demás (anular, inventario, costos, cartas) se hace por WhatsApp.';
 const TEXTO_SIN_ENTENDER_WEB = 'No estoy seguro de qué me pides 🤔 Aquí en la web puedo responder consultas, por ejemplo: "quién me debe", "cuánto vendí hoy", "cómo va mi negocio este mes", "mi inventario", "cuánto gané", o "pásame el Excel de Préstamos". Para registrar ventas, gastos, cobros o cartas, díselo a tu asistente por WhatsApp.';
 const PALABRAS_VG_PURAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'mi', 'mis', 'me', 'cuanto', 'cuantos', 'cuantas', 'vendi', 'vendido', 'vendimos', 'venta', 'ventas', 'gaste', 'gastado', 'gastamos', 'gasto', 'gastos', 'hoy', 'ayer', 'este', 'esta', 'mes', 'semana', 'ano', 'pasado', 'pasada', 'anterior', 'dime', 'dame', 'muestrame', 'ver', 'resumen', 'total', 'totales', 'como', 'fue', 'va', 'he', 'hemos', 'llevo', 'y', 'en', 'lo', 'que', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre']);
 const sinCalificativosVG = (t) => normalizarClave(t).split('_').filter(Boolean).every(w => PALABRAS_VG_PURAS.has(w));
@@ -26,6 +26,9 @@ export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente 
   if (!t) return { texto: TEXTO_SIN_ENTENDER_WEB, atajo: 'vacio' };
   const solo = (texto2, atajo, ir) => ({ texto: texto2, atajo, ...(ir ? { ir } : {}) });
 
+  // Vista previa abierta (venta, gasto o cobro): Guardar / Cancelar llegan aquí como "sí" / "no".
+  const pendienteWeb = await responderPendienteWeb(env, negocio, t);
+  if (pendienteWeb) return pendienteWeb;
   if (esSiNoPuro(t)) return solo('No tengo nada pendiente por confirmar. Dime qué necesitas y lo hago.', 'sin_pendiente');
   if (detectarAgradecimiento(t)) return solo(respuestaAgradecimiento(), 'agradecimiento');
   if (detectarPedidoOficina(t)) return solo('Ya estás en Mi oficina 😊 Aquí puedes consultar tus cifras, pagos, cuadros, inventario, informes y documentos.', 'oficina_web');
@@ -104,7 +107,9 @@ export async function responderConsultaWeb(env, negocio, texto, ultimoAsistente 
     if (c) return solo('Ese reporte se descarga por ahora desde WhatsApp. Pídeselo a tu asistente.', 'archivo_no_web');
   }
 
-  if (esRegistroDirecto(t) || esRegistroCostoDirecto(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+  if (esRegistroCostoDirecto(t)) return solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
+  // Vendí / gasté: Groq extrae los valores, el código valida y deja la vista previa con Guardar / Cancelar.
+  if (esRegistroDirecto(t)) return (await interpretarEscrituraWeb(env, negocio, t)) ?? solo(TEXTO_ESCRITURA_WEB, 'solo_whatsapp');
   // El código no entendió la pregunta: Groq solo la interpreta (elige una consulta de una lista cerrada, de solo lectura).
   const deGroq = await consultaWebConGroq(env, negocio, t);
   if (deGroq) return deGroq;
@@ -164,7 +169,7 @@ async function consultaWebConGroq(env, negocio, texto) {
   const SIN_FECHAS = 'No pude entender las fechas. Dímelas así: "del 5 al 20 de octubre" o "este mes".';
   try {
     switch (llamada.name) {
-      case 'es_una_accion': return solo(TEXTO_ESCRITURA_WEB, 'es_una_accion');
+      case 'es_una_accion': return (await interpretarEscrituraWeb(env, negocio, texto)) ?? solo(TEXTO_ESCRITURA_WEB, 'es_una_accion');
       case 'deuda_cliente': {
         const cliente = textoCorto(a.cliente); if (!cliente) return null;
         return solo(await armarReporteDeudasNegocio(env, negocio, { tipo: 'cliente', cliente }), 'deuda_cliente', 'Pagos');

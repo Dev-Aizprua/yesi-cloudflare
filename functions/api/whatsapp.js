@@ -4944,6 +4944,8 @@ function destinatarioWhatsApp(destino) {
 }
 
 async function enviarMensaje(waToken, phoneNumberId, to, texto) {
+  // Canal web (chat de Mi oficina): no se envía nada por WhatsApp, el texto se devuelve a la web.
+  if (waToken && typeof waToken === 'object' && Array.isArray(waToken.salidaWeb)) { waToken.salidaWeb.push(String(texto)); return { ok: true, canal: 'web' }; }
   const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
     method: 'POST',
     headers: {
@@ -5232,6 +5234,125 @@ async function enviarCartaGenerada(env, negocio, to, datosCarta, caption) {
   }
 
   return resultado;
+}
+
+// ── ESCRITURA DESDE "MI OFICINA" (chat web): venta, gasto y cobro/abono ──────────────────────────────
+// Mismas reglas que WhatsApp: Groq solo extrae los valores; el CÓDIGO valida (armarVentas, armarGastos, iniciarRegistroPago…),
+// muestra la vista previa y NO guarda nada hasta el "sí" (botón Guardar). El guardado, el reclamo del pendiente y los avisos
+// de repetido son las funciones del bot. La salida que el bot enviaría por WhatsApp se captura y se devuelve a la web
+// (enviarMensaje detecta el canal web por el objeto en wa_token). Anular, inventario, costos y cartas siguen solo en WhatsApp.
+const TIPOS_PENDIENTE_WEB = new Set(['venta', 'gasto', 'cobro_venta', 'pago']);
+const HERRAMIENTAS_ESCRITURA_WEB = new Set(['registrar_venta', 'registrar_gasto', 'registrar_pago']);
+const TEXTO_PENDIENTE_AJENO_WEB = 'Tienes algo esperando confirmación que se abrió en WhatsApp. Respóndele allá con "sí" o "no" y después seguimos aquí.';
+const TEXTO_ESCRITURA_NO_WEB = 'Eso todavía no lo hago desde la web ✍️ Aquí puedo registrar ventas, gastos y cobros ("vendí 3 jugos a 2.50", "gasté 45 en luz", "Ana pagó 5"). Lo demás (anular, inventario, costos, cartas) se hace por WhatsApp.';
+
+function negocioParaWeb(negocio) {
+  const salida = [];
+  return { neg: { ...negocio, wa_token: { salidaWeb: salida }, phone_number_id: 'web' }, salida };
+}
+
+async function leerPendienteWeb(env, negocioId) {
+  const fila = await env.oficina_ia_db.prepare('SELECT datos FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocioId).first();
+  if (!fila) return null;
+  let datos = null;
+  try { datos = JSON.parse(fila.datos); } catch (e) { /* pendiente ilegible: cuenta como ajeno */ }
+  return { datos, soportado: !!datos && TIPOS_PENDIENTE_WEB.has(datos.tipoPendiente) };
+}
+
+// Lo que la web muestra tras cada paso: el texto, y si queda una vista previa abierta, los botones Guardar / Cancelar.
+async function salidaEscrituraWeb(env, negocio, salida, atajo) {
+  const p = await leerPendienteWeb(env, negocio.id);
+  const abierto = !!(p && p.soportado);
+  const eligiendo = abierto && p.datos.tipoPendiente === 'pago' && p.datos.fase === 'eligiendo';
+  return {
+    texto: salida.filter(Boolean).join('\n\n') || 'Listo.',
+    atajo,
+    ...(abierto && !eligiendo ? { confirmar: true } : {}),
+    ...(eligiendo ? { elegir: true } : {}),
+    ...(abierto ? { cancelar: true } : {}),
+    ...(!abierto ? { actualizar: true } : {}),
+  };
+}
+
+/**
+ * "sí" / "no" (botones Guardar y Cancelar) a una vista previa abierta de venta, gasto o cobro; o la respuesta a "¿a cuál factura?".
+ * Devuelve null si no hay nada de eso que atender (el mensaje sigue su camino normal).
+ */
+export async function responderPendienteWeb(env, negocio, texto) {
+  const p = await leerPendienteWeb(env, negocio.id);
+  if (!p) return null;
+  // Un pendiente que se abrió en WhatsApp con otra acción (cartas, fotos, inventario…): no se toca desde la web.
+  if (!p.soportado) return clasificarRespuestaConfirmacion(texto) === 'otra' ? null : { texto: TEXTO_PENDIENTE_AJENO_WEB, atajo: 'pendiente_ajeno' };
+  const d = p.datos;
+  const eligiendo = d.tipoPendiente === 'pago' && d.fase === 'eligiendo';
+  if (!eligiendo && clasificarRespuestaConfirmacion(texto) === 'otra') return null;
+  const { neg, salida } = negocioParaWeb(negocio);
+  if (d.tipoPendiente === 'pago') await procesarRespuestaPago(env, neg, 'web', texto, d);
+  else await procesarRespuestaRegistro(env, neg, 'web', texto, d);
+  return salidaEscrituraWeb(env, negocio, salida, 'escritura');
+}
+
+/**
+ * Interpreta con Groq un mensaje de escritura ("vendí 15 jugos a 2", "Ana pagó 5") y deja la vista previa lista.
+ * @returns {Promise<{texto:string, atajo:string, confirmar?:boolean, cancelar?:boolean, elegir?:boolean, actualizar?:boolean}|null>} null = Groq apagado o sin clave
+ */
+export async function interpretarEscrituraWeb(env, negocio, texto) {
+  if (!env.GROQ_API_KEY || env.WEB_CHAT_GROQ === 'off') return null;
+  const pend = await leerPendienteWeb(env, negocio.id);
+  if (pend) {
+    return { texto: pend.soportado
+      ? 'Primero responde la vista previa que tienes abierta: pulsa Guardar o Cancelar.'
+      : TEXTO_PENDIENTE_AJENO_WEB, atajo: 'pendiente_abierto', ...(pend.soportado ? { confirmar: true, cancelar: true } : {}) };
+  }
+  const db = env.oficina_ia_db;
+  const conPagos = (await negocioTieneProformas(env, negocio.id)) || (await negocioTieneVentasACredito(env, negocio.id));
+  const { results: cuadros } = await db.prepare('SELECT nombre_cuadro, estructura FROM cuadros WHERE negocio_id = ?').bind(negocio.id).all();
+  const grupos = new Set([...elegirGrupos([texto]), 'ventas']);
+  const permitidas = herramientas.filter(h => HERRAMIENTAS_ESCRITURA_WEB.has(h.function.name) && (h.function.name !== 'registrar_pago' || conPagos));
+  const sistema = construirSystemPrompt(negocio, cuadros, [], conPagos, false, grupos)
+    + `\nIMPORTANTE (chat web): solo puedes usar ${permitidas.map(h => h.function.name).join(', ')}. Si el usuario pide otra cosa, no llames a ninguna herramienta.`;
+  const directo = esRegistroDirecto(texto) && permitidas.some(h => h.function.name === 'registrar_venta' || h.function.name === 'registrar_gasto');
+  const pedir = (mensajes, choice) => fetchGroq('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'openai/gpt-oss-120b', messages: mensajes, tools: permitidas, tool_choice: choice }),
+  });
+  const mensajes = [{ role: 'system', content: sistema }, { role: 'user', content: texto }];
+  let res; let data;
+  try {
+    res = await pedir(mensajes, directo ? 'required' : 'auto');
+    data = await res.json();
+    if (res.status === 400 && data?.error?.code === 'tool_use_failed') {
+      const nombres = permitidas.map(h => h.function.name);
+      const forzada = /\b(vend\w*|venta\w*|vei?nt\w*)\b/i.test(texto) && nombres.includes('registrar_venta') ? 'registrar_venta'
+        : /\b(gast\w*|pag[uú]e|compr\w*|pagamos|desembols\w*)\b/i.test(texto) && nombres.includes('registrar_gasto') ? 'registrar_gasto' : null;
+      res = await pedir(mensajes, forzada ? { type: 'function', function: { name: forzada } } : 'required');
+      data = await res.json();
+    }
+  } catch (e) {
+    console.log('[WEB-CHAT] Escritura: falló Groq:', e?.message);
+    return { texto: 'Tuve un problema al procesar tu mensaje. Inténtalo de nuevo en unos segundos, por favor.', atajo: 'error_groq' };
+  }
+  if (data?.error) {
+    console.log('[WEB-CHAT] Escritura: error de Groq:', data.error.message);
+    return { texto: res.status === 429 ? 'Estoy con mucho trabajo en este momento 🙏 Repite tu mensaje en unos segundos, por favor.' : 'Tuve un problema al procesar tu mensaje. Inténtalo de nuevo en unos segundos, por favor.', atajo: 'error_groq' };
+  }
+  const llamadas = data?.choices?.[0]?.message?.tool_calls;
+  const unida = unirLlamadasVentasGastos(llamadas);
+  let nombre; let args;
+  try {
+    nombre = unida ? unida.nombre : llamadas?.[0]?.function?.name;
+    args = unida ? unida.args : JSON.parse(llamadas?.[0]?.function?.arguments || '{}');
+  } catch (e) { return { texto: TEXTO_ESCRITURA_NO_WEB, atajo: 'sin_herramienta' }; }
+  if (!nombre || !permitidas.some(h => h.function.name === nombre) || !args || typeof args !== 'object') {
+    return { texto: TEXTO_ESCRITURA_NO_WEB, atajo: 'sin_herramienta' };
+  }
+  console.log('[WEB-CHAT] Escritura: Groq eligió', nombre);
+  const { neg, salida } = negocioParaWeb(negocio);
+  const r = await aplicarAccion(env, neg, nombre, { ...args, _mensajeId: null, _texto: texto });
+  if (r?.tipo !== 'aviso' && r?.tipo !== 'pago_pendiente') return { texto: TEXTO_ESCRITURA_NO_WEB, atajo: 'sin_herramienta' };
+  salida.unshift(r.mensaje);
+  return salidaEscrituraWeb(env, negocio, salida, 'escritura');
 }
 
 export async function onRequestOptions() {
