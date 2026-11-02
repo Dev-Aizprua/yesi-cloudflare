@@ -660,7 +660,13 @@ export async function onRequestPost(context) {
       // Groq respondió con texto plano en vez de usar una herramienta
       // (ej. un simple "Hola" que no encaja en ninguna acción clara) —
       // igual hay que mandarlo por WhatsApp de verdad, no solo devolverlo en el JSON.
-      const textoRespuesta = mensajeModelo?.content || 'Hola, ¿en qué te puedo ayudar?';
+      let textoRespuesta = mensajeModelo?.content || 'Hola, ¿en qué te puedo ayudar?';
+      // Blindaje: si Groq explica "lo que puedes hacer" soltando nombres internos de herramientas (crear_cuadro, cargar_filas...),
+      // ese texto es incompleto o inventado (solo conoce las herramientas de este turno): se manda la ayuda real, en código.
+      if (textoMencionaHerramientasInternas(textoRespuesta)) {
+        console.log('[WEBHOOK] Blindaje: la respuesta libre de Groq mencionaba nombres internos de herramientas; se envía la ayuda en código.');
+        textoRespuesta = textoAyuda(null);
+      }
       await guardarMensaje(env, negocio.id, 'asistente', textoRespuesta, 'texto');
       try {
         const resMeta = await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, textoRespuesta);
@@ -2891,7 +2897,7 @@ function construirTextoConfirmacion(datos) {
   const bloqueEncabezado = lineasEncabezado.length > 0 ? `${lineasEncabezado.join('\n')}\n\n` : '';
   const bloquePie = lineasPie.length > 0 ? `\n\n${lineasPie.join('\n')}` : '';
 
-  return `${datos.origen === 'texto' ? `Así quedó tu ${nombreDocumento(datos)}:` : 'Aquí está el cuadro que leí de tu foto:'}\n\n${bloqueEncabezado}${lineas.join('\n')}${bloquePie}${resumenValidacion}${avisoPendientes}\n\n${hayDiscrepancia
+  return `${datos.origen === 'texto' ? `Así quedó tu ${nombreDocumento(datos)}:` : `Aquí está el cuadro que leí de tu foto:\n📌 Nombre del cuadro: "${datos.nombreCuadro}". ¿Prefieres otro? Escribe, por ejemplo: llámalo Compras del súper`}\n\n${bloqueEncabezado}${lineas.join('\n')}${bloquePie}${resumenValidacion}${avisoPendientes}\n\n${hayDiscrepancia
     ? `Los totales aún no cuadran. ${(datos.propuestas || []).length > 0 ? 'Responde "corregir" para aplicar mis correcciones' : 'Dime qué corregir (ej. "el monto de Carlos es 460")'}, "crear igual" para guardar el cuadro tal como lo leí, o "no" para descartarlo.`
     : `¿Está bien así? Responde "sí" para crear ${datos.origen === 'texto' ? `la ${nombreDocumento(datos)}` : 'el cuadro'}, "no" para descartar${datos.origen === 'texto' ? 'la' : 'lo'}, o dime qué corregir${datos.origen === 'texto' ? ' (ej. "el cliente es Juan Pérez", "las sillas son 12", "agrega 3 mesas a 80", "quita las sillas")' : ''}.`}`;
 }
@@ -3621,6 +3627,31 @@ export async function resolverAtajoArchivo(env, negocio, texto) {
 }
 
 // ── RESPUESTA A LA IMPORTACIÓN PENDIENTE (sí / no / corrección) ──
+function textoMencionaHerramientasInternas(texto) {
+  const t = String(texto ?? '');
+  return (herramientas || []).some(h => {
+    const n = h?.function?.name ?? h?.name;
+    return typeof n === 'string' && n.length > 3 && new RegExp(`\\b${n}\\b`).test(t);
+  });
+}
+
+// "Llámalo Compras del súper": el nombre del cuadro lo decide el dueño, no el bot. Solo frases explícitas (nada de "el nombre es...",
+// que también es como se corrige el nombre de una persona de la tabla). Devuelve el nombre nuevo o null.
+const RE_NUEVO_NOMBRE_CUADRO = new RegExp('^\\s*(?:' + [
+  'll[aá]ma(?:lo|la)', 'n[oó]mbra(?:lo|la)', 'ren[oó]mbra(?:lo|la)', 'renombra(?:\\s+el\\s+cuadro)?(?:\\s+a)?',
+  'ponle(?:\\s+de|\\s+el)?\\s+(?:nombre|t[ií]tulo)(?:\\s+de)?', '(?:quiero\\s+)?que\\s+se\\s+llame',
+  'c[aá]mbiale\\s+el\\s+(?:nombre|t[ií]tulo)\\s+(?:del|al)\\s+cuadro\\s+(?:a|por)', 'cambia\\s+el\\s+(?:nombre|t[ií]tulo)\\s+del\\s+cuadro\\s+(?:a|por)',
+  '(?:el\\s+)?(?:nombre|t[ií]tulo)\\s+del\\s+cuadro(?:\\s+(?:es|ser[aá]|va\\s+a\\s+ser))?',
+].join('|') + ')\\s*[:\\-]?\\s*["“«\']?([^"”»\\n]{2,60}?)["”»\']?\\s*[.!]?\\s*$', 'i');
+function detectarNuevoNombreCuadro(texto) {
+  const m = String(texto ?? '').match(RE_NUEVO_NOMBRE_CUADRO);
+  if (!m) return null;
+  const nombre = m[1].replace(/\s+/g, ' ').trim();
+  if (nombre.length < 2 || !/\p{L}/u.test(nombre)) return null;
+  if (/^(si|sí|no|ok|listo|dale)$/i.test(nombre)) return null;
+  return nombre;
+}
+
 async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, importacionPendiente) {
   const datos = JSON.parse(importacionPendiente.datos);
   // Un pago esperando elección o confirmación NO es un documento: su propia lógica (fase 1b-2).
@@ -3653,6 +3684,18 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
     const respuesta = await procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
+  }
+  // Cambiar el NOMBRE del cuadro antes de crearlo ("llámalo Compras del súper"): vuelve a mostrar la vista previa con el nombre nuevo.
+  if (datos.tipo !== 'secciones' && datos.origen !== 'texto') {
+    const nuevoNombre = detectarNuevoNombreCuadro(texto);
+    if (nuevoNombre) {
+      datos.nombreCuadro = nuevoNombre;
+      await env.oficina_ia_db.prepare(
+        "UPDATE importaciones_pendientes SET datos = ?, creado_en = datetime('now') WHERE negocio_id = ?"
+      ).bind(JSON.stringify(datos), negocio.id).run();
+      await enviarVistaPreviaImportacion(env, negocio, numeroCliente, datos);
+      return Response.json({ ok: true, importacion_renombrada: true });
+    }
   }
   // normalizarClave ya quita tildes/mayúsculas — más confiable que una
   // expresión regular con \b, que en JavaScript NO reconoce como letra

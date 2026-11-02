@@ -20,6 +20,14 @@ const RE_MENU = new RegExp('^(?:' + [
   'para que sirves',
   'que opciones (?:tengo|hay|tienes)',
   'que (?:comandos|cosas) (?:hay|tienes|puedo usar|puedo hacer)',
+  // "dime todo lo que puedes hacer", "lo que sabes hacer", "que cosas puedes hacer", "cuentame que haces"...
+  '(?:(?:dime|dame|muestrame|cuentame|explicame|ensename|enumera|lista(?:me)?)\\s+)?(?:todo\\s+)?(?:lo\\s+que|las\\s+cosas\\s+que|que\\s+cosas|que)\\s+(?:puedes|sabes|podes|puede|haces)(?:\\s+hacer)?(?:\\s+por\\s+mi|\\s+aqui)?',
+  '(?:(?:dime|dame|muestrame|cuentame|explicame|ensename|enumera|lista(?:me)?)\\s+)?todas\\s+(?:tus|las)\\s+(?:funciones|opciones|comandos|capacidades)',
+  '(?:dime|dame|muestrame|cuentame|explicame|lista(?:me)?)\\s+(?:tus|las)\\s+(?:funciones|opciones|comandos|capacidades)',
+  'cuales\\s+son\\s+(?:tus|las|los)\\s+(?:funciones|opciones|comandos|capacidades)',
+  '(?:lista|listado)\\s+de\\s+(?:funciones|opciones|comandos)',
+  'como\\s+(?:me\\s+)?(?:puedes|puede|podes)\\s+ayudar(?:me)?',
+  'en\\s+que\\s+(?:me\\s+)?(?:ayudas|sirves)',
 ].join('|') + ')$');
 
 // Tema → palabras que lo identifican (tras la palabra "ayuda").
@@ -45,6 +53,11 @@ export function detectarAyuda(texto) {
   const t = plano(texto);
   if (!t || t.length > 60) return null;
   if (RE_MENU.test(t)) return { tema: null };
+  // "qué puedes hacer con el inventario": ayuda del tema (en código), en vez de dejar que Groq lo describa de memoria.
+  const q = t.match(/^(?:dime |cuentame |explicame )?(?:todo )?(?:lo )?que (?:puedes|sabes|podes) hacer (?:con|sobre|de|en|para) (?:el |la |los |las |mi |mis |un |una )?(.+)$/);
+  if (q && q[1].trim().split(' ').length <= 5) {
+    for (const [tema, re] of Object.entries(TEMAS)) if (re.test(q[1].trim())) return { tema };
+  }
   const m = t.match(/^(?:ayuda|help|menu)(?: (?:con|de|sobre|para|en))?(?: (?:el|la|los|las|mi|mis|un|una))? (.+)$/);
   if (m) {
     const resto = m[1].trim();
