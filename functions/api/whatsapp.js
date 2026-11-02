@@ -1030,7 +1030,7 @@ async function aplicarAccion(env, negocio, nombreHerramienta, args) {
       return eliminarFila(env, cuadro, columnas, filas, busqueda);
     }
     if (nombreHerramienta === 'actualizar_fila') {
-      return actualizarFila(env, cuadro, columnas, filas, reglas, busqueda, args);
+      return iniciarEdicionFila(env, negocio, cuadro, columnas, filas, reglas, busqueda, args);
     }
   }
 
@@ -1975,6 +1975,65 @@ Reglas:
   const arreglo = JSON.parse(texto);
   if (!Array.isArray(arreglo)) throw new Error('Groq no devolvió un arreglo JSON');
   return arreglo;
+}
+
+// ── EDITAR UNA FILA DE UN CUADRO, CON VISTA PREVIA ───────────────────────────────
+// "Cambia el monto de Carlos a 460" / "el nombre de Carolina es Carlota": antes se guardaba directo. Ahora se muestra el ANTES y el DESPUÉS
+// (con "entendí que te refieres a…" cuando el nombre fue parecido y no exacto) y solo se guarda con el "sí". Los abonos de cuadros con columna
+// de abono siguen su flujo de siempre (se suman y dejan un pago).
+async function iniciarEdicionFila(env, negocio, cuadro, columnas, filas, reglas, busqueda, args) {
+  const campoNormalizado = normalizarClave(args.campo);
+  const clavesColumnas = columnas.map(normalizarClave);
+  const claveAbono = columnaDePago(campoNormalizado, clavesColumnas)
+    || columnaDePago(String(args.campo ?? '').toLowerCase().trim(), clavesColumnas);
+  if (claveAbono && !Object.prototype.hasOwnProperty.call(reglas, claveAbono)) {
+    return actualizarFila(env, cuadro, columnas, filas, reglas, busqueda, args);
+  }
+
+  const antes = busqueda.fila;
+  const despues = calcularFila({ ...antes, [campoNormalizado]: limpiarValor(args.valor) }, reglas);
+  const cambios = Object.keys(despues).filter(k => String(antes[k] ?? '') !== String(despues[k] ?? ''));
+  if (cambios.length === 0) {
+    return { tipo: 'aviso', mensaje: `${antes.nombre} ya tiene ese valor en "${args.campo}" del cuadro "${cuadro.nombre_cuadro}". No cambié nada.` };
+  }
+  const etiqueta = clave => { const i = clavesColumnas.indexOf(clave); return i >= 0 ? columnas[i] : clave; };
+  const lineas = cambios.map(k => `• ${etiqueta(k)}: ${antes[k] ?? '(vacío)'} → ${despues[k] ?? '(vacío)'}${k === campoNormalizado ? '' : ' (se recalcula solo)'}`);
+  const titulo = campoNormalizado === 'nombre'
+    ? `Voy a cambiar el nombre de "${antes.nombre}" a "${despues.nombre}" en "${cuadro.nombre_cuadro}":`
+    : `Voy a actualizar a ${antes.nombre} en "${cuadro.nombre_cuadro}":`;
+  const interpretado = busqueda.tipo === 'alto' ? `\n(Entendí que te refieres a ${antes.nombre}; tú dijiste "${args.nombre}".)` : '';
+  const textoPrevio = `${titulo}${interpretado}\n${lineas.join('\n')}\n\n¿Lo guardo? Responde "sí" o "no".`;
+
+  await guardarPagoPendiente(env, negocio.id, {
+    tipoPendiente: 'editar_fila', cuadroId: cuadro.id, nombreCuadro: cuadro.nombre_cuadro,
+    nombreFila: antes.nombre, campo: args.campo, valor: args.valor, filaAntes: JSON.stringify(antes), textoPrevio,
+  });
+  return { tipo: 'pago_pendiente', mensaje: textoPrevio };
+}
+
+async function procesarRespuestaEdicionFila(env, negocio, numeroCliente, texto, datos) {
+  const c = clasificarRespuestaConfirmacion(texto);
+  if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, 'Listo, no cambié nada.');
+  if (c !== 'confirmar') {
+    return await responderPago(env, negocio, numeroCliente, `Primero dime si guardo este cambio: responde "sí" o "no".\n\n${datos.textoPrevio}`);
+  }
+  await env.oficina_ia_db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
+  const cuadro = (await obtenerCuadros(env, negocio.id)).find(x => x.id === datos.cuadroId);
+  if (!cuadro) return await responderPago(env, negocio, numeroCliente, `Ya no encuentro el cuadro "${datos.nombreCuadro}". No cambié nada.`);
+  const estructura = JSON.parse(cuadro.estructura || '{}');
+  const columnas = estructura.columnas || [];
+  const reglas = estructura.reglas_calculo || {};
+  const filas = JSON.parse(cuadro.filas || '[]');
+  const busqueda = buscarFila(datos.nombreFila, filas);
+  if (busqueda.tipo === 'no_encontrado' || busqueda.tipo === 'ambiguo') {
+    return await responderPago(env, negocio, numeroCliente, `Ya no encuentro a "${datos.nombreFila}" en "${datos.nombreCuadro}". No cambié nada.`);
+  }
+  // Si ese registro cambió entre la vista previa y el "sí", no se guarda a ciegas.
+  if (JSON.stringify(busqueda.fila) !== datos.filaAntes) {
+    return await responderPago(env, negocio, numeroCliente, `El registro de ${datos.nombreFila} cambió mientras tanto. No guardé nada; vuelve a pedirme el cambio.`);
+  }
+  const r = await actualizarFila(env, cuadro, columnas, filas, reglas, busqueda, { campo: datos.campo, valor: datos.valor });
+  return await responderPago(env, negocio, numeroCliente, `${r.mensaje}\nPara ver el cuadro con el cambio escribe: muéstrame el cuadro ${datos.nombreCuadro}`, { edicion_guardada: true });
 }
 
 async function actualizarFila(env, cuadro, columnas, filas, reglas, busqueda, args) {
@@ -3629,9 +3688,9 @@ export async function resolverAtajoArchivo(env, negocio, texto) {
 
 // ── RESPUESTA A LA IMPORTACIÓN PENDIENTE (sí / no / corrección) ──
 // Qué decirle al dueño cuando la lectura de la foto falla: no es lo mismo "mucho trabajo, espera un minuto" (límite por minuto)
-// que "esta foto es demasiado grande para el plan" (reintentar igual no sirve: hay que mandarla en partes o usar el plan de pago).
+// que el límite de salida del plan gratuito de Groq (varía con la hora: la misma foto pasó y falló; no depende del tamaño de la foto).
 function textoErrorVisionFoto(e) {
-  if (e?.esDemasiadoGrande) return 'Esta foto trae mucha información para leerla de una vez con mi plan actual de lectura 🙏 Recórtala dejando solo la tabla (sin bordes ni espacios vacíos) y mándala de nuevo.';
+  if (e?.esDemasiadoGrande) return 'Mi lector de fotos está al límite en este momento 🙏 Vuelve a mandarla en unos minutos.';
   if (e?.esLimiteDeUso) return 'Estoy con mucho trabajo en este momento y no pude procesar tu foto. Vuelve a mandarla en un minuto.';
   return 'No pude leer bien esa foto. Intenta con buena luz y sin recortar los bordes de la tabla.';
 }
@@ -3681,6 +3740,11 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
   }
   if (datos.tipoPendiente === 'anular_abono') {
     const respuesta = await procesarRespuestaAnularAbono(env, negocio, numeroCliente, texto, datos);
+    await marcarFlujoPagoCerrado(env, negocio.id);
+    return respuesta;
+  }
+  if (datos.tipoPendiente === 'editar_fila') {
+    const respuesta = await procesarRespuestaEdicionFila(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }
