@@ -1999,9 +1999,13 @@ async function actualizarFila(env, cuadro, columnas, filas, reglas, busqueda, ar
   const historialId = await guardarCuadro(env, cuadro.id, filas, filasAntes);
 
   const prefijo = busqueda.tipo === 'alto' ? `${busqueda.aviso} ` : '';
+  // Cuando lo que cambia es el NOMBRE, decir de cuál a cuál (antes salía "Actualicé nombre de <el nombre nuevo>", confuso).
+  const textoCambio = campoNormalizado === 'nombre' && busqueda.fila?.nombre !== undefined
+    ? `Listo ✅ Cambié el nombre de "${busqueda.fila.nombre}" a "${filaActualizada.nombre}".`
+    : `Actualicé ${campoNormalizado} de ${filaActualizada.nombre}.`;
   return {
     tipo: 'ok',
-    mensaje: `${prefijo}Actualicé ${campoNormalizado} de ${filaActualizada.nombre}.`,
+    mensaje: `${prefijo}${textoCambio}`,
     fila: filaActualizada,
     historialId,
     generarImagen: true,
@@ -2611,10 +2615,7 @@ async function procesarFotoCuadro(env, negocio, numeroCliente, mensajeEntrante) 
     extraido = await analizarFotoCuadro(bytes, mimeType, env.GROQ_API_KEY_PRO || env.GROQ_API_KEY);
   } catch (e) {
     console.log('[WEBHOOK] Error leyendo la foto con Groq:', e.message);
-    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
-      e.esLimiteDeUso
-        ? 'Estoy con mucho trabajo en este momento y no pude procesar tu foto. Vuelve a mandarla en un minuto.'
-        : 'No pude leer bien esa foto. Intenta con buena luz y sin recortar los bordes de la tabla.');
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, textoErrorVisionFoto(e));
     return Response.json({ ok: true, info: 'error de visión' });
   }
 
@@ -3627,6 +3628,14 @@ export async function resolverAtajoArchivo(env, negocio, texto) {
 }
 
 // ── RESPUESTA A LA IMPORTACIÓN PENDIENTE (sí / no / corrección) ──
+// Qué decirle al dueño cuando la lectura de la foto falla: no es lo mismo "mucho trabajo, espera un minuto" (límite por minuto)
+// que "esta foto es demasiado grande para el plan" (reintentar igual no sirve: hay que mandarla en partes o usar el plan de pago).
+function textoErrorVisionFoto(e) {
+  if (e?.esDemasiadoGrande) return 'Esta foto trae mucha información para leerla de una vez con mi plan actual de lectura 🙏 Recórtala dejando solo la tabla (sin bordes ni espacios vacíos) y mándala de nuevo.';
+  if (e?.esLimiteDeUso) return 'Estoy con mucho trabajo en este momento y no pude procesar tu foto. Vuelve a mandarla en un minuto.';
+  return 'No pude leer bien esa foto. Intenta con buena luz y sin recortar los bordes de la tabla.';
+}
+
 function textoMencionaHerramientasInternas(texto) {
   const t = String(texto ?? '');
   return (herramientas || []).some(h => {

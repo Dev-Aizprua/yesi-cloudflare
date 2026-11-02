@@ -308,6 +308,9 @@ export async function analizarFotoCuadro(imageBytes, mimeType, groqApiKey) {
   });
 
   const data = await respuesta.json();
+  // Diagnóstico: cuánto pesa la foto y cuántos tokens usó Groq (de entrada = la imagen, y de salida = el JSON que devolvió).
+  // Sirve para saber si lo que pesa es la foto o la cantidad de filas.
+  console.log('[VISION] foto:', imageBytes.length, 'bytes | estado:', respuesta.status, '| uso Groq:', JSON.stringify(data.usage ?? null));
   if (data.error) {
     const msg = data.error.message || '';
     const err = new Error(`Groq (visión): ${msg}`);
@@ -315,6 +318,8 @@ export async function analizarFotoCuadro(imageBytes, mimeType, groqApiKey) {
     // ilegible: quien llama debe avisar distinto ("reintenta en un rato").
     err.esLimiteDeUso = respuesta.status === 429 || respuesta.status === 413
       || /rate limit|too large|tokens per (minute|day)|OTPM|TPM|quota/i.test(msg);
+    // "Request too large … OTPM": ESTA foto pide más salida de la que permite el plan; esperar un minuto no lo arregla.
+    err.esDemasiadoGrande = respuesta.status === 413 || /too large|OTPM|output tokens per minute/i.test(msg);
     throw err;
   }
 
