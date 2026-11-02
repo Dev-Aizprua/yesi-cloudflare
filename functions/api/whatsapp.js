@@ -230,10 +230,20 @@ export async function onRequestPost(context) {
     // Si es así, este mensaje de texto NO es para las 7 herramientas
     // normales — es la respuesta a "¿está bien así?".
     const importacionPendiente = await env.oficina_ia_db.prepare(
-      'SELECT datos FROM importaciones_pendientes WHERE negocio_id = ?'
+      'SELECT datos, creado_en FROM importaciones_pendientes WHERE negocio_id = ?'
     ).bind(negocio.id).first();
     if (importacionPendiente) {
-      return await procesarRespuestaImportacion(env, negocio, numeroCliente, textoUsuario, importacionPendiente);
+      if (pendienteVencido(importacionPendiente.creado_en)) {
+        // Una vista previa abandonada no debe secuestrar el bot horas o días después ni guardarse con un "sí" tardío:
+        // se descarta, se avisa claro, y el mensaje de ahora se atiende normalmente.
+        await env.oficina_ia_db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
+        await marcarFlujoPagoCerrado(env, negocio.id);
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, textoPendienteVencido(importacionPendiente));
+        if (clasificarRespuestaConfirmacion(textoUsuario) !== 'otra') return Response.json({ ok: true, pendiente_vencido: true });
+      } else if (!esComandoSinRiesgoConPendiente(textoUsuario)) {
+        return await procesarRespuestaImportacion(env, negocio, numeroCliente, textoUsuario, importacionPendiente);
+      }
+      // "ayuda" y "mi oficina" no tocan nada: se responden aunque haya una vista previa abierta (que sigue esperando).
     }
 
     // ── 3.6. ¿Hay una carta a medio dictar, esperando datos que faltan? ──
@@ -3687,6 +3697,47 @@ export async function resolverAtajoArchivo(env, negocio, texto) {
 }
 
 // ── RESPUESTA A LA IMPORTACIÓN PENDIENTE (sí / no / corrección) ──
+// ── VIGENCIA DE LAS VISTAS PREVIAS PENDIENTES ────────────────────────────────────
+// Una vista previa (venta, gasto, cobro, anulación, cuadro de una foto...) espera el "sí/no" solo un rato. Pasado ese tiempo se descarta
+// sola: así no secuestra el bot (todo mensaje recibía "no entendí esa corrección") ni se guarda con un "sí" de horas o días después.
+const MINUTOS_VIGENCIA_PENDIENTE = 60;
+function minutosDesde(creadoEn) {
+  const s = String(creadoEn ?? '').trim();
+  if (!s) return null;
+  const t = Date.parse(s.includes('T') ? s : `${s.replace(' ', 'T')}Z`); // datetime('now') de D1 viene en UTC, sin zona
+  return Number.isFinite(t) ? (Date.now() - t) / 60000 : null;
+}
+// Sin fecha legible NO se vence (más seguro que borrar a ciegas).
+function pendienteVencido(creadoEn) { const m = minutosDesde(creadoEn); return m !== null && m > MINUTOS_VIGENCIA_PENDIENTE; }
+function textoHace(min) {
+  if (min === null || min === undefined) return '';
+  if (min < 60) { const m = Math.max(1, Math.round(min)); return `hace ${m} minuto${m === 1 ? '' : 's'}`; }
+  if (min < 1440) { const h = Math.round(min / 60); return `hace ${h} hora${h === 1 ? '' : 's'}`; }
+  const d = Math.round(min / 1440); return `hace ${d} día${d === 1 ? '' : 's'}`;
+}
+function descripcionPendiente(datos) {
+  switch (datos?.tipoPendiente) {
+    case 'venta': return 'una venta por confirmar';
+    case 'gasto': return 'un gasto por confirmar';
+    case 'cobro_venta': return 'un cobro por confirmar';
+    case 'pago': case 'abono': return 'un pago por confirmar';
+    case 'anular_registro': case 'anular_cobro': case 'anular_abono': return 'una anulación por confirmar';
+    case 'editar_fila': return `un cambio en el cuadro "${datos.nombreCuadro}"`;
+    case 'cargar_filas': return 'una carga de filas por confirmar';
+    default: return datos?.nombreCuadro ? `el cuadro "${datos.nombreCuadro}" de tu foto` : 'una vista previa';
+  }
+}
+function textoPendienteVencido(filaPendiente) {
+  let datos = null;
+  try { datos = JSON.parse(filaPendiente?.datos); } catch (e) { /* ilegible: se describe de forma genérica */ }
+  const limite = MINUTOS_VIGENCIA_PENDIENTE === 60 ? 'una hora' : `${MINUTOS_VIGENCIA_PENDIENTE} minutos`;
+  return `Tenías pendiente ${descripcionPendiente(datos)} (${textoHace(minutosDesde(filaPendiente?.creado_en))}) y venció porque pasó más de ${limite} sin respuesta. No guardé nada. Si lo quieres, vuelve a pedírmelo.`;
+}
+// Estos dos comandos no guardan ni cambian nada: se atienden aunque haya una vista previa abierta (que sigue esperando).
+function esComandoSinRiesgoConPendiente(texto) {
+  return !!detectarAyuda(texto) || !!detectarPedidoOficina(texto);
+}
+
 // Qué decirle al dueño cuando la lectura de la foto falla: no es lo mismo "mucho trabajo, espera un minuto" (límite por minuto)
 // que el límite de salida del plan gratuito de Groq (varía con la hora: la misma foto pasó y falló; no depende del tamaño de la foto).
 function textoErrorVisionFoto(e) {
@@ -3837,7 +3888,7 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
 
   if (!correccion || !correccion.nombre || !correccion.campo) {
     await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
-      'No entendí bien esa corrección. ¿Puedes decirlo así: "el [columna] de [nombre] es [valor]"?');
+      `Tienes pendiente ${descripcionPendiente(datos)} ${textoHace(minutosDesde(importacionPendiente.creado_en))}. Responde "sí" para crearlo, "no" para descartarlo, o dime qué corregir, por ejemplo: "el monto de Carlos es 460". Si quieres hacer otra cosa, primero responde "no".`);
     return Response.json({ ok: true, correccion_no_entendida: true });
   }
 
@@ -5410,8 +5461,12 @@ function negocioParaWeb(negocio) {
 }
 
 async function leerPendienteWeb(env, negocioId) {
-  const fila = await env.oficina_ia_db.prepare('SELECT datos FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocioId).first();
+  const fila = await env.oficina_ia_db.prepare('SELECT datos, creado_en FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocioId).first();
   if (!fila) return null;
+  if (pendienteVencido(fila.creado_en)) {
+    await env.oficina_ia_db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocioId).run();
+    return null;
+  }
   let datos = null;
   try { datos = JSON.parse(fila.datos); } catch (e) { /* pendiente ilegible: cuenta como ajeno */ }
   return { datos, soportado: !!datos && TIPOS_PENDIENTE_WEB.has(datos.tipoPendiente) };
