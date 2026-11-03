@@ -39,6 +39,7 @@ import { validarReporteSecciones } from '../lib/reporteSecciones.js';
 import { generarImagenReporteSecciones } from '../lib/imagenReporteSecciones.js';
 import { generarExcelReporteSecciones } from '../lib/excelReporteSecciones.js';
 import { validarPie, validarEncabezado, avisosEncabezado, avisosRevisionEncabezado, recalcularPie } from '../lib/tablaExtendida.js';
+import { reconocerFactura, buscarGastoDeFactura, armarDatosGasto, textoPreguntaDestino, textoPedirFecha, textoVistaPreviaGastoFactura, interpretarDestino, interpretarFechaRespuesta } from '../lib/facturaGasto.js';
 import { construirDatosCotizacion, siguienteNumeroDocumento, nombreDocumento, elegirCotizacion, buscarDocumentoGuardado, lineasDesdeCuadro, aplicarCorreccionDocumento, describirParaCorreccion, clasificarRespuestaPendiente, filaIndiceDocumento } from '../lib/cotizacion.js';
 import { redondear2, parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDocumento, mismoCliente, calcularSaldos, repartirPago, ordenarMasAntiguoPrimero, textoVistaPrevia, textoElegirDocumento, clasificarRespuestaConfirmacion, clasificarRespuestaElegir, formatoMonto, fechaLegible, nombreLegible,
   filtrarPagos, textoElegirPago, clasificarRespuestaElegirIndice, planAnularPago, textoPrevioAnularPago, planAnularDocumento, textoPrevioAnularDocumento, planAplicarSaldo, textoPrevioAplicarSaldo,
@@ -2733,6 +2734,28 @@ async function procesarFotoCuadro(env, negocio, numeroCliente, mensajeEntrante) 
     }
   }
 
+  // ¿Parece una FACTURA DE COMPRA (proveedor + N° de factura + total)? Entonces se pregunta si va como Gasto o como Cuadro.
+  // Las tablas (préstamos, etc.) no traen encabezado ni pie: siguen directo a cuadro, como siempre. Nada de esto bloquea:
+  // si algo falla (o falta la migración de gastos), la foto sigue como cuadro.
+  try {
+    const factura = reconocerFactura(datos.encabezado, datos.pie);
+    if (factura) {
+      const repetida = await buscarGastoDeFactura(env.oficina_ia_db, negocio.id, factura);
+      if (repetida.error) {
+        console.log('[WEBHOOK] Factura: no pude revisar duplicados (¿falta la migración de gastos?):', repetida.mensaje);
+      } else if (repetida.fila) {
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
+          `ℹ️ Esta factura (N° ${factura.numero}) ya está registrada como gasto del ${fechaLegible(repetida.fila.fecha)} por ${formatoMonto(repetida.fila.monto)}, así que no la repito como gasto. Te muestro el cuadro con sus líneas, por si lo quieres.`);
+      } else {
+        await guardarPagoPendiente(env, negocio.id, { ...datos, fase: 'elegir_destino', factura });
+        await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, textoPreguntaDestino(factura));
+        return Response.json({ ok: true, negocio: negocio.slug, importacion_pendiente: true, esperando_destino: true });
+      }
+    }
+  } catch (e) {
+    console.log('[WEBHOOK] Error revisando si la foto es una factura de compra:', e?.message);
+  }
+
   await env.oficina_ia_db.prepare(
     `INSERT INTO importaciones_pendientes (negocio_id, datos) VALUES (?, ?)
      ON CONFLICT(negocio_id) DO UPDATE SET datos = excluded.datos, creado_en = datetime('now')`
@@ -3643,14 +3666,21 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
         if (inv.lineas.length) mensaje += '\n' + inv.lineas.join('\n');
       }
     } else {
-      await db.batch(datos.items.map(i => db.prepare(
-        'INSERT INTO gastos (negocio_id, fecha, descripcion, categoria, monto, proveedor) VALUES (?, ?, ?, ?, ?, ?)'
-      ).bind(negocio.id, datos.fecha, i.descripcion, i.categoria || null, i.monto, i.proveedor || null)));
+      await db.batch(datos.items.map(i => i.numero_factura
+        ? db.prepare('INSERT INTO gastos (negocio_id, fecha, descripcion, categoria, monto, proveedor, numero_factura, ruc_proveedor, observaciones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(negocio.id, datos.fecha, i.descripcion, i.categoria || null, i.monto, i.proveedor || null, i.numero_factura, i.ruc_proveedor || null, i.observaciones || null)
+        : db.prepare('INSERT INTO gastos (negocio_id, fecha, descripcion, categoria, monto, proveedor) VALUES (?, ?, ?, ?, ?, ?)')
+          .bind(negocio.id, datos.fecha, i.descripcion, i.categoria || null, i.monto, i.proveedor || null)));
       mensaje = `Listo ✅ Registré ${datos.items.length > 1 ? `los ${datos.items.length} gastos` : 'el gasto'} por ${formatoMonto(datos.total)}.`;
       mensaje += await textoTotalDelDia(db, negocio.id, 'gastos', 'monto', datos.fecha, 'Gastos');
     }
   } catch (e) {
     console.log('[WEBHOOK] Error guardando venta/gasto/anulación:', e?.message);
+    if (datos.items?.[0]?.numero_factura && /UNIQUE|constraint/i.test(String(e?.message))) {
+      // El índice único de la base frenó una factura repetida (red de seguridad detrás de la revisión previa).
+      await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, 'Esa factura ya estaba registrada como gasto, así que no la repetí.');
+      return Response.json({ ok: true, factura_duplicada: true });
+    }
     try { await guardarPagoPendiente(env, negocio.id, datos); } catch (e2) { console.log('[WEBHOOK] No pude restaurar el pendiente:', e2?.message); }
     await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
       'No pude guardarlo. Responde "sí" para intentarlo de nuevo, o "no" para descartarlo.');
@@ -3697,6 +3727,54 @@ export async function resolverAtajoArchivo(env, negocio, texto) {
 }
 
 // ── RESPUESTA A LA IMPORTACIÓN PENDIENTE (sí / no / corrección) ──
+// ── FOTO DE UNA FACTURA DE COMPRA: ¿GASTO O CUADRO? ─────────────────────────────
+// La foto quedó pendiente con fase 'elegir_destino' (o 'fecha_gasto' si la fecha se leyó dudosa). Cuadro = la vista previa de siempre.
+// Gasto = UN gasto con proveedor, fecha, total y N° de factura, con su vista previa y "sí"; antes se revisa que esa factura no esté ya registrada.
+async function prepararGastoDeFactura(env, negocio, numeroCliente, datos, fechaIso) {
+  const f = datos.factura;
+  const repetida = await buscarGastoDeFactura(env.oficina_ia_db, negocio.id, f);
+  if (repetida.fila) {
+    return await descartarPago(env, negocio, numeroCliente,
+      `Esa factura (N° ${f.numero}) ya está registrada como gasto del ${fechaLegible(repetida.fila.fecha)} por ${formatoMonto(repetida.fila.monto)}. No la repetí. Si es otra compra distinta, dímela con tus palabras, por ejemplo: "gasté 17.84 en el súper".`);
+  }
+  const gasto = armarDatosGasto(f, fechaIso);
+  await guardarPagoPendiente(env, negocio.id, gasto);
+  return await responderPago(env, negocio, numeroCliente, textoVistaPreviaGastoFactura(gasto, f, fechaIsoPanama()));
+}
+
+async function procesarRespuestaDestinoFoto(env, negocio, numeroCliente, texto, datos) {
+  if (clasificarRespuestaConfirmacion(texto) === 'cancelar') {
+    return await descartarPago(env, negocio, numeroCliente, 'Listo, descarté la foto. Mándala de nuevo cuando quieras.');
+  }
+  const f = datos.factura;
+  const guardarDatos = d => env.oficina_ia_db.prepare("UPDATE importaciones_pendientes SET datos = ?, creado_en = datetime('now') WHERE negocio_id = ?").bind(JSON.stringify(d), negocio.id).run();
+
+  if (datos.fase === 'fecha_gasto') {
+    const iso = interpretarFechaRespuesta(texto);
+    if (!iso) return await responderPago(env, negocio, numeroCliente, `No entendí esa fecha. ${textoPedirFecha(f)}`);
+    return await prepararGastoDeFactura(env, negocio, numeroCliente, datos, iso);
+  }
+
+  const destino = interpretarDestino(texto);
+  if (destino === 'cuadro') {
+    const { fase, factura, ...cuadro } = datos;
+    await guardarDatos(cuadro);
+    await enviarVistaPreviaImportacion(env, negocio, numeroCliente, cuadro);
+    return Response.json({ ok: true, negocio: negocio.slug, importacion_pendiente: true, destino: 'cuadro' });
+  }
+  if (destino === 'gasto') {
+    if (f.fechaEstado !== 'ok') {
+      await guardarDatos({ ...datos, fase: 'fecha_gasto' });
+      return await responderPago(env, negocio, numeroCliente, textoPedirFecha(f));
+    }
+    return await prepararGastoDeFactura(env, negocio, numeroCliente, datos, f.fechaIso);
+  }
+  if (destino === 'costo') {
+    return await responderPago(env, negocio, numeroCliente, 'Registrar un costo desde una foto todavía no lo hago. Elige 1 (Gasto) o 2 (Cuadro).');
+  }
+  return await responderPago(env, negocio, numeroCliente, textoPreguntaDestino(f));
+}
+
 // ── VIGENCIA DE LAS VISTAS PREVIAS PENDIENTES ────────────────────────────────────
 // Una vista previa (venta, gasto, cobro, anulación, cuadro de una foto...) espera el "sí/no" solo un rato. Pasado ese tiempo se descarta
 // sola: así no secuestra el bot (todo mensaje recibía "no entendí esa corrección") ni se guarda con un "sí" de horas o días después.
@@ -3808,6 +3886,9 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
     const respuesta = await procesarRespuestaRegistro(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
+  }
+  if (datos.fase === 'elegir_destino' || datos.fase === 'fecha_gasto') {
+    return await procesarRespuestaDestinoFoto(env, negocio, numeroCliente, texto, datos);
   }
   // Cambiar el NOMBRE del cuadro antes de crearlo ("llámalo Compras del súper"): vuelve a mostrar la vista previa con el nombre nuevo.
   if (datos.tipo !== 'secciones' && datos.origen !== 'texto') {
