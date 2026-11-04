@@ -3832,7 +3832,7 @@ function esComandoSinRiesgoConPendiente(texto) {
 // que el límite de salida del plan gratuito de Groq (varía con la hora: la misma foto pasó y falló; no depende del tamaño de la foto).
 function textoErrorVisionFoto(e) {
   if (e?.esDemasiadoGrande) return 'Mi lector de fotos está al límite en este momento 🙏 Vuelve a mandarla en unos minutos.';
-  if (e?.esLimiteDeUso) return 'Estoy con mucho trabajo en este momento y no pude procesar tu foto. Vuelve a mandarla en un minuto.';
+  if (e?.esLimiteDeUso || e?.esSaturado) return 'Estoy con mucho trabajo en este momento y no pude procesar tu foto. Vuelve a mandarla en un minuto.';
   return 'No pude leer bien esa foto. Intenta con buena luz y sin recortar los bordes de la tabla.';
 }
 

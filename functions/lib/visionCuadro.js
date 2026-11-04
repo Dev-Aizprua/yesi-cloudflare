@@ -319,6 +319,8 @@ export async function analizarFotoCuadro(imageBytes, mimeType, groqApiKey) {
     err.esLimiteDeUso = respuesta.status === 429 || respuesta.status === 413
       || /rate limit|too large|tokens per (minute|day)|OTPM|TPM|quota/i.test(msg);
     // "Request too large … OTPM": ESTA foto pide más salida de la que permite el plan; esperar un minuto no lo arregla.
+    // Servidor de Groq ocupado (503 "over capacity", 502, 529): tampoco es culpa de la foto; basta reintentar en un momento.
+    err.esSaturado = [500, 502, 503, 504, 529].includes(respuesta.status) || /over capacity|overloaded|temporarily unavailable|service unavailable/i.test(msg);
     err.esDemasiadoGrande = respuesta.status === 413 || /too large|OTPM|output tokens per minute/i.test(msg);
     throw err;
   }
