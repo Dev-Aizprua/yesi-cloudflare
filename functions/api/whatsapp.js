@@ -39,7 +39,7 @@ import { validarReporteSecciones } from '../lib/reporteSecciones.js';
 import { generarImagenReporteSecciones } from '../lib/imagenReporteSecciones.js';
 import { generarExcelReporteSecciones } from '../lib/excelReporteSecciones.js';
 import { validarPie, validarEncabezado, avisosEncabezado, avisosRevisionEncabezado, recalcularPie } from '../lib/tablaExtendida.js';
-import { reconocerFactura, buscarGastoDeFactura, armarDatosGasto, textoPreguntaDestino, textoPedirFecha, textoVistaPreviaGastoFactura, interpretarDestino, interpretarFechaRespuesta } from '../lib/facturaGasto.js';
+import { reconocerFactura, buscarGastoDeFactura, armarDatosGasto, textoPreguntaDestino, textoPedirFecha, textoVistaPreviaGastoFactura, interpretarDestino, interpretarFechaRespuesta, corregirFechaEnVistaPrevia } from '../lib/facturaGasto.js';
 import { construirDatosCotizacion, siguienteNumeroDocumento, nombreDocumento, elegirCotizacion, buscarDocumentoGuardado, lineasDesdeCuadro, aplicarCorreccionDocumento, describirParaCorreccion, clasificarRespuestaPendiente, filaIndiceDocumento } from '../lib/cotizacion.js';
 import { redondear2, parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDocumento, mismoCliente, calcularSaldos, repartirPago, ordenarMasAntiguoPrimero, textoVistaPrevia, textoElegirDocumento, clasificarRespuestaConfirmacion, clasificarRespuestaElegir, formatoMonto, fechaLegible, nombreLegible,
   filtrarPagos, textoElegirPago, clasificarRespuestaElegirIndice, planAnularPago, textoPrevioAnularPago, planAnularDocumento, textoPrevioAnularDocumento, planAplicarSaldo, textoPrevioAplicarSaldo,
@@ -3576,6 +3576,18 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
   const anula = quita || ['anular_registro', 'anular_cobro', 'anular_costo', 'anular_inventario'].includes(datos.tipoPendiente);
   const c = clasificarRespuestaConfirmacion(texto);
   if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, quita ? 'Listo, no quité nada. El producto sigue en tu inventario.' : anula ? 'Listo, no anulé nada. Sigue registrado.' : 'Listo, no guardé nada.');
+  // Vista previa de un gasto leído de una factura: se puede corregir la fecha sin cancelar ("la fecha es 31/10/2026", "hoy").
+  if (c !== 'confirmar' && datos.tipoPendiente === 'gasto' && datos.origen === 'foto_factura' && datos.factura) {
+    const corr = corregirFechaEnVistaPrevia(texto);
+    if (corr.intento) {
+      if (!corr.iso) {
+        return await responderPago(env, negocio, numeroCliente, 'No entendí esa fecha (o es una fecha futura). Escríbela así: 31/10/2026, o responde "hoy" o "ayer".');
+      }
+      const corregido = { ...datos, fecha: corr.iso };
+      await guardarPagoPendiente(env, negocio.id, corregido);
+      return await responderPago(env, negocio, numeroCliente, 'Fecha corregida ✅\n\n' + textoVistaPreviaGastoFactura(corregido, corregido.factura, fechaIsoPanama()));
+    }
+  }
   if (c !== 'confirmar') {
     return await responderPago(env, negocio, numeroCliente, `Responde "sí" para ${quita ? 'quitarlo' : anula ? 'anular' : 'guardar'} o "no" para dejarlo como está.${NOTA_MENSAJE_NO_GUARDADO}`);
   }

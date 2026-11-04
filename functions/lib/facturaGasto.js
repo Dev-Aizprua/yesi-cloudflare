@@ -114,6 +114,7 @@ export function armarDatosGasto(f, fechaIso) {
     fecha: fechaIso,
     total: f.total,
     origen: 'foto_factura',
+    factura: { proveedor: f.proveedor, numero: f.numero, rucTexto: f.rucTexto, total: f.total },
     items: [{
       descripcion: `Compra en ${f.proveedor}`.slice(0, 80), monto: f.total, categoria: null, proveedor: f.proveedor,
       numero_factura: f.numero, ruc_proveedor: f.ruc, observaciones,
@@ -153,6 +154,7 @@ export function textoVistaPreviaGastoFactura(gasto, f, hoyIso) {
     '',
     '⚠️ Revisa contra tu factura el N°, el RUC y la fecha: son los datos que más se leen mal en una foto.',
     '',
+    '¿La fecha está bien? Si no, dime la correcta (ej. 31/10/2026, "hoy" o "ayer").',
     '¿Lo guardo? Responde "sí" o "no".',
   ].join('\n');
 }
@@ -180,4 +182,19 @@ export function interpretarFechaRespuesta(texto, ahora = new Date()) {
   }
   if (!f || !f.existe || f.ms > hoy) return null;
   return f.iso;
+}
+/**
+ * Con la vista previa del gasto abierta, el dueño puede corregir la fecha: "la fecha es 31/10/2026", "cámbiala a ayer", "hoy", "31/10".
+ * @returns {{ intento: boolean, iso: string|null }} intento = el mensaje parece hablar de la fecha; iso = fecha válida (no futura) o null.
+ */
+export function corregirFechaEnVistaPrevia(texto, ahora = new Date()) {
+  const t = sinTildes(texto).replace(/[“”"']/g, ' ').replace(/\s+/g, ' ').trim();
+  const hablaDeFecha = /\bfecha\b/.test(t)
+    || /\b\d{1,2}[\/\-]\d{1,2}\b/.test(t) || /\b\d{1,2}\.\d{1,2}\.\d{2,4}\b/.test(t) // 31/10, 31-10-2026, 31.10.2026 (no 17.84, que es un monto)
+    || /^(?:(?:cambiala|cambia|corrigela|corrige|ponla|pon|es|fue|es de|fue de|de|para)\s+)?(?:a\s+)?(?:la fecha\s+)?(?:hoy|ayer)$/.test(t);
+  if (!hablaDeFecha) return { intento: false, iso: null };
+  const resto = t
+    .replace(/\b(la|el|de|del|es|fue|fecha|cambia|cambiala|cambiale|corrige|corrigela|pon|ponle|ponla|a|para|correcta|real|es la)\b/g, ' ')
+    .replace(/[:,.!?]+$/g, '').replace(/\s+/g, ' ').trim();
+  return { intento: true, iso: interpretarFechaRespuesta(resto, ahora) };
 }
