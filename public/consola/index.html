@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Consola Oficina IA</title>
+<style>
+:root{--azul:#1a73e8;--azul-osc:#0b57c9;--fondo:#f1f5fb;--tarjeta:#fff;--texto:#1f2a3d;--suave:#6b7a90;--borde:#dfe6f1;--rojo:#c62828;--verde:#1b873f}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--fondo);color:var(--texto);min-height:100vh}
+.centro{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.caja{background:var(--tarjeta);border:1px solid var(--borde);border-radius:18px;padding:28px;width:100%;max-width:380px;box-shadow:0 8px 30px rgba(26,115,232,.08)}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--suave);font-size:14px;margin:0 0 20px}
+label{display:block;font-size:13px;font-weight:600;margin:12px 0 6px}
+input{width:100%;padding:11px 12px;border:1px solid var(--borde);border-radius:10px;font-size:15px}
+input:focus{outline:2px solid var(--azul);border-color:transparent}
+button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:10px;background:var(--azul);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+button:hover{background:var(--azul-osc)}button:disabled{opacity:.6;cursor:default}
+.error{color:var(--rojo);font-size:13px;margin-top:12px;min-height:18px}
+.hola{display:none}
+.hola.ver{display:block}
+.barra{background:var(--tarjeta);border-bottom:1px solid var(--borde);padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+.barra strong{color:var(--azul)}
+.barra button{width:auto;margin:0;padding:8px 14px;background:#fff;color:var(--azul);border:1px solid var(--borde)}
+.cuerpo{max-width:900px;margin:24px auto;padding:0 16px}
+.bienvenida{background:linear-gradient(135deg,#1a73e8,#4a97f5);color:#fff;border-radius:18px;padding:24px}
+.bienvenida h2{margin:0 0 6px;font-size:22px}
+.bienvenida p{margin:0;opacity:.92;font-size:14px}
+.nota{background:var(--tarjeta);border:1px solid var(--borde);border-radius:14px;padding:16px;margin-top:16px;font-size:14px;color:var(--suave)}
+</style>
+</head>
+<body>
+<div id="vistaLogin" class="centro">
+  <div class="caja">
+    <h1>Consola Oficina IA</h1>
+    <p class="sub">Acceso del administrador</p>
+    <label for="correo">Correo</label>
+    <input id="correo" type="email" autocomplete="username" maxlength="120">
+    <label for="clave">Contraseña</label>
+    <input id="clave" type="password" autocomplete="current-password" maxlength="200">
+    <button id="entrar" type="button">Entrar</button>
+    <div id="error" class="error" role="alert"></div>
+  </div>
+</div>
+
+<div id="vistaPanel" class="hola">
+  <div class="barra"><span><strong>Oficina IA</strong> · Consola</span><button id="salir" type="button">Salir</button></div>
+  <div class="cuerpo">
+    <div class="bienvenida"><h2 id="saludo"></h2><p>Acceso verificado. El panel completo se arma por etapas.</p></div>
+    <div class="nota">Etapa 1: acceso seguro y base de suscripciones listos. Siguiente: Inicio y Suscriptores.</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function mostrarPanel(nombre){ $('vistaLogin').style.display='none'; $('vistaPanel').classList.add('ver'); $('saludo').textContent = 'Hola, ' + nombre; }
+function mostrarLogin(){ $('vistaPanel').classList.remove('ver'); $('vistaLogin').style.display='flex'; $('clave').value=''; }
+async function llamar(ruta, cuerpo){
+  const r = await fetch(ruta, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cuerpo||{}), credentials:'same-origin' });
+  let j = {}; try { j = await r.json(); } catch {}
+  return { status:r.status, j };
+}
+async function entrar(){
+  $('error').textContent=''; $('entrar').disabled = true;
+  try {
+    const { status, j } = await llamar('/api/consola/login', { correo: $('correo').value.trim(), clave: $('clave').value });
+    if (status === 200 && j.ok) mostrarPanel(j.nombre || '');
+    else $('error').textContent = j.error || 'No se pudo entrar. Intenta de nuevo.';
+  } catch { $('error').textContent = 'Sin conexión. Intenta de nuevo.'; }
+  $('entrar').disabled = false;
+}
+$('entrar').addEventListener('click', entrar);
+['correo','clave'].forEach(i => $(i).addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); }));
+$('salir').addEventListener('click', async () => { try { await llamar('/api/consola/salir'); } catch {} mostrarLogin(); });
+(async () => {
+  try { const r = await fetch('/api/consola/yo', { credentials:'same-origin' }); if (r.ok) { const j = await r.json(); mostrarPanel(j.nombre || ''); } } catch {}
+})();
+</script>
+</body>
+</html>
