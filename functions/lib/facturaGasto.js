@@ -108,13 +108,13 @@ export async function buscarGastoDeFactura(db, negocioId, f) {
 
 /** El gasto único, en la misma forma que usa el bot para guardar gastos (tipoPendiente 'gasto'). */
 export function armarDatosGasto(f, fechaIso) {
-  const observaciones = `Factura N° ${f.numero}${f.rucTexto ? ` · RUC ${f.rucTexto}` : ''} (leída de una foto)`.slice(0, 200);
+  const observaciones = observacionesFactura(f.numero, f.rucTexto);
   return {
     tipoPendiente: 'gasto',
     fecha: fechaIso,
     total: f.total,
     origen: 'foto_factura',
-    factura: { proveedor: f.proveedor, numero: f.numero, rucTexto: f.rucTexto, total: f.total },
+    factura: { proveedor: f.proveedor, numero: f.numero, rucTexto: f.rucTexto, ruc: f.ruc, total: f.total },
     items: [{
       descripcion: `Compra en ${f.proveedor}`.slice(0, 80), monto: f.total, categoria: null, proveedor: f.proveedor,
       numero_factura: f.numero, ruc_proveedor: f.ruc, observaciones,
@@ -150,11 +150,11 @@ export function textoVistaPreviaGastoFactura(gasto, f, hoyIso) {
     `Voy a registrar este gasto de tu factura (${cuando}):`,
     '',
     `${it.descripcion} — ${formatoMonto(it.monto)}`,
-    `Factura N° ${f.numero}${f.rucTexto ? ` · RUC ${f.rucTexto}` : ''}`,
+    `Factura N° ${f.numero}${f.rucTexto ? ` · RUC ${rucLegible(f.rucTexto)}` : ''}`,
     '',
     '⚠️ Revisa contra tu factura el N°, el RUC y la fecha: son los datos que más se leen mal en una foto.',
     '',
-    '¿La fecha está bien? Si no, dime la correcta (ej. 31/10/2026, "hoy" o "ayer").',
+    '¿Todo está bien? Si algo no, dime la corrección (ej. "la fecha es 31/10/2026", "el número es 1095837" o "el RUC es 8-859-2144").',
     '¿Lo guardo? Responde "sí" o "no".',
   ].join('\n');
 }
@@ -197,4 +197,49 @@ export function corregirFechaEnVistaPrevia(texto, ahora = new Date()) {
     .replace(/\b(la|el|de|del|es|fue|fecha|cambia|cambiala|cambiale|corrige|corrigela|pon|ponle|ponla|a|para|correcta|real|es la)\b/g, ' ')
     .replace(/[:,.!?]+$/g, '').replace(/\s+/g, ' ').trim();
   return { intento: true, iso: interpretarFechaRespuesta(resto, ahora) };
+}
+
+/** "8.859.2144 Dv. 08 Dv. 9" → "8.859.2144 DV 08": el RUC una sola vez, con su dígito verificador (el primero) si lo trae. */
+export function rucLegible(rucTexto) {
+  const t = String(rucTexto ?? '').trim();
+  if (!t) return '';
+  const base = t.split(/d\.?\s*v/i)[0].replace(/[\s\-,:;]+$/, '').trim();
+  const dv = t.match(/d\.?\s*v\.?\s*[:\-]?\s*(\d{1,2})/i);
+  return base ? (dv ? `${base} DV ${dv[1]}` : base) : t;
+}
+
+function observacionesFactura(numero, rucTexto) {
+  const ruc = rucLegible(rucTexto);
+  return `Factura N° ${numero}${ruc ? ` · RUC ${ruc}` : ''} (leída de una foto)`.slice(0, 200);
+}
+
+/**
+ * Con la vista previa del gasto abierta, el dueño puede corregir el N° de factura o el RUC:
+ * "el número es 1095837", "cambia el N° a 1095837", "el RUC es 8-859-2144 DV 08".
+ * @returns {{ intento: boolean, campo?: 'numero'|'ruc', valor?: string|null, ruc?: string|null }}
+ *   intento = el mensaje habla del N° o del RUC; valor = lo que escribió (null si no se entiende).
+ */
+export function corregirDatoFacturaEnVistaPrevia(texto) {
+  const original = String(texto ?? '').replace(/[“”"]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/\br\.?\s?u\.?\s?c\b/i.test(original)) {
+    const m = original.match(/r\.?\s?u\.?\s?c\.?\s*(?:es|:|=|a|ser[ií]a|correcto es|correcto)?\s*[:=]?\s*(.+)$/i);
+    const valor = (m?.[1] ?? '').trim().slice(0, 40);
+    const ruc = /\d/.test(valor) ? normalizarRuc(valor) : null;
+    return { intento: true, campo: 'ruc', valor: ruc ? valor : null, ruc };
+  }
+  const hablaDelNumero = /n[uú]mero|\bnro\b|\bn\s?[°º]/i.test(original);
+  const m = original.match(/(?:\bn[uú]mero|\bnro\.?|\bnum\.?|\bn\s?[°º]|\bno\.)(?:\s+de)?(?:\s+la)?(?:\s+(?:factura|fact\.?))?\s*(?:es|:|=|a|ser[ií]a|correcto es)?\s*[:=]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{2,39})(?![A-Za-z0-9\-\/])/i);
+  if (m && /\d/.test(m[1])) return { intento: true, campo: 'numero', valor: m[1] };
+  if (hablaDelNumero) return { intento: true, campo: 'numero', valor: null };
+  return { intento: false };
+}
+
+/** Aplica la corrección al gasto pendiente (copia nueva): cambia el dato, la fila del gasto y las observaciones. */
+export function aplicarCorreccionFactura(datos, dato) {
+  const factura = { ...datos.factura };
+  const item = { ...datos.items[0] };
+  if (dato.campo === 'numero') { factura.numero = dato.valor; item.numero_factura = dato.valor; }
+  if (dato.campo === 'ruc') { factura.rucTexto = dato.valor; factura.ruc = dato.ruc; item.ruc_proveedor = dato.ruc; }
+  item.observaciones = observacionesFactura(factura.numero, factura.rucTexto);
+  return { ...datos, factura, items: [item, ...datos.items.slice(1)] };
 }

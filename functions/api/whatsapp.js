@@ -39,7 +39,7 @@ import { validarReporteSecciones } from '../lib/reporteSecciones.js';
 import { generarImagenReporteSecciones } from '../lib/imagenReporteSecciones.js';
 import { generarExcelReporteSecciones } from '../lib/excelReporteSecciones.js';
 import { validarPie, validarEncabezado, avisosEncabezado, avisosRevisionEncabezado, recalcularPie } from '../lib/tablaExtendida.js';
-import { reconocerFactura, buscarGastoDeFactura, armarDatosGasto, textoPreguntaDestino, textoPedirFecha, textoVistaPreviaGastoFactura, interpretarDestino, interpretarFechaRespuesta, corregirFechaEnVistaPrevia } from '../lib/facturaGasto.js';
+import { reconocerFactura, buscarGastoDeFactura, armarDatosGasto, textoPreguntaDestino, textoPedirFecha, textoVistaPreviaGastoFactura, interpretarDestino, interpretarFechaRespuesta, corregirFechaEnVistaPrevia, corregirDatoFacturaEnVistaPrevia, aplicarCorreccionFactura } from '../lib/facturaGasto.js';
 import { construirDatosCotizacion, siguienteNumeroDocumento, nombreDocumento, elegirCotizacion, buscarDocumentoGuardado, lineasDesdeCuadro, aplicarCorreccionDocumento, describirParaCorreccion, clasificarRespuestaPendiente, filaIndiceDocumento } from '../lib/cotizacion.js';
 import { redondear2, parsearMonto, interpretarFechaPago, fechaIsoPanama, normalizarNumeroDocumento, mismoCliente, calcularSaldos, repartirPago, ordenarMasAntiguoPrimero, textoVistaPrevia, textoElegirDocumento, clasificarRespuestaConfirmacion, clasificarRespuestaElegir, formatoMonto, fechaLegible, nombreLegible,
   filtrarPagos, textoElegirPago, clasificarRespuestaElegirIndice, planAnularPago, textoPrevioAnularPago, planAnularDocumento, textoPrevioAnularDocumento, planAplicarSaldo, textoPrevioAplicarSaldo,
@@ -3576,8 +3576,24 @@ async function procesarRespuestaRegistro(env, negocio, numeroCliente, texto, dat
   const anula = quita || ['anular_registro', 'anular_cobro', 'anular_costo', 'anular_inventario'].includes(datos.tipoPendiente);
   const c = clasificarRespuestaConfirmacion(texto);
   if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, quita ? 'Listo, no quité nada. El producto sigue en tu inventario.' : anula ? 'Listo, no anulé nada. Sigue registrado.' : 'Listo, no guardé nada.');
-  // Vista previa de un gasto leído de una factura: se puede corregir la fecha sin cancelar ("la fecha es 31/10/2026", "hoy").
+  // Vista previa de un gasto leído de una factura: se puede corregir el N°, el RUC o la fecha sin cancelar ("el número es 1095837", "la fecha es 31/10/2026", "hoy").
   if (c !== 'confirmar' && datos.tipoPendiente === 'gasto' && datos.origen === 'foto_factura' && datos.factura) {
+    const dato = corregirDatoFacturaEnVistaPrevia(texto);
+    if (dato.intento) {
+      if (!dato.valor) {
+        return await responderPago(env, negocio, numeroCliente, dato.campo === 'ruc'
+          ? 'No entendí ese RUC. Escríbelo así: el RUC es 8-859-2144.'
+          : 'No entendí ese número de factura. Escríbelo así: el número es 1095837.');
+      }
+      const corregido = aplicarCorreccionFactura(datos, dato);
+      await guardarPagoPendiente(env, negocio.id, corregido);
+      let aviso = '';
+      try {
+        const rep = await buscarGastoDeFactura(env.oficina_ia_db, negocio.id, { numero: corregido.factura.numero, ruc: corregido.factura.ruc ?? null, proveedor: corregido.factura.proveedor });
+        if (rep.fila) aviso = `\n\n⚠️ Ya hay un gasto con ese N° y ese proveedor (${fechaLegible(rep.fila.fecha)}, ${formatoMonto(rep.fila.monto)}). Si es la misma factura, responde "no" para no repetirla.`;
+      } catch (e) { console.log('[WEBHOOK] Factura: no pude revisar duplicados tras corregir:', e?.message); }
+      return await responderPago(env, negocio, numeroCliente, (dato.campo === 'ruc' ? 'RUC corregido ✅' : 'Número corregido ✅') + '\n\n' + textoVistaPreviaGastoFactura(corregido, corregido.factura, fechaIsoPanama()) + aviso);
+    }
     const corr = corregirFechaEnVistaPrevia(texto);
     if (corr.intento) {
       if (!corr.iso) {
