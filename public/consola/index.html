@@ -6,29 +6,67 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Consola Oficina IA</title>
 <style>
-:root{--azul:#1a73e8;--azul-osc:#0b57c9;--fondo:#f1f5fb;--tarjeta:#fff;--texto:#1f2a3d;--suave:#6b7a90;--borde:#dfe6f1;--rojo:#c62828;--verde:#1b873f}
+:root{--azul:#1a73e8;--azul-osc:#0b57c9;--azul-claro:#e8f0fe;--fondo:#f1f5fb;--tarjeta:#fff;--texto:#1f2a3d;--suave:#6b7a90;--borde:#dfe6f1;--rojo:#c62828;--rojo-c:#fdecea;--verde:#1b873f;--verde-c:#e6f4ea;--ambar:#b26a00;--ambar-c:#fff4e0;--gris-c:#eef1f6}
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--fondo);color:var(--texto);min-height:100vh}
+button{font:inherit;cursor:pointer}
 .centro{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
 .caja{background:var(--tarjeta);border:1px solid var(--borde);border-radius:18px;padding:28px;width:100%;max-width:380px;box-shadow:0 8px 30px rgba(26,115,232,.08)}
 h1{font-size:20px;margin:0 0 4px}
 .sub{color:var(--suave);font-size:14px;margin:0 0 20px}
 label{display:block;font-size:13px;font-weight:600;margin:12px 0 6px}
-input{width:100%;padding:11px 12px;border:1px solid var(--borde);border-radius:10px;font-size:15px}
-input:focus{outline:2px solid var(--azul);border-color:transparent}
-button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:10px;background:var(--azul);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
-button:hover{background:var(--azul-osc)}button:disabled{opacity:.6;cursor:default}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--borde);border-radius:10px;font-size:15px;background:#fff;color:var(--texto)}
+input:focus,select:focus{outline:2px solid var(--azul);border-color:transparent}
+.btn{padding:10px 16px;border:0;border-radius:10px;background:var(--azul);color:#fff;font-weight:600}
+.btn:hover{background:var(--azul-osc)}.btn:disabled{opacity:.6;cursor:default}
+.btn.sec{background:#fff;color:var(--azul);border:1px solid var(--borde)}.btn.sec:hover{background:var(--azul-claro)}
+.btn.rojo{background:#fff;color:var(--rojo);border:1px solid #f1c4c0}.btn.rojo:hover{background:var(--rojo-c)}
+.btn.ancho{width:100%;margin-top:18px;padding:12px}
 .error{color:var(--rojo);font-size:13px;margin-top:12px;min-height:18px}
-.hola{display:none}
-.hola.ver{display:block}
-.barra{background:var(--tarjeta);border-bottom:1px solid var(--borde);padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
-.barra strong{color:var(--azul)}
-.barra button{width:auto;margin:0;padding:8px 14px;background:#fff;color:var(--azul);border:1px solid var(--borde)}
-.cuerpo{max-width:900px;margin:24px auto;padding:0 16px}
-.bienvenida{background:linear-gradient(135deg,#1a73e8,#4a97f5);color:#fff;border-radius:18px;padding:24px}
-.bienvenida h2{margin:0 0 6px;font-size:22px}
-.bienvenida p{margin:0;opacity:.92;font-size:14px}
-.nota{background:var(--tarjeta);border:1px solid var(--borde);border-radius:14px;padding:16px;margin-top:16px;font-size:14px;color:var(--suave)}
+.oculto{display:none!important}
+/* Estructura */
+.app{display:flex;min-height:100vh}
+.lateral{width:230px;background:var(--tarjeta);border-right:1px solid var(--borde);padding:18px 12px;flex-shrink:0;display:flex;flex-direction:column}
+.marca{font-weight:800;color:var(--azul);font-size:18px;padding:4px 10px 16px}
+.menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:10px 12px;border-radius:10px;color:var(--texto);font-size:14px;margin-bottom:2px}
+.menu button:hover:not(:disabled){background:var(--azul-claro)}
+.menu button.act{background:var(--azul-claro);color:var(--azul);font-weight:700}
+.menu button:disabled{color:#a3afc0;cursor:default}
+.menu small{font-size:10px;background:var(--gris-c);color:var(--suave);border-radius:8px;padding:1px 6px;margin-left:6px}
+.salir{margin-top:auto}
+.principal{flex:1;min-width:0;padding:22px}
+.contenido{max-width:1000px;margin:0 auto}
+.banner{background:linear-gradient(135deg,#1a73e8,#4a97f5);color:#fff;border-radius:18px;padding:22px;margin-bottom:16px}
+.banner h2{margin:0 0 4px;font-size:22px}.banner p{margin:0;opacity:.92;font-size:14px}
+.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--tarjeta);border:1px solid var(--borde);border-radius:14px;padding:14px}
+.kpi .n{font-size:26px;font-weight:800}.kpi .t{font-size:13px;color:var(--suave);margin-top:2px}
+.tarjeta{background:var(--tarjeta);border:1px solid var(--borde);border-radius:14px;padding:16px;margin-bottom:16px}
+.tarjeta h3{margin:0 0 12px;font-size:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:var(--suave);font-weight:600;font-size:12px;padding:8px;border-bottom:1px solid var(--borde)}
+td{padding:10px 8px;border-bottom:1px solid var(--borde);vertical-align:middle}
+tr.fila{cursor:pointer}tr.fila:hover{background:#f7faff}
+.etq{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap}
+.e-activa{background:var(--verde-c);color:var(--verde)}.e-gracia,.e-porvencer,.e-pendiente{background:var(--ambar-c);color:var(--ambar)}
+.e-vencida,.e-suspendida{background:var(--rojo-c);color:var(--rojo)}.e-sin_suscripcion,.e-cancelada{background:var(--gris-c);color:var(--suave)}
+.herr{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.herr input,.herr select{width:auto;flex:1;min-width:150px}
+.vacio{color:var(--suave);padding:18px 0;text-align:center;font-size:14px}
+.acciones{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px}
+.datos{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px;margin-bottom:6px}
+.datos div span{display:block;font-size:12px;color:var(--suave)}.datos div b{font-size:15px}
+.caja-form{background:var(--azul-claro);border-radius:12px;padding:14px;margin-top:12px}
+.caja-form .campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.caja-form label{margin:0 0 4px}
+.aviso{padding:10px 14px;border-radius:10px;font-size:14px;margin-bottom:12px}
+.aviso.bien{background:var(--verde-c);color:var(--verde)}.aviso.mal{background:var(--rojo-c);color:var(--rojo)}
+.atras{background:none;border:0;color:var(--azul);font-weight:600;padding:0;margin-bottom:12px}
+.anulado{text-decoration:line-through;color:var(--suave)}
+@media(max-width:760px){
+  .app{flex-direction:column}.lateral{width:100%;flex-direction:row;overflow-x:auto;padding:8px;border-right:0;border-bottom:1px solid var(--borde);align-items:center}
+  .marca{padding:4px 10px;white-space:nowrap}.menu{display:flex}.menu button{white-space:nowrap;width:auto}.salir{margin:0 0 0 auto}
+  .principal{padding:14px}.tabla-ancha{overflow-x:auto}
+}
 </style>
 </head>
 <body>
@@ -40,43 +78,190 @@ button:hover{background:var(--azul-osc)}button:disabled{opacity:.6;cursor:defaul
     <input id="correo" type="email" autocomplete="username" maxlength="120">
     <label for="clave">Contraseña</label>
     <input id="clave" type="password" autocomplete="current-password" maxlength="200">
-    <button id="entrar" type="button">Entrar</button>
+    <button id="entrar" type="button" class="btn ancho">Entrar</button>
     <div id="error" class="error" role="alert"></div>
   </div>
 </div>
 
-<div id="vistaPanel" class="hola">
-  <div class="barra"><span><strong>Oficina IA</strong> · Consola</span><button id="salir" type="button">Salir</button></div>
-  <div class="cuerpo">
-    <div class="bienvenida"><h2 id="saludo"></h2><p>Acceso verificado. El panel completo se arma por etapas.</p></div>
-    <div class="nota">Etapa 1: acceso seguro y base de suscripciones listos. Siguiente: Inicio y Suscriptores.</div>
-  </div>
+<div id="vistaPanel" class="app oculto">
+  <nav class="lateral">
+    <div class="marca">Oficina IA</div>
+    <div class="menu" id="menu">
+      <button type="button" data-v="inicio" class="act">Inicio</button>
+      <button type="button" data-v="suscriptores">Suscriptores</button>
+      <button type="button" disabled>Planes y Precios<small>pronto</small></button>
+      <button type="button" disabled>WhatsApp<small>pronto</small></button>
+      <button type="button" disabled>Pagos y Facturación<small>pronto</small></button>
+      <button type="button" disabled>Uso de Mensajes Meta<small>pronto</small></button>
+      <button type="button" disabled>Uso de IA (Groq)<small>pronto</small></button>
+      <button type="button" disabled>Estadísticas<small>pronto</small></button>
+      <button type="button" disabled>Configuración<small>pronto</small></button>
+      <button type="button" disabled>Soporte<small>pronto</small></button>
+    </div>
+    <button id="salir" type="button" class="btn sec salir">Salir</button>
+  </nav>
+  <main class="principal"><div class="contenido" id="contenido"></div></main>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-function mostrarPanel(nombre){ $('vistaLogin').style.display='none'; $('vistaPanel').classList.add('ver'); $('saludo').textContent = 'Hola, ' + nombre; }
-function mostrarLogin(){ $('vistaPanel').classList.remove('ver'); $('vistaLogin').style.display='flex'; $('clave').value=''; }
-async function llamar(ruta, cuerpo){
-  const r = await fetch(ruta, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cuerpo||{}), credentials:'same-origin' });
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const usd = (c) => (c === null || c === undefined) ? '—' : '$' + (Number(c) / 100).toFixed(2);
+const fecha = (f) => { if (!f) return '—'; const [a, m, d] = String(f).slice(0, 10).split('-'); return d && m && a ? `${d}/${m}/${a}` : esc(f); };
+const METODOS = { yappy: 'Yappy', transferencia: 'Transferencia', efectivo: 'Efectivo', otro: 'Otro' };
+let nombreAdmin = '', estado = { vista: 'inicio', id: null, filtro: '', buscar: '', lista: [] };
+
+async function api(ruta, cuerpo) {
+  const op = cuerpo === undefined ? { credentials: 'same-origin' } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo), credentials: 'same-origin' };
+  const r = await fetch(ruta, op);
   let j = {}; try { j = await r.json(); } catch {}
-  return { status:r.status, j };
+  if (r.status === 401 && ruta !== '/api/consola/login') { mostrarLogin(); }
+  return { status: r.status, j };
 }
-async function entrar(){
-  $('error').textContent=''; $('entrar').disabled = true;
+function mostrarPanel(nombre) { nombreAdmin = nombre; $('vistaLogin').classList.add('oculto'); $('vistaPanel').classList.remove('oculto'); ir('inicio'); }
+function mostrarLogin() { $('vistaPanel').classList.add('oculto'); $('vistaLogin').classList.remove('oculto'); $('clave').value = ''; }
+async function entrar() {
+  $('error').textContent = ''; $('entrar').disabled = true;
   try {
-    const { status, j } = await llamar('/api/consola/login', { correo: $('correo').value.trim(), clave: $('clave').value });
-    if (status === 200 && j.ok) mostrarPanel(j.nombre || '');
-    else $('error').textContent = j.error || 'No se pudo entrar. Intenta de nuevo.';
+    const { status, j } = await api('/api/consola/login', { correo: $('correo').value.trim(), clave: $('clave').value });
+    if (status === 200 && j.ok) mostrarPanel(j.nombre || ''); else $('error').textContent = j.error || 'No se pudo entrar. Intenta de nuevo.';
   } catch { $('error').textContent = 'Sin conexión. Intenta de nuevo.'; }
   $('entrar').disabled = false;
 }
 $('entrar').addEventListener('click', entrar);
-['correo','clave'].forEach(i => $(i).addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); }));
-$('salir').addEventListener('click', async () => { try { await llamar('/api/consola/salir'); } catch {} mostrarLogin(); });
-(async () => {
-  try { const r = await fetch('/api/consola/yo', { credentials:'same-origin' }); if (r.ok) { const j = await r.json(); mostrarPanel(j.nombre || ''); } } catch {}
-})();
+['correo', 'clave'].forEach((i) => $(i).addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); }));
+$('salir').addEventListener('click', async () => { try { await api('/api/consola/salir', {}); } catch {} mostrarLogin(); });
+$('menu').addEventListener('click', (e) => { const b = e.target.closest('button[data-v]'); if (b) ir(b.dataset.v); });
+
+function ir(vista, id = null) {
+  estado.vista = vista; estado.id = id;
+  document.querySelectorAll('#menu button[data-v]').forEach((b) => b.classList.toggle('act', b.dataset.v === (vista === 'detalle' ? 'suscriptores' : vista)));
+  $('contenido').innerHTML = '<div class="vacio">Cargando…</div>';
+  if (vista === 'inicio') return verInicio();
+  if (vista === 'suscriptores') return verLista();
+  if (vista === 'detalle') return verDetalle();
+}
+const etq = (f) => {
+  let clase = f.estado, txt = f.estado_texto;
+  if (f.estado === 'activa' && f.por_vencer) { clase = 'porvencer'; txt = f.dias_para_vencer === 0 ? 'Vence hoy' : `Vence en ${f.dias_para_vencer} d`; }
+  if (f.estado === 'gracia') txt = `En gracia (${f.dias_gracia_restantes} d)`;
+  return `<span class="etq e-${esc(clase)}">${esc(txt)}</span>`;
+};
+async function cargar(vista, extra = '') {
+  const { status, j } = await api('/api/consola/datos?vista=' + vista + extra);
+  if (status === 401) return null;
+  if (!j.ok) { $('contenido').innerHTML = `<div class="aviso mal">${esc(j.error || 'No se pudo cargar.')}</div>`; return null; }
+  return j;
+}
+async function verInicio() {
+  const d = await cargar('inicio'); if (!d) return;
+  const e = d.por_estado;
+  const filas = d.atencion.map((f) => `<tr class="fila" data-id="${esc(f.negocio_id)}"><td>${esc(f.nombre)}</td><td>${etq(f)}</td><td>${fecha(f.vence_en)}</td></tr>`).join('');
+  $('contenido').innerHTML = `
+    <div class="banner"><h2>Hola, ${esc(nombreAdmin)}</h2><p>Resumen de ${esc(fecha(d.hoy))}. Tienes ${esc(d.total_negocios)} negocio(s) registrados.</p></div>
+    <div class="rejilla">
+      <div class="kpi"><div class="n">${esc(e.activa)}</div><div class="t">Suscripciones activas</div></div>
+      <div class="kpi"><div class="n">${esc(d.por_vencer_7_dias)}</div><div class="t">Vencen en 7 días</div></div>
+      <div class="kpi"><div class="n">${esc(e.gracia + e.vencida)}</div><div class="t">En gracia o vencidas</div></div>
+      <div class="kpi"><div class="n">${esc(e.suspendida)}</div><div class="t">Suspendidas</div></div>
+      <div class="kpi"><div class="n">${esc(e.pendiente)}</div><div class="t">Pendientes de pago</div></div>
+      <div class="kpi"><div class="n">${esc(e.sin_suscripcion)}</div><div class="t">Sin suscripción</div></div>
+      <div class="kpi"><div class="n">${usd(d.cobrado_mes_centavos)}</div><div class="t">Cobrado este mes (${esc(d.pagos_mes)} ${d.pagos_mes === 1 ? "pago" : "pagos"})</div></div>
+      <div class="kpi"><div class="n">${usd(d.ingreso_mensual_esperado_centavos)}</div><div class="t">Ingreso mensual esperado</div></div>
+    </div>
+    <div class="tarjeta"><h3>Requieren atención</h3>
+      ${filas ? `<div class="tabla-ancha"><table><tr><th>Negocio</th><th>Estado</th><th>Vence</th></tr>${filas}</table></div>` : '<div class="vacio">Nada pendiente por ahora.</div>'}
+    </div>
+    <div class="tarjeta"><h3>Uso de este mes (${esc(d.mes)})</h3>
+      <div class="datos"><div><span>Mensajes recibidos por WhatsApp</span><b>${esc(d.uso_mes.mensajes_entrantes)}</b></div>
+      <div><span>Consultas a la IA por WhatsApp</span><b>${esc(d.uso_mes.ia_whatsapp)}</b></div>
+      <div><span>Consultas a la IA en la web</span><b>${esc(d.uso_mes.ia_web)}</b></div></div>
+      <p class="sub" style="margin:10px 0 0">El conteo empieza cuando el bot se conecte al panel (etapa 7).</p>
+    </div>`;
+  $('contenido').querySelectorAll('tr.fila').forEach((tr) => tr.addEventListener('click', () => ir('detalle', Number(tr.dataset.id))));
+}
+async function verLista() {
+  const d = await cargar('suscriptores'); if (!d) return;
+  estado.lista = d.suscriptores;
+  $('contenido').innerHTML = `
+    <div class="tarjeta"><h3>Suscriptores</h3>
+      <div class="herr"><input id="buscar" placeholder="Buscar por nombre o teléfono" maxlength="60" value="${esc(estado.buscar)}">
+        <select id="filtro"><option value="">Todos los estados</option>
+          ${[['activa', 'Activas'], ['por_vencer', 'Por vencer'], ['gracia', 'En gracia'], ['vencida', 'Vencidas'], ['suspendida', 'Suspendidas'], ['pendiente', 'Pendientes de pago'], ['sin_suscripcion', 'Sin suscripción']].map(([v, t]) => `<option value="${v}"${estado.filtro === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="tabla-ancha" id="tabla"></div></div>`;
+  $('buscar').addEventListener('input', (e) => { estado.buscar = e.target.value; pintarLista(); });
+  $('filtro').addEventListener('change', (e) => { estado.filtro = e.target.value; pintarLista(); });
+  pintarLista();
+}
+function pintarLista() {
+  const q = estado.buscar.trim().toLowerCase();
+  const l = estado.lista.filter((f) => (!estado.filtro || (estado.filtro === 'por_vencer' ? f.por_vencer : f.estado === estado.filtro)) && (!q || (f.nombre + ' ' + f.telefono).toLowerCase().includes(q)));
+  $('tabla').innerHTML = l.length ? `<table><tr><th>Negocio</th><th>Teléfono</th><th>Plan</th><th>Estado</th><th>Vence</th><th>Último pago</th></tr>${l.map((f) =>
+    `<tr class="fila" data-id="${esc(f.negocio_id)}"><td><b>${esc(f.nombre)}</b></td><td>${esc(f.telefono)}</td><td>${esc(f.plan ?? '—')}${f.precio_centavos != null ? ' · ' + usd(f.precio_centavos) : ''}</td><td>${etq(f)}</td><td>${fecha(f.vence_en)}</td><td>${f.ultimo_pago_fecha ? fecha(f.ultimo_pago_fecha) + ' · ' + usd(f.ultimo_pago_centavos) : '—'}</td></tr>`).join('')}</table>` : '<div class="vacio">No hay negocios con ese filtro.</div>';
+  $('tabla').querySelectorAll('tr.fila').forEach((tr) => tr.addEventListener('click', () => ir('detalle', Number(tr.dataset.id))));
+}
+let avisoMsg = null;
+async function verDetalle() {
+  const d = await cargar('detalle', '&id=' + estado.id); if (!d) return;
+  const n = d.negocio, est = n.estado;
+  const tiene = !['sin_suscripcion', 'cancelada'].includes(est);
+  const botones = [];
+  if (!tiene) botones.push('<button class="btn" data-a="alta">Dar de alta</button>');
+  if (tiene && est !== 'suspendida') botones.push('<button class="btn" data-a="pago">Registrar pago</button>');
+  if (est === 'suspendida') botones.push('<button class="btn" data-a="reactivar">Reactivar</button>');
+  if (tiene && est !== 'suspendida') botones.push('<button class="btn rojo" data-a="suspender">Suspender</button>');
+  if (tiene) botones.push('<button class="btn sec" data-a="cambiar_plan">Cambiar de plan</button>', '<button class="btn rojo" data-a="cancelar">Cancelar suscripción</button>');
+  const pagos = n.pagos.map((p) => `<tr class="${p.anulado ? 'anulado' : ''}"><td>${fecha(p.fecha)}</td><td>${usd(p.monto_centavos)}</td><td>${esc(METODOS[p.metodo] ?? p.metodo)}</td><td>${esc(p.referencia ?? '')}</td><td>${fecha(p.periodo_desde)} al ${fecha(p.periodo_hasta)}</td></tr>`).join('');
+  const u = n.uso_mes, iaTotal = u.ia_whatsapp.cantidad + u.ia_web.cantidad;
+  const msg = avisoMsg; avisoMsg = null;
+  $('contenido').innerHTML = `
+    <button class="atras" id="atras" type="button">← Volver a Suscriptores</button>
+    ${msg ? `<div class="aviso ${msg.ok ? 'bien' : 'mal'}">${esc(msg.texto)}</div>` : ''}
+    <div class="tarjeta"><h3>${esc(n.nombre)} ${etq(n)}</h3>
+      <div class="datos">
+        <div><span>Teléfono</span><b>${esc(n.telefono)}</b></div>
+        <div><span>Plan y precio</span><b>${esc(n.plan ?? '—')}${n.precio_centavos != null ? ' · ' + usd(n.precio_centavos) + '/mes' : ''}</b></div>
+        ${n.precio_proximo_centavos != null ? `<div><span>Precio desde el próximo pago</span><b>${usd(n.precio_proximo_centavos)}</b></div>` : ''}
+        <div><span>Vence</span><b>${fecha(n.vence_en)}</b></div>
+        <div><span>Días de gracia</span><b>${esc(n.dias_gracia)}</b></div>
+        <div><span>Servicio</span><b>${n.servicio_activo ? 'Encendido' : 'Apagado'}</b></div>
+        <div><span>Mensajes de WhatsApp este mes</span><b>${esc(u.whatsapp_entrante.cantidad)}${n.limite_whatsapp_mes ? ' de ' + esc(n.limite_whatsapp_mes) : ''}</b></div>
+        <div><span>Consultas a la IA este mes</span><b>${esc(iaTotal)}${n.limite_ia_mes ? ' de ' + esc(n.limite_ia_mes) : ''}</b></div>
+      </div>
+      <div class="acciones">${botones.join('')}</div>
+      <div id="formulario"></div>
+    </div>
+    <div class="tarjeta"><h3>Pagos</h3>${pagos ? `<div class="tabla-ancha"><table><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th><th>Cubre</th></tr>${pagos}</table></div>` : '<div class="vacio">Todavía no hay pagos.</div>'}</div>`;
+  $('atras').addEventListener('click', () => ir('suscriptores'));
+  $('contenido').querySelectorAll('.acciones button').forEach((b) => b.addEventListener('click', () => accion(b.dataset.a, n)));
+}
+function formulario(html, alEnviar) {
+  $('formulario').innerHTML = `<div class="caja-form">${html}<div class="acciones"><button class="btn" id="ok" type="button">Confirmar</button><button class="btn sec" id="no" type="button">Cancelar</button></div></div>`;
+  $('no').addEventListener('click', () => { $('formulario').innerHTML = ''; });
+  $('ok').addEventListener('click', alEnviar);
+}
+const opcionesPlanes = (n, excluirActual) => n.planes.filter((p) => !(excluirActual && p.nombre === n.plan)).map((p) => `<option value="${esc(p.id)}">${esc(p.nombre)} · ${usd(p.precio_centavos)}</option>`).join('');
+async function enviar(cuerpo, n) {
+  const btn = $('ok'); if (btn) btn.disabled = true;
+  try {
+    const { j } = await api('/api/consola/accion', { ...cuerpo, negocio_id: n.negocio_id });
+    avisoMsg = j.ok ? { ok: true, texto: 'Listo, quedó guardado.' } : { ok: false, texto: j.error || 'No se pudo completar.' };
+  } catch { avisoMsg = { ok: false, texto: 'Sin conexión. Intenta de nuevo.' }; }
+  verDetalle();
+}
+function accion(a, n) {
+  if (a === 'alta') return formulario(`<label for="f_plan">Plan</label><select id="f_plan">${opcionesPlanes(n, false)}</select><p class="sub" style="margin:8px 0 0">Queda pendiente hasta registrar el primer pago.</p>`, () => enviar({ accion: 'alta', plan_id: Number($('f_plan').value) }, n));
+  if (a === 'pago') return formulario(`<div class="campos"><div><label for="f_monto">Monto (USD)</label><input id="f_monto" inputmode="decimal" value="${n.precio_proximo_centavos != null ? (n.precio_proximo_centavos / 100).toFixed(2) : n.precio_centavos != null ? (n.precio_centavos / 100).toFixed(2) : ''}"></div>
+    <div><label for="f_metodo">Método</label><select id="f_metodo"><option value="yappy">Yappy</option><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="otro">Otro</option></select></div>
+    <div><label for="f_ref">Referencia (opcional)</label><input id="f_ref" maxlength="80"></div>
+    <div><label for="f_fecha">Fecha del pago (vacío = hoy)</label><input id="f_fecha" placeholder="AAAA-MM-DD" maxlength="10"></div></div>`,
+    () => enviar({ accion: 'pago', monto: $('f_monto').value, metodo: $('f_metodo').value, referencia: $('f_ref').value, fecha: $('f_fecha').value.trim() }, n));
+  if (a === 'cambiar_plan') return formulario(`<label for="f_plan">Plan nuevo</label><select id="f_plan">${opcionesPlanes(n, true)}</select><p class="sub" style="margin:8px 0 0">Lo ya pagado no cambia: el precio del plan nuevo rige desde el próximo pago.</p>`, () => enviar({ accion: 'cambiar_plan', plan_id: Number($('f_plan').value) }, n));
+  if (a === 'suspender') return formulario('<label for="f_motivo">Motivo (opcional)</label><input id="f_motivo" maxlength="200"><p class="sub" style="margin:8px 0 0">El cliente deja de poder usar el servicio de inmediato.</p>', () => enviar({ accion: 'suspender', motivo: $('f_motivo').value }, n));
+  if (a === 'cancelar') return formulario('<label for="f_motivo">Motivo (opcional)</label><input id="f_motivo" maxlength="200"><p class="sub" style="margin:8px 0 0">Se cierra la suscripción (queda en el historial). Después se puede dar de alta otra vez.</p>', () => enviar({ accion: 'cancelar', motivo: $('f_motivo').value }, n));
+  if (a === 'reactivar') return formulario('<p style="margin:0">¿Reactivar esta suscripción y volver a encender el servicio?</p>', () => enviar({ accion: 'reactivar' }, n));
+}
+(async () => { try { const r = await fetch('/api/consola/yo', { credentials: 'same-origin' }); if (r.ok) { const j = await r.json(); mostrarPanel(j.nombre || ''); } } catch {} })();
 </script>
 </body>
 </html>
