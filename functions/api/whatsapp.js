@@ -49,6 +49,7 @@ import { redondear2, parsearMonto, interpretarFechaPago, fechaIsoPanama, normali
   esCampoDeAbono, esCuadroDePrestamo, tieneColumnaAbono, resolverClaveAbono, buscarPersonaEnPrestamos,
   textoRechazoCorreccionAbono, detectarAnularAbono, elegirAbonoAAnular, textoSinAbonosParaAnular, textoPedirNombreAnularAbono, textoNingunoAnularAbono, textoAmbiguoAnularAbono, textoMontoDistintoAnularAbono, textoPrevioAnularAbono, claveNombre, mencionaCuadro, textoVariosExactos, textoParecidos, textoNingunoEnPrestamos, textoConfirmarAbonoParecido } from '../lib/pagos.js';
 import { llamarGroqConReintento } from '../lib/groqReintento.js';
+import { claveDeLaPrimeraColumna, conNombreEnPrimeraColumna, sanarNombresEnPrimeraColumna, sincronizarNombreTrasCambio } from '../lib/primeraColumna.js';
 
 // Todas las llamadas a Groq pasan por aquí: si Groq responde 429 (límite por minuto) se espera
 // lo que él indica y se reintenta UNA vez, en vez de perder el mensaje del usuario.
@@ -1661,10 +1662,13 @@ async function agregarFila(env, cuadro, columnas, filas, reglas, args) {
     return { tipo: 'aviso', mensaje: `Ya existe "${args.nombre}" en el cuadro — ¿querías actualizar su registro en vez de agregar uno nuevo?` };
   }
 
+  // La primera columna puede llamarse "Planta", "Producto"...: el nombre va también bajo su clave para que se vea en la imagen, el Excel y la web.
+  const claveNombre = claveDeLaPrimeraColumna(columnas, normalizarClave);
   const nuevaFilaCruda = { nombre: args.nombre, ...limpiarValores(args.valores) };
-  const filaCalculada = calcularFila(nuevaFilaCruda, reglas);
+  const filaCalculada = conNombreEnPrimeraColumna(calcularFila(nuevaFilaCruda, reglas), claveNombre);
 
   const filasAntes = JSON.stringify(filas);
+  sanarNombresEnPrimeraColumna(filas, claveNombre); // filas cargadas antes de este arreglo: se les completa el nombre
   filas.push(filaCalculada);
   const historialId = await guardarCuadro(env, cuadro.id, filas, filasAntes);
 
@@ -2063,7 +2067,9 @@ async function actualizarFila(env, cuadro, columnas, filas, reglas, busqueda, ar
   }
 
   const valorLimpio = limpiarValor(args.valor);
-  const filaActualizada = calcularFila({ ...busqueda.fila, [campoNormalizado]: valorLimpio }, reglas);
+  const filaActualizada = sincronizarNombreTrasCambio(
+    calcularFila({ ...busqueda.fila, [campoNormalizado]: valorLimpio }, reglas),
+    claveDeLaPrimeraColumna(columnas, normalizarClave), campoNormalizado);
 
   filas = filas.map(f => (f === busqueda.fila ? filaActualizada : f));
   const historialId = await guardarCuadro(env, cuadro.id, filas, filasAntes);
