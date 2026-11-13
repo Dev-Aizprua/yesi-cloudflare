@@ -62,6 +62,11 @@ tr.fila{cursor:pointer}tr.fila:hover{background:#f7faff}
 .aviso.bien{background:var(--verde-c);color:var(--verde)}.aviso.mal{background:var(--rojo-c);color:var(--rojo)}
 .atras{background:none;border:0;color:var(--azul);font-weight:600;padding:0;margin-bottom:12px}
 .anulado{text-decoration:line-through;color:var(--suave)}
+.plan{border:1px solid var(--borde);border-radius:12px;padding:14px;margin-bottom:12px}
+.plan h4{margin:0 0 8px;font-size:16px}
+.vista-previa{background:#fff;border:1px solid var(--borde);border-radius:10px;padding:12px;margin-top:10px;font-size:14px}
+.vista-previa ul{margin:6px 0 0;padding-left:18px}
+.ayuda{font-size:12px;color:var(--suave);margin-top:4px}
 @media(max-width:760px){
   .app{flex-direction:column}.lateral{width:100%;flex-direction:row;overflow-x:auto;padding:8px;border-right:0;border-bottom:1px solid var(--borde);align-items:center}
   .marca{padding:4px 10px;white-space:nowrap}.menu{display:flex}.menu button{white-space:nowrap;width:auto}.salir{margin:0 0 0 auto}
@@ -89,7 +94,7 @@ tr.fila{cursor:pointer}tr.fila:hover{background:#f7faff}
     <div class="menu" id="menu">
       <button type="button" data-v="inicio" class="act">Inicio</button>
       <button type="button" data-v="suscriptores">Suscriptores</button>
-      <button type="button" disabled>Planes y Precios<small>pronto</small></button>
+      <button type="button" data-v="planes">Planes y Precios</button>
       <button type="button" disabled>WhatsApp<small>pronto</small></button>
       <button type="button" disabled>Pagos y Facturación<small>pronto</small></button>
       <button type="button" disabled>Uso de Mensajes Meta<small>pronto</small></button>
@@ -140,6 +145,7 @@ function ir(vista, id = null) {
   if (vista === 'inicio') return verInicio();
   if (vista === 'suscriptores') return verLista();
   if (vista === 'detalle') return verDetalle();
+  if (vista === 'planes') return verPlanes();
 }
 const etq = (f) => {
   let clase = f.estado, txt = f.estado_texto;
@@ -210,6 +216,7 @@ async function verDetalle() {
   if (tiene && est !== 'suspendida') botones.push('<button class="btn" data-a="pago">Registrar pago</button>');
   if (est === 'suspendida') botones.push('<button class="btn" data-a="reactivar">Reactivar</button>');
   if (tiene && est !== 'suspendida') botones.push('<button class="btn rojo" data-a="suspender">Suspender</button>');
+  botones.push('<button class="btn sec" data-a="enlace_acceso">Generar enlace de acceso</button>');
   if (tiene) botones.push('<button class="btn sec" data-a="cambiar_plan">Cambiar de plan</button>', '<button class="btn rojo" data-a="cancelar">Cancelar suscripción</button>');
   const pagos = n.pagos.map((p) => `<tr class="${p.anulado ? 'anulado' : ''}"><td>${fecha(p.fecha)}</td><td>${usd(p.monto_centavos)}</td><td>${esc(METODOS[p.metodo] ?? p.metodo)}</td><td>${esc(p.referencia ?? '')}</td><td>${fecha(p.periodo_desde)} al ${fecha(p.periodo_hasta)}</td></tr>`).join('');
   const u = n.uso_mes, iaTotal = u.ia_whatsapp.cantidad + u.ia_web.cantidad;
@@ -250,6 +257,16 @@ async function enviar(cuerpo, n) {
   verDetalle();
 }
 function accion(a, n) {
+  if (a === 'enlace_acceso') return formulario(`<p style="margin:0">Genera un enlace de un solo uso para que el dueño de <b>${esc(n.nombre)}</b> entre a "Mi oficina" sin pasar por WhatsApp. Vence en 10 minutos y deja sin efecto cualquier enlace anterior que no se haya usado.</p>${n.servicio_activo ? '' : '<div class="aviso mal" style="margin:10px 0 0">El servicio de este negocio está apagado: el enlace no va a funcionar hasta reactivarlo.</div>'}<div id="resEnlace"></div>`, async () => {
+    $('ok').disabled = true;
+    try {
+      const { j } = await api('/api/consola/accion', { accion: 'enlace_acceso', negocio_id: n.negocio_id });
+      if (!j.ok) { $('resEnlace').innerHTML = `<div class="aviso mal" style="margin-top:10px">${esc(j.error || 'No se pudo generar.')}</div>`; $('ok').disabled = false; return; }
+      $('ok').classList.add('oculto');
+      $('resEnlace').innerHTML = `<div class="vista-previa"><b>Enlace listo (vence en ${esc(j.minutos)} min, un solo uso)</b><input id="urlEnlace" readonly value="${esc(j.url)}" style="margin-top:8px"><div class="acciones"><button class="btn" id="copiarEnlace" type="button">Copiar</button></div><div class="ayuda">Envíaselo solo al dueño, por un medio seguro. Si lo pierdes, genera otro. No se guarda en ninguna parte.</div></div>`;
+      $('copiarEnlace').addEventListener('click', async () => { const i = $('urlEnlace'); i.select(); try { await navigator.clipboard.writeText(i.value); $('copiarEnlace').textContent = 'Copiado'; } catch { document.execCommand && document.execCommand('copy'); $('copiarEnlace').textContent = 'Copiado'; } });
+    } catch { $('resEnlace').innerHTML = '<div class="aviso mal" style="margin-top:10px">Sin conexión. Intenta de nuevo.</div>'; $('ok').disabled = false; }
+  });
   if (a === 'alta') return formulario(`<label for="f_plan">Plan</label><select id="f_plan">${opcionesPlanes(n, false)}</select><p class="sub" style="margin:8px 0 0">Queda pendiente hasta registrar el primer pago.</p>`, () => enviar({ accion: 'alta', plan_id: Number($('f_plan').value) }, n));
   if (a === 'pago') return formulario(`<div class="campos"><div><label for="f_monto">Monto (USD)</label><input id="f_monto" inputmode="decimal" value="${n.precio_proximo_centavos != null ? (n.precio_proximo_centavos / 100).toFixed(2) : n.precio_centavos != null ? (n.precio_centavos / 100).toFixed(2) : ''}"></div>
     <div><label for="f_metodo">Método</label><select id="f_metodo"><option value="yappy">Yappy</option><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="otro">Otro</option></select></div>
@@ -260,6 +277,88 @@ function accion(a, n) {
   if (a === 'suspender') return formulario('<label for="f_motivo">Motivo (opcional)</label><input id="f_motivo" maxlength="200"><p class="sub" style="margin:8px 0 0">El cliente deja de poder usar el servicio de inmediato.</p>', () => enviar({ accion: 'suspender', motivo: $('f_motivo').value }, n));
   if (a === 'cancelar') return formulario('<label for="f_motivo">Motivo (opcional)</label><input id="f_motivo" maxlength="200"><p class="sub" style="margin:8px 0 0">Se cierra la suscripción (queda en el historial). Después se puede dar de alta otra vez.</p>', () => enviar({ accion: 'cancelar', motivo: $('f_motivo').value }, n));
   if (a === 'reactivar') return formulario('<p style="margin:0">¿Reactivar esta suscripción y volver a encender el servicio?</p>', () => enviar({ accion: 'reactivar' }, n));
+}
+
+const tope = (n) => (n === null || n === undefined) ? 'Sin tope' : Number(n).toLocaleString('es-PA');
+const APLICAR = { nuevos: 'Solo clientes nuevos', todos: 'Todos, desde su próxima renovación' };
+async function verPlanes() {
+  const d = await cargar('planes'); if (!d) return;
+  const msg = avisoMsg; avisoMsg = null;
+  const planes = d.planes.map((p) => `
+    <div class="plan">
+      <h4>${esc(p.nombre)} <span class="etq ${p.activo === 1 ? 'e-activa' : 'e-cancelada'}">${p.activo === 1 ? 'Activo' : 'Desactivado'}</span></h4>
+      <div class="datos">
+        <div><span>Precio al mes</span><b>${usd(p.precio_centavos)}</b></div>
+        <div><span>Mensajes de WhatsApp al mes</span><b>${tope(p.limite_whatsapp_mes)}</b></div>
+        <div><span>Consultas a la IA al mes</span><b>${tope(p.limite_ia_mes)}</b></div>
+        <div><span>Suscriptores con este plan</span><b>${esc(p.suscriptores)}</b></div>
+      </div>
+      <div class="acciones">
+        <button class="btn" data-pa="precio" data-id="${esc(p.id)}">Cambiar precio</button>
+        <button class="btn sec" data-pa="limites" data-id="${esc(p.id)}">Editar límites</button>
+        <button class="btn sec" data-pa="activo" data-id="${esc(p.id)}">${p.activo === 1 ? 'Desactivar' : 'Activar'}</button>
+      </div>
+      <div id="fp_${esc(p.id)}"></div>
+    </div>`).join('');
+  const hist = d.historial.map((h) => `<tr><td>${fecha(String(h.creado_en).slice(0, 10))}</td><td>${esc(h.plan)}</td><td>${usd(h.precio_centavos)}</td><td>${h.aplicado_a === 'inicial' ? 'Precio inicial' : esc(APLICAR[h.aplicado_a] ?? h.aplicado_a)}</td><td>${esc(h.admin ?? '—')}</td></tr>`).join('');
+  $('contenido').innerHTML = `
+    ${msg ? `<div class="aviso ${msg.ok ? 'bien' : 'mal'}">${esc(msg.texto)}</div>` : ''}
+    <div class="tarjeta"><h3>Planes y precios</h3>${planes || '<div class="vacio">No hay planes.</div>'}
+      <div class="acciones"><button class="btn sec" id="nuevoPlan" type="button">Crear plan nuevo</button></div><div id="fp_nuevo"></div>
+      <p class="ayuda">Cada suscriptor conserva el precio con el que entró. Un cambio de precio nunca toca lo que ya pagó.</p></div>
+    <div class="tarjeta"><h3>Reglas de vencimiento</h3>
+      <label for="g_dias">Días de gracia después de vencer (0 = sin gracia)</label>
+      <div class="herr"><input id="g_dias" inputmode="numeric" maxlength="2" value="${esc(d.dias_gracia)}" style="max-width:120px"><button class="btn" id="g_ok" type="button">Guardar</button></div>
+      <p class="ayuda">Durante la gracia el cliente sigue con servicio y recibe aviso. Pasada la gracia, se corta hasta registrar el pago.</p></div>
+    <div class="tarjeta"><h3>Historial de precios</h3>${hist ? `<div class="tabla-ancha"><table><tr><th>Fecha</th><th>Plan</th><th>Precio</th><th>Aplicado a</th><th>Quién</th></tr>${hist}</table></div>` : '<div class="vacio">Sin cambios todavía.</div>'}</div>`;
+  const porId = Object.fromEntries(d.planes.map((p) => [p.id, p]));
+  $('contenido').querySelectorAll('button[data-pa]').forEach((b) => b.addEventListener('click', () => accionPlan(b.dataset.pa, porId[b.dataset.id])));
+  $('nuevoPlan').addEventListener('click', crearPlanForm);
+  $('g_ok').addEventListener('click', () => enviarPlan({ accion: 'gracia', dias: $('g_dias').value.trim() }));
+}
+async function enviarPlan(cuerpo) {
+  try {
+    const { j } = await api('/api/consola/planes', cuerpo);
+    avisoMsg = j.ok ? { ok: true, texto: 'Listo, quedó guardado.' } : { ok: false, texto: j.error || 'No se pudo completar.' };
+  } catch { avisoMsg = { ok: false, texto: 'Sin conexión. Intenta de nuevo.' }; }
+  verPlanes();
+}
+function formPlan(idDestino, html, alConfirmar) {
+  $(idDestino).innerHTML = `<div class="caja-form">${html}<div class="acciones"><button class="btn" id="pOk" type="button">Confirmar</button><button class="btn sec" id="pNo" type="button">Cancelar</button></div></div>`;
+  $('pNo').addEventListener('click', () => { $(idDestino).innerHTML = ''; });
+  $('pOk').addEventListener('click', alConfirmar);
+}
+function accionPlan(a, p) {
+  const destino = 'fp_' + p.id;
+  if (a === 'activo') return formPlan(destino, `<p style="margin:0">${p.activo === 1 ? '¿Desactivar este plan? Ya no se podrá elegir para altas nuevas; quien lo tiene lo conserva.' : '¿Activar este plan para altas nuevas?'}</p>`, () => enviarPlan({ accion: 'activo', plan_id: p.id, activo: p.activo !== 1 }));
+  if (a === 'limites') return formPlan(destino, `<div class="campos"><div><label for="l_w">Mensajes de WhatsApp al mes</label><input id="l_w" inputmode="numeric" value="${p.limite_whatsapp_mes ?? ''}" placeholder="vacío = sin tope"></div><div><label for="l_i">Consultas a la IA al mes</label><input id="l_i" inputmode="numeric" value="${p.limite_ia_mes ?? ''}" placeholder="vacío = sin tope"></div></div><p class="ayuda">Son dos límites separados. El de IA se comparte entre WhatsApp y la web.</p>`, () => enviarPlan({ accion: 'limites', plan_id: p.id, limite_whatsapp: $('l_w').value.trim(), limite_ia: $('l_i').value.trim() }));
+  if (a === 'precio') {
+    formPlan(destino, `<div class="campos"><div><label for="p_precio">Precio nuevo (USD al mes)</label><input id="p_precio" inputmode="decimal" value="${(p.precio_centavos / 100).toFixed(2)}"></div>
+      <div><label for="p_aplicar">Aplicar a</label><select id="p_aplicar"><option value="nuevos">${APLICAR.nuevos}</option><option value="todos">${APLICAR.todos}</option></select></div></div>
+      <div class="acciones"><button class="btn sec" id="pVer" type="button">Ver vista previa</button></div><div id="p_prev"></div>`, () => {
+      if (!$('p_prev').dataset.listo) { $('p_prev').innerHTML = '<div class="vista-previa">Primero pulsa "Ver vista previa" para revisar el efecto del cambio.</div>'; return; }
+      enviarPlan({ accion: 'precio', plan_id: p.id, precio: $('p_precio').value.trim(), aplicar_a: $('p_aplicar').value });
+    });
+    const invalidar = () => { delete $('p_prev').dataset.listo; $('p_prev').innerHTML = ''; };
+    $('p_precio').addEventListener('input', invalidar); $('p_aplicar').addEventListener('change', invalidar);
+    $('pVer').addEventListener('click', async () => {
+      const { j } = await api('/api/consola/planes', { accion: 'vista_previa', plan_id: p.id, precio: $('p_precio').value.trim(), aplicar_a: $('p_aplicar').value });
+      if (!j.ok) { $('p_prev').innerHTML = `<div class="aviso mal">${esc(j.error || 'No se pudo calcular.')}</div>`; return; }
+      const signo = j.cambio_mensual_centavos > 0 ? '+' : '';
+      const lista = (j.clientes || []).map((c) => `<li>${esc(c.nombre)}: ${usd(c.precio_actual_centavos)} → ${usd(j.precio_nuevo_centavos)}</li>`).join('');
+      $('p_prev').dataset.listo = '1';
+      $('p_prev').innerHTML = `<div class="vista-previa"><b>${esc(j.plan)}: ${usd(j.precio_actual_centavos)} → ${usd(j.precio_nuevo_centavos)}</b><br>` +
+        (j.aplicar_a === 'nuevos'
+          ? `Solo para clientes nuevos. Los ${esc(j.suscriptores_actuales)} suscriptores actuales conservan su precio.`
+          : `Afecta a ${esc(j.suscriptores_afectados)} suscriptor(es) desde su próxima renovación. Cambio en el ingreso mensual: <b>${signo}${usd(j.cambio_mensual_centavos)}</b>.${lista ? `<ul>${lista}</ul>` : ''}`) +
+        '<br>Pulsa Confirmar para guardarlo.</div>';
+    });
+  }
+}
+function crearPlanForm() {
+  formPlan('fp_nuevo', `<div class="campos"><div><label for="n_nom">Nombre del plan</label><input id="n_nom" maxlength="40"></div><div><label for="n_pre">Precio (USD al mes)</label><input id="n_pre" inputmode="decimal"></div>
+    <div><label for="n_w">Mensajes de WhatsApp al mes</label><input id="n_w" inputmode="numeric" placeholder="vacío = sin tope"></div><div><label for="n_i">Consultas a la IA al mes</label><input id="n_i" inputmode="numeric" placeholder="vacío = sin tope"></div></div>`,
+    () => enviarPlan({ accion: 'crear', nombre: $('n_nom').value.trim(), precio: $('n_pre').value.trim(), limite_whatsapp: $('n_w').value.trim(), limite_ia: $('n_i').value.trim() }));
 }
 (async () => { try { const r = await fetch('/api/consola/yo', { credentials: 'same-origin' }); if (r.ok) { const j = await r.json(); mostrarPanel(j.nombre || ''); } } catch {} })();
 </script>

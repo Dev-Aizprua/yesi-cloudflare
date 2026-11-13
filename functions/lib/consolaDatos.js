@@ -1,6 +1,6 @@
 // functions/lib/consolaDatos.js
 // Lecturas de la consola de administración (solo lectura). Nunca devuelve wa_token ni token de los negocios.
-import { evaluarEstado, diasDeGracia, fechaPanama, mesPanama, usoDelMes, listarPlanes, suscripcionVigente } from './suscripcion.js';
+import { evaluarEstado, diasDeGracia, fechaPanama, mesPanama, usoDelMes, listarPlanes, suscripcionVigente, historialPrecios, leerAjuste } from './suscripcion.js';
 
 const ETIQUETAS = { activa: 'Activa', gracia: 'En gracia', vencida: 'Vencida', suspendida: 'Suspendida', pendiente: 'Pendiente de pago', cancelada: 'Cancelada', sin_suscripcion: 'Sin suscripción' };
 export const etiquetaEstado = (e) => ETIQUETAS[e] ?? e;
@@ -77,5 +77,16 @@ export async function detalleSuscriptor(db, negocioId, ahora = new Date()) {
     pagos: pagos.results || [], uso_mes: uso,
     historial: (hist.results || []).map((h) => ({ accion: h.accion, creado_en: h.creado_en })),
     planes: (await listarPlanes(db)).filter((p) => p.activo === 1 || p.activo === undefined),
+  };
+}
+
+/** Pantalla Planes y Precios: planes con cuántos suscriptores tienen, historial de precios y reglas de vencimiento. */
+export async function vistaPlanes(db) {
+  const porcentaje = Number(await leerAjuste(db, 'porcentaje_aviso_uso', '80'));
+  return {
+    planes: await listarPlanes(db),
+    historial: await historialPrecios(db),
+    dias_gracia: await diasDeGracia(db),
+    porcentaje_aviso_uso: Number.isInteger(porcentaje) ? porcentaje : 80,
   };
 }

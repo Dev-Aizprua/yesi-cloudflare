@@ -256,14 +256,17 @@ export async function vistaPreviaCambioPrecio(db, planId, nuevoCentavos, aplicar
   if (!plan) return { ok: false, error: 'Ese plan no existe.' };
   if (!Number.isInteger(nuevoCentavos) || nuevoCentavos < 0) return { ok: false, error: 'El precio no es válido.' };
   if (!['nuevos', 'todos'].includes(aplicarA)) return { ok: false, error: 'Indica si aplica a los nuevos o a todos.' };
+  if (aplicarA === 'nuevos' && nuevoCentavos === plan.precio_centavos) return { ok: false, error: 'El plan ya tiene ese precio.' };
   const { results } = await db.prepare(
-    "SELECT precio_centavos FROM suscripciones WHERE plan_id = ? AND estado IN ('activa','suspendida','pendiente')"
+    `SELECT s.negocio_id, n.nombre, s.precio_centavos FROM suscripciones s JOIN negocios n ON n.id = s.negocio_id
+      WHERE s.plan_id = ? AND s.estado IN ('activa','suspendida','pendiente') ORDER BY n.nombre COLLATE NOCASE`
   ).bind(planId).all();
   const afectados = aplicarA === 'todos' ? results.length : 0;
   const diferencia = aplicarA === 'todos' ? results.reduce((s, r) => s + (nuevoCentavos - r.precio_centavos), 0) : 0;
   return {
     ok: true, plan: plan.nombre, precio_actual_centavos: plan.precio_centavos, precio_nuevo_centavos: nuevoCentavos,
     aplicar_a: aplicarA, suscriptores_actuales: results.length, suscriptores_afectados: afectados, cambio_mensual_centavos: diferencia,
+    clientes: aplicarA === 'todos' ? results.slice(0, 30).map((r) => ({ negocio_id: r.negocio_id, nombre: r.nombre, precio_actual_centavos: r.precio_centavos })) : [],
   };
 }
 
@@ -284,7 +287,8 @@ export async function cambiarPrecioPlan(db, { planId, nuevoCentavos, aplicarA, a
     ).bind(nuevoCentavos, planId));
   }
   await db.batch(sentencias);
-  await auditar(db, adminId, 'precio_cambiado', 'plan', planId, vp);
+  const { clientes, ...cifras } = vp;
+  await auditar(db, adminId, 'precio_cambiado', 'plan', planId, { ...cifras, clientes_ids: (clientes || []).map((c) => c.negocio_id) });
   return vp;
 }
 
@@ -295,6 +299,46 @@ export async function actualizarLimitesPlan(db, { planId, limiteWhatsapp, limite
   if (r.meta.changes !== 1) return { ok: false, error: 'Ese plan no existe.' };
   await auditar(db, adminId, 'limites_cambiados', 'plan', planId, { limiteWhatsapp, limiteIa });
   return { ok: true };
+}
+
+/** Crea un plan nuevo (queda en el historial de precios como 'inicial'). Los topes vacíos = sin tope. */
+export async function crearPlan(db, { nombre, precioCentavos, limiteWhatsapp = null, limiteIa = null, adminId = null }) {
+  const nom = String(nombre ?? '').trim();
+  if (nom.length < 2 || nom.length > 40) return { ok: false, error: 'El nombre del plan debe tener entre 2 y 40 caracteres.' };
+  if (!Number.isInteger(precioCentavos) || precioCentavos < 0 || precioCentavos > 10000000) return { ok: false, error: 'El precio no es válido.' };
+  const valido = (v) => v === null || (Number.isInteger(v) && v >= 0 && v <= 10000000);
+  if (!valido(limiteWhatsapp) || !valido(limiteIa)) return { ok: false, error: 'Los límites deben ser números enteros (o vacío = sin tope).' };
+  if (await db.prepare('SELECT id FROM planes WHERE nombre = ? COLLATE NOCASE').bind(nom).first()) return { ok: false, error: 'Ya existe un plan con ese nombre.' };
+  const r = await db.prepare('INSERT INTO planes (nombre, precio_centavos, limite_whatsapp_mes, limite_ia_mes) VALUES (?, ?, ?, ?)').bind(nom, precioCentavos, limiteWhatsapp, limiteIa).run();
+  const id = r.meta.last_row_id;
+  await db.prepare("INSERT INTO historial_precios (plan_id, precio_centavos, aplicado_a, admin_id) VALUES (?, ?, 'inicial', ?)").bind(id, precioCentavos, adminId).run();
+  await auditar(db, adminId, 'plan_creado', 'plan', id, { nombre: nom, precioCentavos, limiteWhatsapp, limiteIa });
+  return { ok: true, id };
+}
+
+/** Activa o desactiva un plan para NUEVAS altas (quien ya lo tiene lo conserva). Siempre debe quedar un plan activo. */
+export async function cambiarEstadoPlan(db, { planId, activo, adminId = null }) {
+  const plan = await db.prepare('SELECT * FROM planes WHERE id = ?').bind(planId).first();
+  if (!plan) return { ok: false, error: 'Ese plan no existe.' };
+  const nuevo = activo ? 1 : 0;
+  if (plan.activo === nuevo) return { ok: false, error: nuevo ? 'El plan ya está activo.' : 'El plan ya está desactivado.' };
+  if (!nuevo) {
+    const otros = await db.prepare('SELECT COUNT(*) AS c FROM planes WHERE activo = 1 AND id <> ?').bind(planId).first();
+    if (!otros || otros.c < 1) return { ok: false, error: 'Debe quedar al menos un plan activo.' };
+  }
+  await db.prepare('UPDATE planes SET activo = ? WHERE id = ?').bind(nuevo, planId).run();
+  await auditar(db, adminId, nuevo ? 'plan_activado' : 'plan_desactivado', 'plan', planId, { nombre: plan.nombre });
+  return { ok: true };
+}
+
+/** Historial de cambios de precio (los más recientes primero). */
+export async function historialPrecios(db, limite = 40) {
+  const { results } = await db.prepare(
+    `SELECT h.id, h.plan_id, p.nombre AS plan, h.precio_centavos, h.aplicado_a, h.creado_en, a.nombre AS admin
+       FROM historial_precios h JOIN planes p ON p.id = h.plan_id LEFT JOIN admin_usuarios a ON a.id = h.admin_id
+      ORDER BY h.id DESC LIMIT ?`
+  ).bind(limite).all();
+  return results || [];
 }
 
 // ───────────────────────── Suscripciones (consola) ─────────────────────────
