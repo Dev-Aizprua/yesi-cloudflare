@@ -1667,6 +1667,21 @@ async function agregarFila(env, cuadro, columnas, filas, reglas, args) {
   const nuevaFilaCruda = { nombre: args.nombre, ...limpiarValores(args.valores) };
   const filaCalculada = conNombreEnPrimeraColumna(calcularFila(nuevaFilaCruda, reglas), claveNombre);
 
+  // Si el dueño dio un valor y una fórmula del cuadro lo cambió, se le dice (antes se reemplazaba en silencio).
+  const cambiosPorFormula = [];
+  for (const campo of Object.keys(reglas || {})) {
+    const dado = nuevaFilaCruda[campo];
+    const calculado = filaCalculada[campo];
+    if (dado === undefined || dado === null || dado === '') continue;
+    if (!Number.isFinite(Number(dado)) || !Number.isFinite(Number(calculado))) continue;
+    if (Math.abs(Number(dado) - Number(calculado)) <= 0.005) continue;
+    const etiqueta = (columnas || []).find(c => normalizarClave(c) === campo) || campo;
+    cambiosPorFormula.push(`${etiqueta}: pusiste ${Number(dado)} y quedó ${Number(calculado)}`);
+  }
+  const notaFormula = cambiosPorFormula.length
+    ? `\n⚠️ Ojo: ese cuadro calcula esos campos con una fórmula, así que cambié lo que dijiste (${cambiosPorFormula.join('; ')}).`
+    : '';
+
   const filasAntes = JSON.stringify(filas);
   sanarNombresEnPrimeraColumna(filas, claveNombre); // filas cargadas antes de este arreglo: se les completa el nombre
   filas.push(filaCalculada);
@@ -1686,7 +1701,7 @@ async function agregarFila(env, cuadro, columnas, filas, reglas, args) {
 
   return {
     tipo: 'ok',
-    mensaje: `Agregué a ${args.nombre} al cuadro.${notaTelefono}`,
+    mensaje: `Agregué a ${args.nombre} al cuadro.${notaFormula}${notaTelefono}`,
     fila: filaCalculada,
     historialId,
     generarImagen: true,
