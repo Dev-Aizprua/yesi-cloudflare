@@ -37,6 +37,7 @@ import { generarPdfCarta } from '../lib/pdfCarta.js';
 import { camposConFechasEnLetras } from '../lib/fechasCarta.js';
 import { validarReporteSecciones } from '../lib/reporteSecciones.js';
 import { generarImagenReporteSecciones } from '../lib/imagenReporteSecciones.js';
+import { describirReporteParaCorreccion, aplicarCorreccionSecciones } from '../lib/correccionReporteSecciones.js';
 import { generarExcelReporteSecciones } from '../lib/excelReporteSecciones.js';
 import { validarPie, validarEncabezado, avisosEncabezado, avisosRevisionEncabezado, recalcularPie } from '../lib/tablaExtendida.js';
 import { reconocerFactura, buscarGastoDeFactura, armarDatosGasto, textoPreguntaDestino, textoPedirFecha, textoVistaPreviaGastoFactura, interpretarDestino, interpretarFechaRespuesta, corregirFechaEnVistaPrevia, corregirDatoFacturaEnVistaPrevia, aplicarCorreccionFactura } from '../lib/facturaGasto.js';
@@ -3049,7 +3050,7 @@ function construirTextoConfirmacionSecciones(datos) {
 
   const partes = [...lineasEstadisticas, ...bloques].filter(Boolean);
 
-  return `Así leí tu reporte:\n\n${partes.join('\n\n')}\n\n¿Está bien así? Responde "sí" para crear el reporte, o "no" para descartarlo.\n\n(Por ahora este tipo de reporte no se corrige campo por campo por chat — si algo está mal, responde "no" y mándame la foto de nuevo con mejor luz o encuadre.)`;
+  return `Así leí tu reporte:\n\n${partes.join('\n\n')}\n\n¿Está bien así? Responde "sí" para crear el reporte, "no" para descartarlo, o dime qué corregir, una cosa a la vez (ej. "el valor de Saldo es 258", "la línea 10 Plantas Crédito es 16 Plantas Crédito", "quita la fila 18 Total", "el título es Bazar Atrio Mall").`;
 }
 
 // Sube el PNG a Meta (/media) y lo manda como mensaje de imagen — el
@@ -3989,13 +3990,10 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
     return Response.json({ ok: true, importacion_cancelada: true });
   }
 
-  // Los reportes de secciones todavía no se corrigen campo por campo
-  // por chat (decisión de alcance ya acordada) — se deja el pendiente
-  // intacto para que el usuario pueda decidir "sí" o "no" después.
+  // Reportes por secciones (nota con estadísticas y bloques de etiqueta/valor): se corrige UNA cosa por mensaje.
+  // Groq solo extrae qué quiso corregir; correccionReporteSecciones.js decide, aplica y vuelve a validar.
   if (esSecciones) {
-    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente,
-      'Por ahora este tipo de reporte no se corrige campo por campo por chat. Responde "sí" para crear el reporte tal como te lo mandé, o "no" para descartarlo y mandarme la foto de nuevo.');
-    return Response.json({ ok: true, correccion_no_soportada_secciones: true });
+    return await corregirReporteSeccionesPendiente(env, negocio, numeroCliente, texto, datos);
   }
 
   // Documentos con encabezado o pie (cotizaciones, facturas leídas de foto):
@@ -5117,6 +5115,75 @@ async function corregirDocumentoPendiente(env, negocio, numeroCliente, texto, da
 
   await enviarVistaPreviaImportacion(env, negocio, numeroCliente, nuevo);
   return Response.json({ ok: true, correccion_documento_aplicada: true });
+}
+
+// Corrección de un reporte por secciones pendiente (foto de una nota). Groq solo EXTRAE qué dato y qué valor;
+// correccionReporteSecciones.js decide, aplica y vuelve a validar las fórmulas.
+async function corregirReporteSeccionesPendiente(env, negocio, numeroCliente, texto, datos) {
+  let correccion = null;
+  try {
+    correccion = await interpretarCorreccionSecciones(texto, describirReporteParaCorreccion(datos), env.GROQ_API_KEY);
+  } catch (e) {
+    console.log('[WEBHOOK] Error interpretando corrección de reporte por secciones:', e.message);
+  }
+  console.log('[WEBHOOK] Corrección de reporte extraída por Groq:', JSON.stringify(correccion));
+
+  const r = aplicarCorreccionSecciones(datos, correccion);
+  if (!r.ok) {
+    await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, r.mensaje);
+    return Response.json({ ok: true, correccion_reporte_rechazada: true });
+  }
+
+  await env.oficina_ia_db.prepare(
+    "UPDATE importaciones_pendientes SET datos = ?, creado_en = datetime('now') WHERE negocio_id = ?"
+  ).bind(JSON.stringify(r.datos), negocio.id).run();
+
+  const avisos = r.avisos.length ? '\n\n⚠️ ' + r.avisos.join('\n⚠️ ') : '';
+  await enviarMensaje(negocio.wa_token, negocio.phone_number_id, numeroCliente, `Corregí: ${r.resumen}.${avisos}`);
+  await enviarVistaPreviaReporteSecciones(env, negocio, numeroCliente, r.datos);
+  return Response.json({ ok: true, correccion_reporte_aplicada: true });
+}
+
+async function interpretarCorreccionSecciones(textoUsuario, contexto, groqApiKey) {
+  const estadisticas = contexto.estadisticas.length
+    ? contexto.estadisticas.map(e => `${JSON.stringify(e.etiqueta)}: ${JSON.stringify(e.valor)}`).join('; ')
+    : '(ninguna)';
+  const secciones = contexto.secciones.map(s =>
+    `Sección ${JSON.stringify(s.nombre)} → ${s.filas.map(f => `${JSON.stringify(f.etiqueta)}: ${JSON.stringify(f.valor)}`).join('; ') || '(sin filas)'}`
+  ).join('\n') || '(ninguna)';
+  const prompt =
+    `El usuario está corrigiendo un reporte leído de una foto que todavía no se ha guardado.\n` +
+    `Título: ${JSON.stringify(contexto.titulo)}. Subtítulo: ${JSON.stringify(contexto.subtitulo)}.\n` +
+    `Datos destacados (etiqueta: valor): ${estadisticas}.\n` +
+    `Secciones y sus filas (etiqueta: valor):\n${secciones}\n\n` +
+    `Extrae UNA sola corrección del mensaje. Responde SOLO con JSON, sin texto adicional: ` +
+    `{"objetivo": "valor" | "etiqueta" | "quitar_fila" | "agregar_fila" | "titulo" | "subtitulo", "fila": "...", "valor": "...", "seccion": "...", "etiqueta": "..."}. Los campos que no apliquen van en null.\n` +
+    `- objetivo "valor": cambiar el VALOR de una fila o dato destacado. "fila" debe ser EXACTAMENTE una de las etiquetas de arriba y "valor" el nuevo valor tal cual lo dijo (solo el número o el texto, sin calcular nada).\n` +
+    `- objetivo "etiqueta": cambiar el TEXTO de una etiqueta (por ejemplo corregir "10 Plantas Crédito" por "16 Plantas Crédito"). "fila" es la etiqueta actual EXACTA y "valor" la etiqueta nueva tal cual la dijo.\n` +
+    `- objetivo "quitar_fila": "fila" es la etiqueta EXACTA de la fila o dato destacado que debe quitarse.\n` +
+    `- objetivo "agregar_fila": "seccion" debe ser EXACTAMENTE una de las secciones de arriba (null si solo hay una), "etiqueta" y "valor" tal cual los dijo; si no dijo el valor, null — nunca lo inventes.\n` +
+    `- objetivo "titulo" o "subtitulo": "valor" es el texto nuevo (null en "subtitulo" si pide quitarlo).\n` +
+    `- NUNCA calcules, sumes ni deduzcas valores: si el usuario pide un cálculo, responde {"objetivo": null}.\n` +
+    `- Si no puedes identificarlo con certeza: {"objetivo": null}.\n\n` +
+    `Mensaje del usuario: ${JSON.stringify(textoUsuario)}`;
+
+  const respuesta = await fetchGroq('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'openai/gpt-oss-120b',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0,
+      max_tokens: 400,
+      response_format: { type: 'json_object' },
+    }),
+  });
+  const data = await respuesta.json();
+  if (data.error) throw new Error(`Groq (corrección de reporte): ${data.error.message}`);
+  const mensaje = data.choices?.[0]?.message;
+  const texto = (mensaje?.content || mensaje?.reasoning_content || mensaje?.reasoning || '').trim();
+  const limpio = texto.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  return JSON.parse(limpio);
 }
 
 async function interpretarCorreccionDocumento(textoUsuario, contexto, groqApiKey) {
