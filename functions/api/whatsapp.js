@@ -988,9 +988,14 @@ async function aplicarAccion(env, negocio, nombreHerramienta, args) {
         datosReporteSecciones: estructura,
       };
     }
+    // Corregir un reporte YA guardado: cualquier herramienta de edición de filas entra aquí; lo que se quiere cambiar
+    // lo interpreta iniciarEdicionReporte a partir del mensaje completo del dueño (args._texto).
+    if (['agregar_fila', 'actualizar_fila', 'eliminar_fila'].includes(nombreHerramienta)) {
+      return iniciarEdicionReporte(env, negocio, cuadro, estructura, args);
+    }
     return {
       tipo: 'aviso',
-      mensaje: `El reporte "${cuadro.nombre_cuadro}" todavía no se edita por chat — mándame la foto de nuevo si algo cambió.`,
+      mensaje: `Del reporte "${cuadro.nombre_cuadro}" te puedo mandar la imagen o el Excel, y puedes corregirlo (por ejemplo: "en ${cuadro.nombre_cuadro} el valor de Saldo es 258").`,
     };
   }
 
@@ -2042,6 +2047,56 @@ async function iniciarEdicionFila(env, negocio, cuadro, columnas, filas, reglas,
   return { tipo: 'pago_pendiente', mensaje: textoPrevio };
 }
 
+// ── CORREGIR UN REPORTE POR SECCIONES YA GUARDADO, CON VISTA PREVIA ───────────────
+// "En Bazar Atrio Mall agrega la fila 18 Total, valor 18": Groq extrae UNA corrección (igual que antes de guardar), el código la valida y la
+// aplica, y se muestra el reporte con el cambio. Solo se guarda con el "sí"; con "no" no pasa nada.
+async function iniciarEdicionReporte(env, negocio, cuadro, estructura, args) {
+  const textoUsuario = String(args._texto || '').trim();
+  if (!textoUsuario) {
+    return { tipo: 'aviso', mensaje: `No pude entender qué quieres cambiar en el reporte "${cuadro.nombre_cuadro}". Dime, por ejemplo: "en ${cuadro.nombre_cuadro} el valor de Saldo es 258".` };
+  }
+  let correccion = null;
+  try {
+    correccion = await interpretarCorreccionSecciones(textoUsuario, describirReporteParaCorreccion(estructura), env.GROQ_API_KEY);
+  } catch (e) {
+    console.log('[WEBHOOK] Error interpretando corrección de reporte guardado:', e.message);
+  }
+  console.log('[WEBHOOK] Corrección de reporte guardado extraída por Groq:', JSON.stringify(correccion));
+
+  const r = aplicarCorreccionSecciones(estructura, correccion);
+  if (!r.ok) return { tipo: 'aviso', mensaje: r.mensaje };
+
+  const avisos = r.avisos.length ? '\n⚠️ ' + r.avisos.join('\n⚠️ ') : '';
+  const textoPrevio = `Voy a cambiar el reporte "${cuadro.nombre_cuadro}": ${r.resumen}.${avisos}\n\n¿Lo guardo? Responde "sí" o "no".`;
+  await guardarPagoPendiente(env, negocio.id, {
+    tipoPendiente: 'editar_reporte', cuadroId: cuadro.id, nombreCuadro: cuadro.nombre_cuadro,
+    estructuraAntes: JSON.stringify(estructura), estructuraDespues: r.datos, textoPrevio,
+  });
+  // La imagen que se manda es la del reporte YA con el cambio (todavía sin guardar), con el texto como pie.
+  return { tipo: 'pago_pendiente', mensaje: textoPrevio, generarImagenSecciones: true, datosReporteSecciones: r.datos };
+}
+
+async function procesarRespuestaEdicionReporte(env, negocio, numeroCliente, texto, datos) {
+  const c = clasificarRespuestaConfirmacion(texto);
+  if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, 'Listo, no cambié nada.');
+  if (c !== 'confirmar') {
+    return await responderPago(env, negocio, numeroCliente, `Primero dime si guardo este cambio: responde "sí" o "no".\n\n${datos.textoPrevio}`);
+  }
+  await env.oficina_ia_db.prepare('DELETE FROM importaciones_pendientes WHERE negocio_id = ?').bind(negocio.id).run();
+  const cuadro = (await obtenerCuadros(env, negocio.id)).find(x => x.id === datos.cuadroId);
+  if (!cuadro) return await responderPago(env, negocio, numeroCliente, `Ya no encuentro el reporte "${datos.nombreCuadro}". No cambié nada.`);
+  // Si el reporte cambió entre la vista previa y el "sí", no se guarda a ciegas.
+  if (JSON.stringify(JSON.parse(cuadro.estructura || '{}')) !== JSON.stringify(JSON.parse(datos.estructuraAntes))) {
+    return await responderPago(env, negocio, numeroCliente, `El reporte "${datos.nombreCuadro}" cambió mientras tanto. No guardé nada; vuelve a pedirme el cambio.`);
+  }
+  const nueva = { ...datos.estructuraDespues };
+  if (!nueva.subtitulo) delete nueva.subtitulo;
+  await env.oficina_ia_db.prepare('UPDATE cuadros SET estructura = ? WHERE id = ? AND negocio_id = ?')
+    .bind(JSON.stringify(nueva), cuadro.id, negocio.id).run();
+  return await responderPago(env, negocio, numeroCliente,
+    `Listo ✅ Guardé el cambio en el reporte "${datos.nombreCuadro}".\nPara ver el reporte con el cambio escribe: pásame la imagen de ${datos.nombreCuadro}`, { edicion_guardada: true });
+}
+
 async function procesarRespuestaEdicionFila(env, negocio, numeroCliente, texto, datos) {
   const c = clasificarRespuestaConfirmacion(texto);
   if (c === 'cancelar') return await descartarPago(env, negocio, numeroCliente, 'Listo, no cambié nada.');
@@ -2606,7 +2661,7 @@ function construirSystemPrompt(negocio, cuadros, cartasDisponibles = [], conPago
       return (Array.isArray(e.pie) && e.pie.length > 0) || (Array.isArray(e.encabezado) && e.encabezado.length > 0);
     } catch { return false; }
   };
-  const AVISO_SOLO_LECTURA = 'reporte de SOLO LECTURA (viene de una foto) — usa consultar_cuadro o enviar_excel; NUNCA agregar_fila/actualizar_fila/eliminar_fila con este';
+  const AVISO_SOLO_LECTURA = 'reporte por secciones (viene de una foto) — para verlo usa consultar_cuadro o enviar_excel. Para CORREGIRLO (cambiar un valor, una línea, el título, agregar o quitar una fila) llama actualizar_fila con nombre_cuadro, campo "reporte", nombre "reporte" y valor con el mensaje del usuario tal cual: el código interpreta el cambio y pide confirmación. NUNCA uses cargar_filas ni inventes valores con este';
 
   if (cuadros.length === 0) {
     prompt += `\nEste negocio todavía NO tiene ningún cuadro creado — si el usuario pide registrar algo, usa crear_cuadro primero.\n`;
@@ -3851,6 +3906,7 @@ function descripcionPendiente(datos) {
     case 'pago': case 'abono': return 'un pago por confirmar';
     case 'anular_registro': case 'anular_cobro': case 'anular_abono': return 'una anulación por confirmar';
     case 'editar_fila': return `un cambio en el cuadro "${datos.nombreCuadro}"`;
+    case 'editar_reporte': return `un cambio en el reporte "${datos.nombreCuadro}"`;
     case 'cargar_filas': return 'una carga de filas por confirmar';
     default: return datos?.nombreCuadro ? `el cuadro "${datos.nombreCuadro}" de tu foto` : 'una vista previa';
   }
@@ -3924,6 +3980,11 @@ async function procesarRespuestaImportacion(env, negocio, numeroCliente, texto, 
   }
   if (datos.tipoPendiente === 'editar_fila') {
     const respuesta = await procesarRespuestaEdicionFila(env, negocio, numeroCliente, texto, datos);
+    await marcarFlujoPagoCerrado(env, negocio.id);
+    return respuesta;
+  }
+  if (datos.tipoPendiente === 'editar_reporte') {
+    const respuesta = await procesarRespuestaEdicionReporte(env, negocio, numeroCliente, texto, datos);
     await marcarFlujoPagoCerrado(env, negocio.id);
     return respuesta;
   }
