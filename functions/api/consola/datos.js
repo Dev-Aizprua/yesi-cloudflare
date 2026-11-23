@@ -1,7 +1,7 @@
 // functions/api/consola/datos.js
-// GET /api/consola/datos?vista=inicio | suscriptores | detalle&id=N | planes → lecturas de la consola (solo administrador con sesión).
+// GET /api/consola/datos?vista=inicio | suscriptores | detalle&id=N | planes | pagos&mes=&metodo=&q= → lecturas de la consola (solo administrador con sesión).
 import { sesionAdminDeRequest } from '../../lib/adminAuth.js';
-import { resumenInicio, listarSuscriptores, detalleSuscriptor, vistaPlanes } from '../../lib/consolaDatos.js';
+import { resumenInicio, listarSuscriptores, detalleSuscriptor, vistaPlanes, vistaPagos } from '../../lib/consolaDatos.js';
 
 const CAB = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const resp = (obj, estado = 200) => new Response(JSON.stringify(obj), { status: estado, headers: CAB });
@@ -16,6 +16,7 @@ export async function onRequestGet({ request, env }) {
   try {
     if (vista === 'inicio') return resp({ ok: true, ...(await resumenInicio(db)) });
     if (vista === 'suscriptores') return resp({ ok: true, suscriptores: await listarSuscriptores(db) });
+    if (vista === 'pagos') return resp({ ok: true, ...(await vistaPagos(db, { mes: url.searchParams.get('mes') ?? '', metodo: url.searchParams.get('metodo') ?? '', buscar: url.searchParams.get('q') ?? '' })) });
     if (vista === 'planes') return resp({ ok: true, ...(await vistaPlanes(db)) });
     if (vista === 'detalle') {
       const id = Number(url.searchParams.get('id'));

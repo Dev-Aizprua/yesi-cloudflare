@@ -393,6 +393,38 @@ export async function registrarPagoSuscripcion(db, { negocioId, montoCentavos, m
   return { ok: true, pagoId, periodo_desde: desde, periodo_hasta: hasta, vence_en: hasta };
 }
 
+/**
+ * Anula un pago registrado por error. No se borra: queda marcado con su motivo (solo se agrega, nunca se pierde).
+ * Solo se puede anular el pago MÁS RECIENTE de la suscripción, para que la cobertura siga siendo coherente.
+ * El vencimiento vuelve al fin del pago anterior; si no queda ningún pago, la suscripción vuelve a "pendiente".
+ * El precio de la suscripción no se toca. No cambia negocios.activo.
+ */
+export async function anularPagoSuscripcion(db, { pagoId, motivo, adminId = null }) {
+  const mot = String(motivo ?? '').trim();
+  if (mot.length < 3 || mot.length > 200) return { ok: false, error: 'Escribe el motivo de la anulación (entre 3 y 200 caracteres).' };
+  const pago = await db.prepare('SELECT * FROM pagos_suscripcion WHERE id = ?').bind(pagoId).first();
+  if (!pago) return { ok: false, error: 'Ese pago no existe.' };
+  if (pago.anulado) return { ok: false, error: 'Ese pago ya está anulado.' };
+  const ultimo = await db.prepare('SELECT id FROM pagos_suscripcion WHERE suscripcion_id = ? AND anulado = 0 ORDER BY periodo_hasta DESC, id DESC LIMIT 1').bind(pago.suscripcion_id).first();
+  if (!ultimo || ultimo.id !== pago.id) return { ok: false, error: 'Solo se puede anular el pago más reciente de esa suscripción. Anula primero los posteriores.' };
+  const sus = await db.prepare('SELECT * FROM suscripciones WHERE id = ?').bind(pago.suscripcion_id).first();
+  const anterior = await db.prepare('SELECT periodo_hasta FROM pagos_suscripcion WHERE suscripcion_id = ? AND anulado = 0 AND id <> ? ORDER BY periodo_hasta DESC, id DESC LIMIT 1').bind(pago.suscripcion_id, pago.id).first();
+  const sentencias = [db.prepare('UPDATE pagos_suscripcion SET anulado = 1, motivo_anulacion = ? WHERE id = ?').bind(mot, pago.id)];
+  let nuevoEstado = sus?.estado ?? null, nuevoVence = sus?.vence_en ?? null;
+  if (sus && sus.estado !== 'cancelada') {
+    if (anterior) {
+      nuevoVence = anterior.periodo_hasta;
+      sentencias.push(db.prepare("UPDATE suscripciones SET vence_en = ?, actualizado_en = datetime('now') WHERE id = ?").bind(nuevoVence, sus.id));
+    } else {
+      nuevoVence = null; nuevoEstado = sus.estado === 'activa' ? 'pendiente' : sus.estado;
+      sentencias.push(db.prepare("UPDATE suscripciones SET vence_en = NULL, inicio = NULL, estado = ?, actualizado_en = datetime('now') WHERE id = ?").bind(nuevoEstado, sus.id));
+    }
+  }
+  await db.batch(sentencias);
+  await auditar(db, adminId, 'pago_anulado', 'suscripcion', pago.suscripcion_id, { pagoId: pago.id, monto_centavos: pago.monto_centavos, motivo: mot, vence_en: nuevoVence, estado: nuevoEstado });
+  return { ok: true, vence_en: nuevoVence, estado: nuevoEstado };
+}
+
 export async function suspenderSuscripcion(db, { negocioId, motivo = null, adminId = null }) {
   const sus = await suscripcionVigente(db, negocioId);
   if (!sus) return { ok: false, error: 'Ese negocio no tiene suscripción.' };

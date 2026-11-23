@@ -90,3 +90,30 @@ export async function vistaPlanes(db) {
     porcentaje_aviso_uso: Number.isInteger(porcentaje) ? porcentaje : 80,
   };
 }
+
+/** Pantalla Pagos y Facturación: pagos con filtros, totales (sin anulados) y resumen de los últimos 12 meses. */
+export async function vistaPagos(db, { mes = '', metodo = '', buscar = '' } = {}, ahora = new Date()) {
+  const where = []; const params = [];
+  if (/^\d{4}-\d{2}$/.test(mes)) { where.push("substr(p.fecha, 1, 7) = ?"); params.push(mes); }
+  if (['yappy', 'transferencia', 'efectivo', 'otro'].includes(metodo)) { where.push('p.metodo = ?'); params.push(metodo); }
+  const q = String(buscar ?? '').trim().slice(0, 60);
+  if (q) { where.push("(n.nombre LIKE ? ESCAPE '\\' OR p.referencia LIKE ? ESCAPE '\\')"); const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%'; params.push(like, like); }
+  const filtro = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const { results } = await db.prepare(
+    `SELECT p.id, p.negocio_id, n.nombre AS negocio, p.fecha, p.monto_centavos, p.metodo, p.referencia, p.periodo_desde, p.periodo_hasta, p.anulado, p.motivo_anulacion,
+            (SELECT MAX(x.id) FROM pagos_suscripcion x WHERE x.suscripcion_id = p.suscripcion_id AND x.anulado = 0) AS ultimo_id
+       FROM pagos_suscripcion p JOIN negocios n ON n.id = p.negocio_id ${filtro}
+      ORDER BY p.fecha DESC, p.id DESC LIMIT 500`
+  ).bind(...params).all();
+  const pagos = (results || []).map((r) => ({ ...r, se_puede_anular: r.anulado === 0 && r.id === r.ultimo_id }));
+  const vigentes = pagos.filter((r) => r.anulado === 0);
+  const meses = await db.prepare(
+    `SELECT substr(fecha, 1, 7) AS mes, SUM(monto_centavos) AS total_centavos, COUNT(*) AS pagos
+       FROM pagos_suscripcion WHERE anulado = 0 GROUP BY substr(fecha, 1, 7) ORDER BY mes DESC LIMIT 12`).all();
+  return {
+    pagos, truncado: pagos.length === 500,
+    total_filtrado_centavos: vigentes.reduce((a, r) => a + r.monto_centavos, 0), cantidad_filtrada: vigentes.length,
+    anulados_filtrados: pagos.length - vigentes.length,
+    meses: meses.results || [], mes_actual: mesPanama(ahora),
+  };
+}

@@ -96,7 +96,7 @@ tr.fila{cursor:pointer}tr.fila:hover{background:#f7faff}
       <button type="button" data-v="suscriptores">Suscriptores</button>
       <button type="button" data-v="planes">Planes y Precios</button>
       <button type="button" disabled>WhatsApp<small>pronto</small></button>
-      <button type="button" disabled>Pagos y Facturación<small>pronto</small></button>
+      <button type="button" data-v="pagos">Pagos y Facturación</button>
       <button type="button" disabled>Uso de Mensajes Meta<small>pronto</small></button>
       <button type="button" disabled>Uso de IA (Groq)<small>pronto</small></button>
       <button type="button" disabled>Estadísticas<small>pronto</small></button>
@@ -146,6 +146,7 @@ function ir(vista, id = null) {
   if (vista === 'suscriptores') return verLista();
   if (vista === 'detalle') return verDetalle();
   if (vista === 'planes') return verPlanes();
+  if (vista === 'pagos') return verPagos();
 }
 const etq = (f) => {
   let clase = f.estado, txt = f.estado_texto;
@@ -359,6 +360,60 @@ function crearPlanForm() {
   formPlan('fp_nuevo', `<div class="campos"><div><label for="n_nom">Nombre del plan</label><input id="n_nom" maxlength="40"></div><div><label for="n_pre">Precio (USD al mes)</label><input id="n_pre" inputmode="decimal"></div>
     <div><label for="n_w">Mensajes de WhatsApp al mes</label><input id="n_w" inputmode="numeric" placeholder="vacío = sin tope"></div><div><label for="n_i">Consultas a la IA al mes</label><input id="n_i" inputmode="numeric" placeholder="vacío = sin tope"></div></div>`,
     () => enviarPlan({ accion: 'crear', nombre: $('n_nom').value.trim(), precio: $('n_pre').value.trim(), limite_whatsapp: $('n_w').value.trim(), limite_ia: $('n_i').value.trim() }));
+}
+
+let filtrosPagos = { mes: '', metodo: '', q: '' }, pagosCargados = [];
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const nombreMes = (m) => { const [a, n] = String(m).split('-'); return MESES[Number(n) - 1] ? `${MESES[Number(n) - 1]} ${a}` : m; };
+async function verPagos() {
+  const qs = '&mes=' + encodeURIComponent(filtrosPagos.mes) + '&metodo=' + encodeURIComponent(filtrosPagos.metodo) + '&q=' + encodeURIComponent(filtrosPagos.q);
+  const d = await cargar('pagos', qs); if (!d) return;
+  pagosCargados = d.pagos;
+  const msg = avisoMsg; avisoMsg = null;
+  const resumen = d.meses.map((m) => `<tr class="fila" data-mes="${esc(m.mes)}"><td>${esc(nombreMes(m.mes))}</td><td>${esc(m.pagos)}</td><td><b>${usd(m.total_centavos)}</b></td></tr>`).join('');
+  const filas = d.pagos.map((p) => `<tr class="${p.anulado ? 'anulado' : ''}"><td>${fecha(p.fecha)}</td><td>${esc(p.negocio)}</td><td>${usd(p.monto_centavos)}</td><td>${esc(METODOS[p.metodo] ?? p.metodo)}</td><td>${esc(p.referencia ?? '')}</td><td>${fecha(p.periodo_desde)} al ${fecha(p.periodo_hasta)}</td>
+    <td>${p.anulado ? `<span class="etq e-cancelada" title="${esc(p.motivo_anulacion ?? '')}">Anulado</span>` : p.se_puede_anular ? `<button class="btn rojo" data-anular="${esc(p.id)}" type="button">Anular</button>` : ''}</td></tr>`).join('');
+  $('contenido').innerHTML = `
+    ${msg ? `<div class="aviso ${msg.ok ? 'bien' : 'mal'}">${esc(msg.texto)}</div>` : ''}
+    <div class="rejilla">
+      <div class="kpi"><div class="n">${usd(d.total_filtrado_centavos)}</div><div class="t">Cobrado con este filtro (${esc(d.cantidad_filtrada)} ${d.cantidad_filtrada === 1 ? 'pago' : 'pagos'})</div></div>
+      <div class="kpi"><div class="n">${esc(d.anulados_filtrados)}</div><div class="t">Pagos anulados en la lista</div></div>
+    </div>
+    <div class="tarjeta"><h3>Cobrado por mes</h3>${resumen ? `<div class="tabla-ancha"><table><tr><th>Mes</th><th>Pagos</th><th>Total</th></tr>${resumen}</table></div><p class="ayuda">Toca un mes para filtrar la lista. Los pagos anulados no cuentan.</p>` : '<div class="vacio">Todavía no hay pagos.</div>'}</div>
+    <div class="tarjeta"><h3>Pagos</h3>
+      <div class="herr"><input id="fq" placeholder="Buscar por negocio o referencia" maxlength="60" value="${esc(filtrosPagos.q)}">
+        <select id="fmes"><option value="">Todos los meses</option>${d.meses.map((m) => `<option value="${esc(m.mes)}"${filtrosPagos.mes === m.mes ? ' selected' : ''}>${esc(nombreMes(m.mes))}</option>`).join('')}</select>
+        <select id="fmet"><option value="">Todos los métodos</option>${Object.entries(METODOS).map(([v, t]) => `<option value="${v}"${filtrosPagos.metodo === v ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        <button class="btn sec" id="csv" type="button">Descargar CSV</button></div>
+      <div id="fanular"></div>
+      ${filas ? `<div class="tabla-ancha"><table><tr><th>Fecha</th><th>Negocio</th><th>Monto</th><th>Método</th><th>Referencia</th><th>Cubre</th><th></th></tr>${filas}</table></div>` : '<div class="vacio">No hay pagos con ese filtro.</div>'}
+      ${d.truncado ? '<p class="ayuda">Se muestran los 500 más recientes. Afina el filtro para ver otros.</p>' : ''}
+      <p class="ayuda">Solo se puede anular el pago más reciente de cada suscripción. Al anularlo, el vencimiento vuelve al del pago anterior. El precio de la suscripción no cambia.</p></div>`;
+  let temporizador = null;
+  $('fq').addEventListener('input', (e) => { clearTimeout(temporizador); temporizador = setTimeout(() => { filtrosPagos.q = e.target.value.trim(); verPagos(); }, 400); });
+  $('fmes').addEventListener('change', (e) => { filtrosPagos.mes = e.target.value; verPagos(); });
+  $('fmet').addEventListener('change', (e) => { filtrosPagos.metodo = e.target.value; verPagos(); });
+  $('contenido').querySelectorAll('tr.fila[data-mes]').forEach((tr) => tr.addEventListener('click', () => { filtrosPagos.mes = tr.dataset.mes; verPagos(); }));
+  $('csv').addEventListener('click', descargarCsv);
+  $('contenido').querySelectorAll('button[data-anular]').forEach((b) => b.addEventListener('click', () => {
+    const p = pagosCargados.find((x) => String(x.id) === b.dataset.anular); if (!p) return;
+    $('fanular').innerHTML = `<div class="caja-form"><p style="margin:0 0 8px">Anular el pago de <b>${esc(p.negocio)}</b> por <b>${usd(p.monto_centavos)}</b> del ${esc(fecha(p.fecha))}. El vencimiento volverá al del pago anterior.</p><label for="a_mot">Motivo (obligatorio)</label><input id="a_mot" maxlength="200"><div class="acciones"><button class="btn rojo" id="aOk" type="button">Anular pago</button><button class="btn sec" id="aNo" type="button">Cancelar</button></div></div>`;
+    $('aNo').addEventListener('click', () => { $('fanular').innerHTML = ''; });
+    $('aOk').addEventListener('click', async () => {
+      $('aOk').disabled = true;
+      try { const { j } = await api('/api/consola/pagos', { accion: 'anular', pago_id: p.id, motivo: $('a_mot').value.trim() }); avisoMsg = j.ok ? { ok: true, texto: 'Pago anulado. Quedó registrado con su motivo.' } : { ok: false, texto: j.error || 'No se pudo anular.' }; }
+      catch { avisoMsg = { ok: false, texto: 'Sin conexión. Intenta de nuevo.' }; }
+      verPagos();
+    });
+  }));
+}
+// CSV: las celdas que empiezan con = + - @ se neutralizan para que Excel no las ejecute como fórmula
+const celdaCsv = (v) => { let t = String(v ?? ''); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
+function descargarCsv() {
+  const filas = [['Fecha', 'Negocio', 'Monto USD', 'Método', 'Referencia', 'Cubre desde', 'Cubre hasta', 'Estado', 'Motivo de anulación']]
+    .concat(pagosCargados.map((p) => [p.fecha, p.negocio, (p.monto_centavos / 100).toFixed(2), METODOS[p.metodo] ?? p.metodo, p.referencia ?? '', p.periodo_desde, p.periodo_hasta, p.anulado ? 'Anulado' : 'Vigente', p.motivo_anulacion ?? '']));
+  const blob = new Blob(['﻿' + filas.map((f) => f.map(celdaCsv).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pagos_oficina_ia.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 (async () => { try { const r = await fetch('/api/consola/yo', { credentials: 'same-origin' }); if (r.ok) { const j = await r.json(); mostrarPanel(j.nombre || ''); } } catch {} })();
 </script>
